@@ -4,7 +4,7 @@ CC =
 CXX = g++
 LD = g++
 CXXFLAGS = -std=c++11 -I./
-LDFLAGS = -ltorrent-rasterbar
+LDFLAGS = -ltorrent-rasterbar -lboost_system
 
 OBJS = main.o
 INC = 
@@ -13,7 +13,7 @@ INC =
 all: $(PROG)
 
 $(PROG): $(OBJS) $(INC)
-	$(LD) $(LDFLAGS) $(CXXFLAGS) -o $(PROG) $(OBJS)
+	$(LD) -o $(PROG) $(OBJS) $(LDFLAGS) $(CXXFLAGS)
 
 .cpp.o:
 	$(CXX) -c $(CXXFLAGS) $(LDFLAGS) -o $*.o $*.cpp
