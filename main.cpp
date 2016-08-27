@@ -15,10 +15,12 @@ int main(int argc, char const* argv[])
     return 1;
   }
   lt::session ses;
+  lt::error_code ec;
 
   lt::add_torrent_params atp;
-  atp.url = argv[1];
-  atp.save_path = "."; // save in current dir
+  //atp.url = argv[1];
+  atp.ti = boost::make_shared<torrent_info>(std::string(argv[1]), boost::ref(ec), 0);
+  //atp.save_path = "."; // save in current dir
   lt::torrent_handle h = ses.add_torrent(atp);
 
   for (;;) {
