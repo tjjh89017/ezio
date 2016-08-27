@@ -16,7 +16,7 @@ $(PROG): $(OBJS) $(INC)
 	$(LD) $(LDFLAGS) $(CXXFLAGS) -o $(PROG) $(OBJS)
 
 .cpp.o:
-	$(CXX) -c $(CXXFLAGS) -o $*.o $*.cpp
+	$(CXX) -c $(CXXFLAGS) $(LDFLAGS) -o $*.o $*.cpp
 
 .PHONY: clean
 clean:
