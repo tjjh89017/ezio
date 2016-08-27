@@ -3,7 +3,7 @@ PROG = ezio
 CC =
 CXX = g++
 LD = g++
-CXXFLAGS = -I./
+CXXFLAGS = -std=c++11 -I./
 LDFLAGS = -ltorrent-rasterbar
 
 OBJS = main.o
