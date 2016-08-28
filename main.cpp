@@ -16,10 +16,16 @@ namespace lt = libtorrent;
 
 struct temp_storage : lt::storage_interface {
   temp_storage(lt::file_storage const& fs) : m_files(fs) {}
+  // Open disk fd
   void initialize(lt::storage_error& se) { return ; }
+
+  // assume no resume
   bool has_any_file(lt::storage_error& ec) { return false; }
+
+  // 
   int readv(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
   {
+    std::cout << 
     // std::map<int, std::vector<char> >::const_iterator i = m_file_data.find(piece);
     // if (i == m_file_data.end()) return 0;
     // int available = i->second.size() - offset;
@@ -38,8 +44,12 @@ struct temp_storage : lt::storage_interface {
     // return size;
     return 0;
   }
+
+  // Not need
   void rename_file(int index, std::string const& new_filename, lt::storage_error& ec)
   { assert(false); return ; }
+
+  // 
   int move_storage(std::string const& save_path, int flags, lt::storage_error& ec) { return 0; }
   bool verify_resume_data(lt::bdecode_node const& rd
           , std::vector<std::string> const* links
