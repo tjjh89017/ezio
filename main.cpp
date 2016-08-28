@@ -14,65 +14,68 @@
 
 namespace lt = libtorrent;
 
-class temp_storage : lt::storage_interface {
-        temp_storage(lt::file_storage const& fs) : m_files(fs) {}
-        void initialize(lt::storage_error& se) { return ; }
-        bool has_any_file() { return false; }
-        int readv(char* buf, int piece, int offset, int size)
-        {
-                std::map<int, std::vector<char> >::const_iterator i = m_file_data.find(piece);
-                if (i == m_file_data.end()) return 0;
-                int available = i->second.size() - offset;
-                if (available <= 0) return 0;
-                if (available > size) available = size;
-                memcpy(buf, &i->second[offset], available);
-                return available;
-        }
-        int writev(const char* buf, int piece, int offset, int size)
-        {
-                std::vector<char>& data = m_file_data[piece];
-                if (data.size() < offset + size) data.resize(offset + size);
-                std::memcpy(&data[offset], buf, size);
-                return size;
-        }
-        bool rename_file(int file, std::string const& new_name)
-        { assert(false); return false; }
-        bool move_storage(std::string const& save_path) { return false; }
-        bool verify_resume_data(lt::bdecode_node const& rd
-                , std::vector<std::string> const* links
-                , lt::storage_error& error) { return false; }
-        bool write_resume_data(lt::entry& rd) const { return false; }
-        void set_file_priority(std::vector<boost::uint8_t> const& prio, lt::storage_error& ec) {return ;}
-        boost::int64_t physical_offset(int piece, int offset)
-        { return piece * m_files.piece_length() + offset; };
-        lt::sha1_hash hash_for_slot(int piece, lt::partial_hash& ph, int piece_size)
-        {
-                int left = piece_size - ph.offset;
-                assert(left >= 0);
-                if (left > 0)
-                {
-                        std::vector<char>& data = m_file_data[piece];
-                        // if there are padding files, those blocks will be considered
-                        // completed even though they haven't been written to the storage.
-                        // in this case, just extend the piece buffer to its full size
-                        // and fill it with zeroes.
-                        if (data.size() < piece_size) data.resize(piece_size, 0);
-                        ph.h.update(&data[ph.offset], left);
-                }
-                return ph.h.final();
-        }
-        bool release_files() { return false; }
-        bool delete_files() { return false; }
+struct temp_storage : lt::storage_interface {
+  temp_storage(lt::file_storage const& fs) : m_files(fs) {}
+  void initialize(lt::storage_error& se) { return ; }
+  bool has_any_file(lt::storage_error& ec) { return false; }
+  int readv(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
+  {
+    // std::map<int, std::vector<char> >::const_iterator i = m_file_data.find(piece);
+    // if (i == m_file_data.end()) return 0;
+    // int available = i->second.size() - offset;
+    // if (available <= 0) return 0;
+    // if (available > size) available = size;
+    // memcpy(buf, &i->second[offset], available);
+    // return available;
+    return 0;
+
+  }
+  int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
+  {
+    // std::vector<char>& data = m_file_data[piece];
+    // if (data.size() < offset + size) data.resize(offset + size);
+    // std::memcpy(&data[offset], buf, size);
+    // return size;
+    return 0;
+  }
+  void rename_file(int index, std::string const& new_filename, lt::storage_error& ec)
+  { assert(false); return ; }
+  int move_storage(std::string const& save_path, int flags, lt::storage_error& ec) { return 0; }
+  bool verify_resume_data(lt::bdecode_node const& rd
+          , std::vector<std::string> const* links
+          , lt::storage_error& error) { return false; }
+  void write_resume_data(lt::entry& rd, lt::storage_error& ec) const { return ; }
+  void set_file_priority(std::vector<boost::uint8_t> const& prio, lt::storage_error& ec) {return ;}
+  lt::sha1_hash hash_for_slot(int piece, lt::partial_hash& ph, int piece_size)
+  {
+    int left = piece_size - ph.offset;
+    assert(left >= 0);
+    if (left > 0)
+    {
+      std::vector<char>& data = m_file_data[piece];
+      // if there are padding files, those blocks will be considered
+      // completed even though they haven't been written to the storage.
+      // in this case, just extend the piece buffer to its full size
+      // and fill it with zeroes.
+      if (data.size() < piece_size) data.resize(piece_size, 0);
+      ph.h.update(&data[ph.offset], left);
+    }
+    return ph.h.final();
+  }
+  void release_files(lt::storage_error& ec) { return ; }
+  void delete_files(int i, lt::storage_error& ec) { return ; }
+
+  bool tick () { return false; };
 
 
-        std::map<int, std::vector<char> > m_file_data;
-        lt::file_storage m_files;
+  std::map<int, std::vector<char> > m_file_data;
+  lt::file_storage m_files;
 };
 
 
 lt::storage_interface* temp_storage_constructor(lt::storage_params const& params)
 {
-        return new temp_storage(*params.files);
+  return new temp_storage(*params.files);
 }
 
 int main(int argc, char const* argv[])
