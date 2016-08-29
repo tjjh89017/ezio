@@ -42,6 +42,9 @@ Sloved! 直接用 `preadv` `pwritev`
 ### Disk or Partition write
 目標支援整個硬碟的複寫，以及分割區複寫
 
+### Rename?
+可能之後把名稱改成 BT 龍（ Torrent Dragon ）之類的
+
 ## Info
 
 * [BT (BitTorrent)](https://en.wikipedia.org/wiki/BitTorrent)
