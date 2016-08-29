@@ -20,6 +20,20 @@ BT-based Disk Cloner (?
 
 * Be the one of CloneZilla options!
 
+## TODO
+
+### Hard-Code
+前期先把一些少量改動都寫死，後期在重構
+
+### storage_interface
+目前不知道怎麼實作 `readv / writev` ，文件太爛看不懂
+
+### R/W Function
+目前傾向用 syscall wrapper `open` 、 `read` 、 `write` ，而非使用 C library 提供的檔案操作，不使用 buffering 相關的操作，而是未來直接跟 BT 一起處理 buffer 問題。
+
+### static linking
+這樣可以讓包裝成 PXE bootable 時候簡單一些
+
 ## Info
 
 * [BT (BitTorrent)](https://en.wikipedia.org/wiki/BitTorrent)
