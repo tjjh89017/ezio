@@ -33,6 +33,11 @@ struct temp_storage : lt::storage_interface {
     std::cerr << num_bufs << std::endl;
     std::cerr << piece << std::endl;
     std::cerr << offset << std::endl;
+
+	for(int i = 0; i < num_bufs; i++){
+      std::cerr << bufs[i].iov_len << std::endl;
+    }
+
     // std::map<int, std::vector<char> >::const_iterator i = m_file_data.find(piece);
     // if (i == m_file_data.end()) return 0;
     // int available = i->second.size() - offset;
@@ -40,8 +45,7 @@ struct temp_storage : lt::storage_interface {
     // if (available > size) available = size;
     // memcpy(buf, &i->second[offset], available);
     // return available;
-    return 0;
-
+    return preadv(this->fd, bufs, num_bufs, piece * std::uint64_t(m_files.piece_length()) + offset);
   }
   int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
   {
@@ -53,7 +57,7 @@ struct temp_storage : lt::storage_interface {
     // if (data.size() < offset + size) data.resize(offset + size);
     // std::memcpy(&data[offset], buf, size);
     // return size;
-    return 0;
+    return pwritev(this->fd, bufs, num_bufs, piece * std::uint64_t(m_files.piece_length()) + offset);
   }
 
   // Not need
@@ -112,11 +116,11 @@ int main(int argc, char const* argv[])
   lt::error_code ec;
 
   lt::add_torrent_params atp;
-  //atp.url = argv[1];
-  atp.ti = boost::make_shared<torrent_info>(std::string(argv[1]), boost::ref(ec), 0);
+  atp.url = argv[1];
+  //atp.ti = boost::make_shared<lt::torrent_info>(std::string(argv[1]), boost::ref(ec), 0);
   //atp.save_path = "."; // save in current dir
-  // atp.storage = temp_storage_constructor;
-  atp.storage = lt::default_storage_constructor;
+  atp.storage = temp_storage_constructor;
+  //atp.storage = lt::default_storage_constructor;
 
   lt::torrent_handle h = ses.add_torrent(atp);
 
@@ -125,7 +129,7 @@ int main(int argc, char const* argv[])
     ses.pop_alerts(&alerts);
 
     for (lt::alert const* a : alerts) {
-      std::cout << a->message() << std::endl;
+      //std::cout << a->message() << std::endl;
       // if we receive the finished alert or an error, we're done
       if (lt::alert_cast<lt::torrent_finished_alert>(a)) {
         goto done;
