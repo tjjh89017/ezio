@@ -54,3 +54,7 @@ Sloved! 直接用 `preadv` `pwritev`
 
 * [BT (BitTorrent)](https://en.wikipedia.org/wiki/BitTorrent)
 * [Udpcast 可能產生的問題](http://newtoypia.blogspot.tw/2015/04/udpcast.html)
+
+## 數據
+
+某地使用 CloneZilla ，使用 4 台 server ，複製總共 60 台電腦，映像檔大小約為 80 GiB ，使用時間約為 1 小時。
