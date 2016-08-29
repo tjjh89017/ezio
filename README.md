@@ -53,3 +53,4 @@ Sloved! 直接用 `preadv` `pwritev`
 ## Info
 
 * [BT (BitTorrent)](https://en.wikipedia.org/wiki/BitTorrent)
+* [Udpcast 可能產生的問題](http://newtoypia.blogspot.tw/2015/04/udpcast.html)
