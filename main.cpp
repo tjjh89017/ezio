@@ -29,10 +29,10 @@ struct temp_storage : lt::storage_interface {
   // 
   int readv(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
   {
-    std::cerr << "readv: " << endl;
-    std::cerr << num_bufs << endl;
-    std::cerr << piece << endl;
-    std::cerr << offset << endl;
+    std::cerr << "readv: " << std::endl;
+    std::cerr << num_bufs << std::endl;
+    std::cerr << piece << std::endl;
+    std::cerr << offset << std::endl;
     // std::map<int, std::vector<char> >::const_iterator i = m_file_data.find(piece);
     // if (i == m_file_data.end()) return 0;
     // int available = i->second.size() - offset;
@@ -45,10 +45,10 @@ struct temp_storage : lt::storage_interface {
   }
   int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
   {
-    std::cerr << "readv: " << endl;
-    std::cerr << num_bufs << endl;
-    std::cerr << piece << endl;
-    std::cerr << offset << endl;
+    std::cerr << "readv: " << std::endl;
+    std::cerr << num_bufs << std::endl;
+    std::cerr << piece << std::endl;
+    std::cerr << offset << std::endl;
     // std::vector<char>& data = m_file_data[piece];
     // if (data.size() < offset + size) data.resize(offset + size);
     // std::memcpy(&data[offset], buf, size);
