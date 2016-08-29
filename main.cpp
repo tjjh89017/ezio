@@ -17,7 +17,11 @@ namespace lt = libtorrent;
 struct temp_storage : lt::storage_interface {
   temp_storage(lt::file_storage const& fs) : m_files(fs) {}
   // Open disk fd
-  void initialize(lt::storage_error& se) { return ; }
+  void initialize(lt::storage_error& se)
+  {
+    this->fd = open("./disk", O_RDWR | O_CREAT);
+    return;
+  }
 
   // assume no resume
   bool has_any_file(lt::storage_error& ec) { return false; }
@@ -25,7 +29,10 @@ struct temp_storage : lt::storage_interface {
   // 
   int readv(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
   {
-    std::cout << 
+    std::cerr << "readv: " << endl;
+    std::cerr << num_bufs << endl;
+    std::cerr << piece << endl;
+    std::cerr << offset << endl;
     // std::map<int, std::vector<char> >::const_iterator i = m_file_data.find(piece);
     // if (i == m_file_data.end()) return 0;
     // int available = i->second.size() - offset;
@@ -38,6 +45,10 @@ struct temp_storage : lt::storage_interface {
   }
   int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
   {
+    std::cerr << "readv: " << endl;
+    std::cerr << num_bufs << endl;
+    std::cerr << piece << endl;
+    std::cerr << offset << endl;
     // std::vector<char>& data = m_file_data[piece];
     // if (data.size() < offset + size) data.resize(offset + size);
     // std::memcpy(&data[offset], buf, size);
@@ -80,6 +91,9 @@ struct temp_storage : lt::storage_interface {
 
   std::map<int, std::vector<char> > m_file_data;
   lt::file_storage m_files;
+
+  // Test for write file
+  int fd;
 };
 
 
