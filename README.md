@@ -1,5 +1,7 @@
 # Ezio
 
+# <font color="red">WARNING: It will erase your data.</font>
+
 ## Description
 
 BT-based Disk Cloner (?
