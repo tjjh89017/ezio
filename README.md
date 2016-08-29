@@ -1,6 +1,6 @@
 # Ezio
 
-# <font color="red">WARNING: It will erase your data.</font>
+<h1><font color="red">WARNING: It will erase your data.</font></h1>
 
 ## Description
 
