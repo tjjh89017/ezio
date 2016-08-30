@@ -11,6 +11,7 @@
 #include <libtorrent/storage_defs.hpp>
 #include <libtorrent/storage.hpp>
 #include <libtorrent/io.hpp>
+#include <libtorrent/settings_pack.hpp>
 
 namespace lt = libtorrent;
 
@@ -114,6 +115,12 @@ int main(int argc, char const* argv[])
   }
   lt::session ses;
   lt::error_code ec;
+  lt::settings_pack set;
+
+  // setting
+  // we don't need DHT
+  set.set_bool(lt::setting_pack::enable_dht, false);
+  ses.apply_settings(set);
 
   lt::add_torrent_params atp;
   atp.url = argv[1];
