@@ -12,6 +12,7 @@
 #include <libtorrent/storage.hpp>
 #include <libtorrent/io.hpp>
 #include <libtorrent/settings_pack.hpp>
+#include <libtorrent/torrent_info.hpp>
 
 #include <boost/progress.hpp>
 
@@ -173,16 +174,32 @@ int main(int argc, char const* argv[])
 	// seed until idle 15mins
 	int timeout = 15 * 60;
 	lt::torrent_status status;
+
+	// seed until seed rate 300%
+	boost::int64_t seeding_rate_limit = 3;
+	boost::int64_t total_size = h.torrent_file()->total_size();
+
 	for (;;) {
 		status = h.status();
 		int utime = status.time_since_upload;
 		int dtime = status.time_since_download;
-		std::cerr << utime << " " << dtime << std::endl;
+		boost::int64_t total_payload_upload = status.total_payload_upload;
+
+		std::cerr << utime << std::endl;
+		std::cerr << dtime << std::endl;
+		std::cerr << total_payload_upload << std::endl;
+		std::cerr << (total_payload_upload / total_size) << std::endl << std::endl;
+		
+
 		if(utime == -1 && timeout < dtime){
 			break;
 		}
 		else if(timeout < utime){
-			// idel 15mins
+			// idle 15mins
+			break;
+		}
+		else if(seeding_rate_limit < (total_payload_upload / total_size)){
+			// seeding 300%
 			break;
 		}
 		std::this_thread::sleep_for(std::chrono::seconds(1));
