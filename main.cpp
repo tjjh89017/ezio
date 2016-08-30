@@ -110,20 +110,22 @@ int main(int argc, char const* argv[])
 			// std::cout << a->message() << std::endl;
 			// if we receive the finished alert or an error, we're done
 			if (lt::alert_cast<lt::torrent_finished_alert>(a)) {
-				// Start high performance seed
-				lt::high_performance_seed(set);
-				ses.apply_settings(set);
-				std::cout << "Start seeding" << std::endl;
 				goto done;
 			}
 			if (lt::alert_cast<lt::torrent_error_alert>(a)) {
 				std::cerr << "Error" << std::endl;
-				goto done;
+				return 1;
 			}
 		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(200));
 	}
 	done:
+
+
+	// Start high performance seed
+	lt::high_performance_seed(set);
+	ses.apply_settings(set);
+	std::cout << "Start seeding" << std::endl;
 
 	// seed until idle 15mins
 	int timeout = 15 * 60;
