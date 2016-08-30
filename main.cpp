@@ -23,50 +23,26 @@ struct temp_storage : lt::storage_interface {
 	// Open disk fd
 	void initialize(lt::storage_error& se)
 	{
-		std::cerr << "initialize" << std::endl;
-		std::cerr << "sizeof m_files" << std::endl;
 		this->fd = open(target_partition.c_str(), O_RDWR | O_CREAT);
-		std::cerr << "writing to: " << target_partition << '\n';
+		if(this->fd < 0){
+			// Failed handle
+			std::cerr << "Failed to open " << target_partition << std::endl;
 
+			// TODO exit
+		}
 		return;
 	}
 
 	// assume no resume
 	bool has_any_file(lt::storage_error& ec) { return false; }
 
-	// 
 	int readv(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
 	{
-		/*
-		std::cerr << "readv: " << std::endl;
-		std::cerr << num_bufs << std::endl;
-		std::cerr << piece << std::endl;
-		std::cerr << offset << std::endl;
-
-		for(int i = 0; i < num_bufs; i++){
-			std::cerr << bufs[i].iov_len << std::endl;
-		}
-		*/
-
-		// std::map<int, std::vector<char> >::const_iterator i = m_file_data.find(piece);
-		// if (i == m_file_data.end()) return 0;
-		// int available = i->second.size() - offset;
-		// if (available <= 0) return 0;
-		// if (available > size) available = size;
-		// memcpy(buf, &i->second[offset], available);
-		// return available;
 		return preadv(this->fd, bufs, num_bufs, piece * std::uint64_t(m_files.piece_length()) + offset);
 	}
+
 	int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
 	{
-		//std::cerr << "writev: " << std::endl;
-		//std::cerr << num_bufs << std::endl;
-		//std::cerr << piece << std::endl;
-		//std::cerr << offset << std::endl;
-		// std::vector<char>& data = m_file_data[piece];
-		// if (data.size() < offset + size) data.resize(offset + size);
-		// std::memcpy(&data[offset], buf, size);
-		// return size;
 		return pwritev(this->fd, bufs, num_bufs, piece * std::uint64_t(m_files.piece_length()) + offset);
 	}
 
@@ -74,39 +50,19 @@ struct temp_storage : lt::storage_interface {
 	void rename_file(int index, std::string const& new_filename, lt::storage_error& ec)
 	{ assert(false); return ; }
 
-	// 
 	int move_storage(std::string const& save_path, int flags, lt::storage_error& ec) { return 0; }
 	bool verify_resume_data(lt::bdecode_node const& rd
 					, std::vector<std::string> const* links
 					, lt::storage_error& error) { return false; }
 	void write_resume_data(lt::entry& rd, lt::storage_error& ec) const { return ; }
 	void set_file_priority(std::vector<boost::uint8_t> const& prio, lt::storage_error& ec) {return ;}
-	lt::sha1_hash hash_for_slot(int piece, lt::partial_hash& ph, int piece_size)
-	{
-		int left = piece_size - ph.offset;
-		assert(left >= 0);
-		if (left > 0)
-		{
-			std::vector<char>& data = m_file_data[piece];
-			// if there are padding files, those blocks will be considered
-			// completed even though they haven't been written to the storage.
-			// in this case, just extend the piece buffer to its full size
-			// and fill it with zeroes.
-			if (data.size() < piece_size) data.resize(piece_size, 0);
-			ph.h.update(&data[ph.offset], left);
-		}
-		return ph.h.final();
-	}
 	void release_files(lt::storage_error& ec) { return ; }
 	void delete_files(int i, lt::storage_error& ec) { return ; }
 
 	bool tick () { return false; };
 
 
-	std::map<int, std::vector<char> > m_file_data;
 	lt::file_storage m_files;
-
-	// Test for write file
 	int fd;
 	const std::string target_partition;
 };
@@ -134,22 +90,20 @@ int main(int argc, char const* argv[])
 
 	lt::add_torrent_params atp;
 	atp.url = argv[1];
-	//atp.ti = boost::make_shared<lt::torrent_info>(std::string(argv[1]), boost::ref(ec), 0);
-	atp.save_path = argv[2]; // save in current dir
+	atp.save_path = argv[2];
 	atp.storage = temp_storage_constructor;
-	//atp.storage = lt::default_storage_constructor;
 
-	lt::torrent_handle h = ses.add_torrent(atp);
-	boost::progress_display show_progress(100, std::cerr);
+	lt::torrent_handle handle = ses.add_torrent(atp);
+	boost::progress_display show_progress(100, std::cout);
 	unsigned long last_progess = 0, progress = 0;
 
-	for (;;) {
+	for(;;){
 		std::vector<lt::alert*> alerts;
 		ses.pop_alerts(&alerts);
 
 		// progress
 		last_progess = progress;
-		progress = h.status().progress * 100;
+		progress = handle.status().progress * 100;
 		show_progress += progress - last_progess;
 
 		for (lt::alert const* a : alerts) {
@@ -159,7 +113,7 @@ int main(int argc, char const* argv[])
 				// Start high performance seed
 				lt::high_performance_seed(set);
 				ses.apply_settings(set);
-				std::cerr << "start seeding" << std::endl;
+				std::cout << "Start seeding" << std::endl;
 				goto done;
 			}
 			if (lt::alert_cast<lt::torrent_error_alert>(a)) {
@@ -177,19 +131,13 @@ int main(int argc, char const* argv[])
 
 	// seed until seed rate 300%
 	boost::int64_t seeding_rate_limit = 3;
-	boost::int64_t total_size = h.torrent_file()->total_size();
+	boost::int64_t total_size = handle.torrent_file()->total_size();
 
 	for (;;) {
-		status = h.status();
+		status = handle.status();
 		int utime = status.time_since_upload;
 		int dtime = status.time_since_download;
 		boost::int64_t total_payload_upload = status.total_payload_upload;
-
-		std::cerr << utime << std::endl;
-		std::cerr << dtime << std::endl;
-		std::cerr << total_payload_upload << std::endl;
-		std::cerr << (total_payload_upload / total_size) << std::endl << std::endl;
-		
 
 		if(utime == -1 && timeout < dtime){
 			break;
@@ -204,6 +152,8 @@ int main(int argc, char const* argv[])
 		}
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
-	//std::this_thread::sleep_for(std::chrono::hours(2));
+
 	std::cout << "done, shutting down" << std::endl;
+
+	return 0;
 }
