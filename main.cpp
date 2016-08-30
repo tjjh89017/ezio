@@ -54,10 +54,10 @@ struct temp_storage : lt::storage_interface {
 	}
 	int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
 	{
-		std::cerr << "writev: " << std::endl;
-		std::cerr << num_bufs << std::endl;
-		std::cerr << piece << std::endl;
-		std::cerr << offset << std::endl;
+		//std::cerr << "writev: " << std::endl;
+		//std::cerr << num_bufs << std::endl;
+		//std::cerr << piece << std::endl;
+		//std::cerr << offset << std::endl;
 		// std::vector<char>& data = m_file_data[piece];
 		// if (data.size() < offset + size) data.resize(offset + size);
 		// std::memcpy(&data[offset], buf, size);
