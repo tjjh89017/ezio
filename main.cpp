@@ -36,14 +36,16 @@ struct temp_storage : lt::storage_interface {
 	// 
 	int readv(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
 	{
+		/*
 		std::cerr << "readv: " << std::endl;
 		std::cerr << num_bufs << std::endl;
 		std::cerr << piece << std::endl;
 		std::cerr << offset << std::endl;
 
-	for(int i = 0; i < num_bufs; i++){
+		for(int i = 0; i < num_bufs; i++){
 			std::cerr << bufs[i].iov_len << std::endl;
 		}
+		*/
 
 		// std::map<int, std::vector<char> >::const_iterator i = m_file_data.find(piece);
 		// if (i == m_file_data.end()) return 0;
@@ -167,6 +169,24 @@ int main(int argc, char const* argv[])
 		std::this_thread::sleep_for(std::chrono::milliseconds(200));
 	}
 	done:
-	std::this_thread::sleep_for(std::chrono::hours(2));
+
+	// seed until idle 15mins
+	int timeout = 15 * 60;
+	lt::torrent_status status;
+	for (;;) {
+		status = h.status();
+		int utime = status.time_since_upload;
+		int dtime = status.time_since_download;
+		std::cerr << utime << " " << dtime << std::endl;
+		if(utime == -1 && timeout < dtime){
+			break;
+		}
+		else if(timeout < utime){
+			// idel 15mins
+			break;
+		}
+		std::this_thread::sleep_for(std::chrono::seconds(1));
+	}
+	//std::this_thread::sleep_for(std::chrono::hours(2));
 	std::cout << "done, shutting down" << std::endl;
 }
