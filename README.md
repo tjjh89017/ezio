@@ -82,6 +82,7 @@ Sloved! 直接用 `preadv` `pwritev`
 
 * [BT (BitTorrent)](https://en.wikipedia.org/wiki/BitTorrent)
 * [Udpcast 可能產生的問題](http://newtoypia.blogspot.tw/2015/04/udpcast.html)
+* [Multicast 導致的速度緩慢](http://drbl.nchc.org.tw/fine-print.php?path=./faq/1_DRBL_common/49_multicast_slow.faq#49_multicast_slow.faq)
 
 ## 數據
 
