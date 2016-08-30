@@ -75,6 +75,9 @@ Sloved! 直接用 `preadv` `pwritev`
 ### Private Torrent
 我不能讓資料外流，所以預設先關閉 DHT ，也必須使用私人種子
 
+### Partclone
+未來目標支援類似 Partclone 的方式，只複製檔案而非整個分割區或是硬碟，想法大概是把所有檔案都給 torrent 管理，直接寫入檔案系統，可能要注意檔案權限以及屬性的問題。
+
 ## Info
 
 * [BT (BitTorrent)](https://en.wikipedia.org/wiki/BitTorrent)
