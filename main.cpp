@@ -124,7 +124,7 @@ int main(int argc, char const* argv[])
 
 	// setting
 	// we don't need DHT
-	set.set_bool(lt::setting_pack::enable_dht, false);
+	set.set_bool(lt::settings_pack::enable_dht, false);
 	ses.apply_settings(set);
 
 	lt::add_torrent_params atp;
