@@ -6,6 +6,21 @@
 
 BT-based Disk Cloner (?
 
+## Installation & Use
+
+### Ubuntu 16.04
+
+```bash
+sudo apt-get install -y libtorrent-rasterbar8 libtorrent-rasterbar-dev
+
+git clone https://github.com/tjjh89017/ezio.git
+cd ezio && make
+sudo ./ezio '$MAGNET_URI' /dev/sdb
+sudo partprobe
+```
+
+### Note: Torrent can only contain 1 file.
+
 ## Design
 
 ### Client 
