@@ -13,6 +13,8 @@
 #include <libtorrent/io.hpp>
 #include <libtorrent/settings_pack.hpp>
 
+#include <boost/progress.hpp>
+
 namespace lt = libtorrent;
 
 struct temp_storage : lt::storage_interface {
@@ -54,10 +56,10 @@ struct temp_storage : lt::storage_interface {
 	}
 	int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
 	{
-		std::cerr << "writev: " << std::endl;
-		std::cerr << num_bufs << std::endl;
-		std::cerr << piece << std::endl;
-		std::cerr << offset << std::endl;
+		//std::cerr << "writev: " << std::endl;
+		//std::cerr << num_bufs << std::endl;
+		//std::cerr << piece << std::endl;
+		//std::cerr << offset << std::endl;
 		// std::vector<char>& data = m_file_data[piece];
 		// if (data.size() < offset + size) data.resize(offset + size);
 		// std::memcpy(&data[offset], buf, size);
@@ -135,10 +137,17 @@ int main(int argc, char const* argv[])
 	//atp.storage = lt::default_storage_constructor;
 
 	lt::torrent_handle h = ses.add_torrent(atp);
+	boost::progress_display show_progress(100, std::cerr);
+	unsigned long last_progess = 0, progress = 0;
 
 	for (;;) {
 		std::vector<lt::alert*> alerts;
 		ses.pop_alerts(&alerts);
+
+		// progress
+		last_progess = progress;
+		progress = h.status().progress * 100;
+		show_progress += progress - last_progess;
 
 		for (lt::alert const* a : alerts) {
 			// std::cout << a->message() << std::endl;
@@ -147,14 +156,17 @@ int main(int argc, char const* argv[])
 				// Start high performance seed
 				lt::high_performance_seed(set);
 				ses.apply_settings(set);
-				//goto done;
+				std::cerr << "start seeding" << std::endl;
+				goto done;
 			}
 			if (lt::alert_cast<lt::torrent_error_alert>(a)) {
-				//goto done;
+				std::cerr << "Error" << std::endl;
+				goto done;
 			}
 		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(200));
 	}
 	done:
+	std::this_thread::sleep_for(std::chrono::hours(2));
 	std::cout << "done, shutting down" << std::endl;
 }
