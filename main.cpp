@@ -16,11 +16,15 @@
 namespace lt = libtorrent;
 
 struct temp_storage : lt::storage_interface {
-  temp_storage(lt::file_storage const& fs) : m_files(fs) {}
+  temp_storage(lt::file_storage const& fs, const std::string tp) : m_files(fs), target_partition(tp) {}
   // Open disk fd
   void initialize(lt::storage_error& se)
   {
-    this->fd = open("./disk", O_RDWR | O_CREAT);
+    std::cerr << "initialize" << std::endl;
+    std::cerr << "sizeof m_files" << std::endl;
+    this->fd = open(target_partition.c_str(), O_RDWR | O_CREAT);
+    std::cerr << "writing to: " << target_partition << '\n';
+
     return;
   }
 
@@ -50,7 +54,7 @@ struct temp_storage : lt::storage_interface {
   }
   int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
   {
-    std::cerr << "readv: " << std::endl;
+    std::cerr << "writev: " << std::endl;
     std::cerr << num_bufs << std::endl;
     std::cerr << piece << std::endl;
     std::cerr << offset << std::endl;
@@ -99,18 +103,19 @@ struct temp_storage : lt::storage_interface {
 
   // Test for write file
   int fd;
+  const std::string target_partition;
 };
 
 
 lt::storage_interface* temp_storage_constructor(lt::storage_params const& params)
 {
-  return new temp_storage(*params.files);
+  return new temp_storage(*params.files, params.path);
 }
 
 int main(int argc, char const* argv[])
 {
-  if (argc != 2) {
-    std::cerr << "usage: " << argv[0] << " <magnet-url>" << std::endl;
+  if (argc != 3) {
+    std::cerr << "usage: " << argv[0] << " <magnet-url> <target-partition-path>" << std::endl;
     return 1;
   }
   lt::session ses;
@@ -125,7 +130,7 @@ int main(int argc, char const* argv[])
   lt::add_torrent_params atp;
   atp.url = argv[1];
   //atp.ti = boost::make_shared<lt::torrent_info>(std::string(argv[1]), boost::ref(ec), 0);
-  //atp.save_path = "."; // save in current dir
+  atp.save_path = argv[2]; // save in current dir
   atp.storage = temp_storage_constructor;
   //atp.storage = lt::default_storage_constructor;
 
@@ -136,7 +141,7 @@ int main(int argc, char const* argv[])
     ses.pop_alerts(&alerts);
 
     for (lt::alert const* a : alerts) {
-      //std::cout << a->message() << std::endl;
+      // std::cout << a->message() << std::endl;
       // if we receive the finished alert or an error, we're done
       if (lt::alert_cast<lt::torrent_finished_alert>(a)) {
         // Start high performance seed
