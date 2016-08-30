@@ -139,10 +139,13 @@ int main(int argc, char const* argv[])
       //std::cout << a->message() << std::endl;
       // if we receive the finished alert or an error, we're done
       if (lt::alert_cast<lt::torrent_finished_alert>(a)) {
-        goto done;
+        // Start high performance seed
+        lt::high_performance_seed(set);
+        ses.apply_settings(set);
+        //goto done;
       }
       if (lt::alert_cast<lt::torrent_error_alert>(a)) {
-        goto done;
+        //goto done;
       }
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
