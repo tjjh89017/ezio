@@ -17,7 +17,11 @@ namespace lt = libtorrent;
 struct temp_storage : lt::storage_interface {
   temp_storage(lt::file_storage const& fs) : m_files(fs) {}
   // Open disk fd
-  void initialize(lt::storage_error& se) { return ; }
+  void initialize(lt::storage_error& se)
+  {
+    this->fd = open("./disk", O_RDWR | O_CREAT);
+    return;
+  }
 
   // assume no resume
   bool has_any_file(lt::storage_error& ec) { return false; }
@@ -25,7 +29,15 @@ struct temp_storage : lt::storage_interface {
   // 
   int readv(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
   {
-    std::cout << 
+    std::cerr << "readv: " << std::endl;
+    std::cerr << num_bufs << std::endl;
+    std::cerr << piece << std::endl;
+    std::cerr << offset << std::endl;
+
+	for(int i = 0; i < num_bufs; i++){
+      std::cerr << bufs[i].iov_len << std::endl;
+    }
+
     // std::map<int, std::vector<char> >::const_iterator i = m_file_data.find(piece);
     // if (i == m_file_data.end()) return 0;
     // int available = i->second.size() - offset;
@@ -33,16 +45,19 @@ struct temp_storage : lt::storage_interface {
     // if (available > size) available = size;
     // memcpy(buf, &i->second[offset], available);
     // return available;
-    return 0;
-
+    return preadv(this->fd, bufs, num_bufs, piece * std::uint64_t(m_files.piece_length()) + offset);
   }
   int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
   {
+    std::cerr << "readv: " << std::endl;
+    std::cerr << num_bufs << std::endl;
+    std::cerr << piece << std::endl;
+    std::cerr << offset << std::endl;
     // std::vector<char>& data = m_file_data[piece];
     // if (data.size() < offset + size) data.resize(offset + size);
     // std::memcpy(&data[offset], buf, size);
     // return size;
-    return 0;
+    return pwritev(this->fd, bufs, num_bufs, piece * std::uint64_t(m_files.piece_length()) + offset);
   }
 
   // Not need
@@ -80,6 +95,9 @@ struct temp_storage : lt::storage_interface {
 
   std::map<int, std::vector<char> > m_file_data;
   lt::file_storage m_files;
+
+  // Test for write file
+  int fd;
 };
 
 
@@ -95,12 +113,14 @@ int main(int argc, char const* argv[])
     return 1;
   }
   lt::session ses;
+  lt::error_code ec;
 
   lt::add_torrent_params atp;
   atp.url = argv[1];
-  atp.save_path = "."; // save in current dir
-  // atp.storage = temp_storage_constructor;
-  atp.storage = lt::default_storage_constructor;
+  //atp.ti = boost::make_shared<lt::torrent_info>(std::string(argv[1]), boost::ref(ec), 0);
+  //atp.save_path = "."; // save in current dir
+  atp.storage = temp_storage_constructor;
+  //atp.storage = lt::default_storage_constructor;
 
   lt::torrent_handle h = ses.add_torrent(atp);
 
@@ -109,7 +129,7 @@ int main(int argc, char const* argv[])
     ses.pop_alerts(&alerts);
 
     for (lt::alert const* a : alerts) {
-      std::cout << a->message() << std::endl;
+      //std::cout << a->message() << std::endl;
       // if we receive the finished alert or an error, we're done
       if (lt::alert_cast<lt::torrent_finished_alert>(a)) {
         goto done;
