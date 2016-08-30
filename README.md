@@ -27,6 +27,8 @@ BT-based Disk Cloner (?
 ### Indent
 2 space to 1 tab (4-space width)
 
+done!
+
 ### Hard-Code
 前期先把一些少量改動都寫死，後期在重構
 
@@ -54,6 +56,9 @@ Sloved! 直接用 `preadv` `pwritev`
 
 ### Rename?
 可能之後把名稱改成 BT 龍（ Torrent Dragon ）之類的
+
+### Private Torrent
+我不能讓資料外流，所以預設先關閉 DHT ，也必須使用私人種子
 
 ## Info
 
