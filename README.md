@@ -75,6 +75,9 @@ Sloved! 直接用 `preadv` `pwritev`
 ### Private Torrent
 我不能讓資料外流，所以預設先關閉 DHT ，也必須使用私人種子
 
+### PXE Bootable
+可能用 `debian-installer` 修改後包裝
+
 ## Info
 
 * [BT (BitTorrent)](https://en.wikipedia.org/wiki/BitTorrent)
