@@ -76,7 +76,7 @@ lt::storage_interface* temp_storage_constructor(lt::storage_params const& params
 int main(int argc, char const* argv[])
 {
 	if (argc != 3) {
-		std::cerr << "usage: " << argv[0] << " <magnet-url> <target-partition-path>" << std::endl;
+		std::cerr << "usage: " << argv[0] << " <magnet-url/torrent-file> <target-partition-path>" << std::endl;
 		return 1;
 	}
 	lt::session ses;
@@ -89,7 +89,16 @@ int main(int argc, char const* argv[])
 	ses.apply_settings(set);
 
 	lt::add_torrent_params atp;
-	atp.url = argv[1];
+
+	// magnet or torrent
+	// TODO find a better way
+	std::string bt_info = argv[1];
+	if(bt_info.substr(bt_info.length() - 8, 8) == ".torrent"){
+		atp.ti = boost::make_shared<lt::torrent_info>(bt_info, boost::ref(ec), 0);
+	}
+	else{
+		atp.url = argv[1];
+	}
 	atp.save_path = argv[2];
 	atp.storage = temp_storage_constructor;
 
