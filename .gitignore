@@ -27,7 +27,7 @@
 *.i*86
 *.x86_64
 *.hex
-ezio
+*ezio
 
 # Debug files
 *.dSYM/
