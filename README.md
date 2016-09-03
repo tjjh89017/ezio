@@ -21,7 +21,7 @@ sudo ./ezio '$MAGNET_URI' /dev/sdb
 sudo partprobe
 ```
 
-### Netboot
+### Build Netboot image in Linux
 
 ```bash
 make netboot
