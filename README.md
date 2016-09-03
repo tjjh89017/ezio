@@ -12,11 +12,20 @@ BT-based Disk Cloner (?
 
 ### NOTE: depends libtorrent-rasterbar 1.1.1
 
+### Build
+
 ```bash
 git clone https://github.com/tjjh89017/ezio.git
 cd ezio && make
 sudo ./ezio '$MAGNET_URI' /dev/sdb
 sudo partprobe
+```
+
+### Netboot
+
+```bash
+make netboot
+ls utils/{linux,initrd.img}
 ```
 
 ### Note: Torrent can only contain 1 file.
