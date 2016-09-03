@@ -29,3 +29,8 @@ $(STATIC_PROG): $(OBJS) $(INC)
 .PHONY: clean
 clean:
 	rm -rf $(OBJS) $(PROG) $(STATIC_PROG)
+	make -C utils clean
+
+.PHONY: netboot
+netboot: static
+	make -C utils all
