@@ -32,3 +32,9 @@
 # Debug files
 *.dSYM/
 *.su
+
+# Utils files
+/utils/linux
+/utils/initrd.img
+/utils/initrd.img.tmp
+/utils/tmp/
