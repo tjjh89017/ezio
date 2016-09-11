@@ -329,7 +329,7 @@ done
 if [ -n "${BOOTIF}" ]; then
 	mac=$(echo "${BOOTIF}" | sed 's/01-//' | sed 's/-/:/g')
 	for dev in /sys/class/net/* ; do
-		if [ -f "$dev/address"]; then
+		if [ -f "$dev/address" ]; then
 			dev_mac=$(cat $dev/address)
 			if [ "$dev_mac" = "$mac" ]; then
 				DEVICE=$(echo "$dev" | sed 's|.*/||')
