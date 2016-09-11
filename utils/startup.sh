@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Get tftp server from $siaddr
-TFTP=$siaddr
+TFTP=$(cat /tftp)
 
 # download config file
 busybox tftp -g -l ezio.conf -r ezio.conf $TFTP
@@ -16,13 +16,13 @@ TORRENT=$(cat ezio.conf | grep 'torrent' | sed 's|.*=[_[:blank:]]*||')
 
 # magnet uri
 MAGNET=$(cat ezio.conf | grep 'magnet' | sed 's|.*=[_[:blank:]]*||')
+[ -z "$TORRENT" ] && TORRENT=$MAGNET
 
 # target disk
 TARGET=$(cat ezio.conf | grep 'disk' | sed 's|.*=[_[:blank:]]*||')
 
 # exec ezio
-[ -n "$TORRENT" ] && TORRENT=$MAGNET
-static-ezio $TORRENT $TARGET
+static-ezio "$TORRENT" "$TARGET"
 
 echo "Clone done. Shutdown."
 poweroff

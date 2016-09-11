@@ -7,7 +7,7 @@
 RESOLV_CONF="/etc/resolv.conf"
 [ -n "$broadcast" ] && BROADCAST="broadcast $broadcast"
 [ -n "$subnet" ] && NETMASK="netmask $subnet"
-[ -n "$siaddr" ] && export siaddr
+[ -n "$siaddr" ] && echo $siaddr > /tftp
  
 case "$1" in
   deconfig)
