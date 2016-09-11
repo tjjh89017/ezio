@@ -44,7 +44,6 @@ export ROOTFLAGS=
 export ROOTFSTYPE=
 export IP=
 export BOOT=
-export BOOTIF=
 export UBIMTD=
 export break=
 export init=/sbin/init
@@ -295,7 +294,6 @@ unset ROOTDELAY
 unset ROOT
 unset IP
 unset BOOT
-unset BOOTIF
 unset UBIMTD
 unset blacklist
 unset break
@@ -329,7 +327,7 @@ done
 
 # if pxelinux
 if [ -n "${BOOTIF}" ]; then
-	mac=$(echo "${BOOTIF}" | sed 's/01-/' | sed 's/-/:/g')
+	mac=$(echo "${BOOTIF}" | sed 's/01-//' | sed 's/-/:/g')
 	for dev in /sys/class/net/* ; do
 		if [ -f "$dev/address"]; then
 			dev_mac=$(cat $dev/address)
@@ -340,6 +338,7 @@ if [ -n "${BOOTIF}" ]; then
 		fi
 	done
 
+	busybox ifconfig $DEVICE up
 	busybox udhcpc -i $DEVICE -s /bin/udhcpc.sh
 else
 	echo "You should configure network yourself. 'busybox udhcpc' will help you."

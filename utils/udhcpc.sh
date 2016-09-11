@@ -7,6 +7,7 @@
 RESOLV_CONF="/etc/resolv.conf"
 [ -n "$broadcast" ] && BROADCAST="broadcast $broadcast"
 [ -n "$subnet" ] && NETMASK="netmask $subnet"
+[ -n "$siaddr" ] && export siaddr
  
 case "$1" in
   deconfig)
