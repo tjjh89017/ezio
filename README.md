@@ -1,6 +1,7 @@
 # Ezio
 
 <h1><font color="red">WARNING: It will erase your data.</font></h1>
+<h1><font color="red">WARNING: Netboot is experimental.</font></h1>
 
 ## Description
 
