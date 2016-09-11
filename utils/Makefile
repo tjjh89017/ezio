@@ -33,6 +33,7 @@ $(INITRD):
 	cp init $(TEMP_DIR)/init
 	cp inittab $(TEMP_DIR)/etc/
 	cp udhcpc.sh $(TEMP_DIR)/bin/
+	cp startup.sh $(TEMP_DIR)/bin/
 	cp ../$(STATIC_PROG) $(TEMP_DIR)/bin/
 
 # re-pack initrd.img
