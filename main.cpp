@@ -105,20 +105,25 @@ int main(int argc, char const* argv[])
 	lt::torrent_handle handle = ses.add_torrent(atp);
 	boost::progress_display show_progress(100, std::cout);
 	unsigned long last_progess = 0, progress = 0;
+	lt::torrent_status status;
 
 	for(;;){
 		std::vector<lt::alert*> alerts;
 		ses.pop_alerts(&alerts);
 
+		status = handle.status();
 		// progress
 		last_progess = progress;
-		progress = handle.status().progress * 100;
+		progress = status.progress * 100;
 		show_progress += progress - last_progess;
 
 		for (lt::alert const* a : alerts) {
 			// std::cout << a->message() << std::endl;
 			// if we receive the finished alert or an error, we're done
 			if (lt::alert_cast<lt::torrent_finished_alert>(a)) {
+				goto done;
+			}
+			if (status.is_finished) {
 				goto done;
 			}
 			if (lt::alert_cast<lt::torrent_error_alert>(a)) {
@@ -138,7 +143,6 @@ int main(int argc, char const* argv[])
 
 	// seed until idle 15mins
 	int timeout = 15 * 60;
-	lt::torrent_status status;
 
 	// seed until seed rate 300%
 	boost::int64_t seeding_rate_limit = 3;
