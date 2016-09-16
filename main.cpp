@@ -103,7 +103,7 @@ int main(int argc, char const* argv[])
 	atp.storage = temp_storage_constructor;
 
 	lt::torrent_handle handle = ses.add_torrent(atp);
-	boost::progress_display show_progress(100, std::cout);
+	//boost::progress_display show_progress(100, std::cout);
 	unsigned long last_progess = 0, progress = 0;
 	lt::torrent_status status;
 
@@ -115,7 +115,12 @@ int main(int argc, char const* argv[])
 		// progress
 		last_progess = progress;
 		progress = status.progress * 100;
-		show_progress += progress - last_progess;
+		//show_progress += progress - last_progess;
+		std::cout << "\r"
+			<< "[T: " << progress << "%] "
+			<< "[D: " << (float)status.download_payload_rate / 1024 / 1024 << "MB/s] "
+			<< "[U: " << (float)status.upload_payload_rate / 1024 / 1024 << "MB/s] "
+			<< std::flush;
 
 		for (lt::alert const* a : alerts) {
 			// std::cout << a->message() << std::endl;
@@ -134,6 +139,7 @@ int main(int argc, char const* argv[])
 		std::this_thread::sleep_for(std::chrono::milliseconds(200));
 	}
 	done:
+	std::cout << std::endl;
 
 
 	// Start high performance seed
