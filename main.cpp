@@ -160,6 +160,12 @@ int main(int argc, char const* argv[])
 		int dtime = status.time_since_download;
 		boost::int64_t total_payload_upload = status.total_payload_upload;
 
+		std::cout << "\r"
+			<< "[T: " << progress << "%] "
+			<< "[D: " << (float)status.download_payload_rate / 1024 / 1024 << "MB/s] "
+			<< "[U: " << (float)status.upload_payload_rate / 1024 / 1024 << "MB/s] "
+			<< std::flush;
+
 		if(utime == -1 && timeout < dtime){
 			break;
 		}
@@ -173,7 +179,7 @@ int main(int argc, char const* argv[])
 		}
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
-
+	std::cout << std::endl;
 	std::cout << "done, shutting down" << std::endl;
 
 	return 0;
