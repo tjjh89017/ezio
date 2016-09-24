@@ -38,12 +38,79 @@ struct temp_storage : lt::storage_interface {
 
 	int readv(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
 	{
-		return preadv(this->fd, bufs, num_bufs, piece * std::uint64_t(m_files.piece_length()) + offset);
+		//return preadv(this->fd, bufs, num_bufs, piece * std::uint64_t(m_files.piece_length()) + offset);
+		int index = 0, i;
+		int ret = 0;
+		char* filename;
+		unsigned long long device_offset = 0;
+		unsigned long long piece_sum = 0;
+		unsigned long long top = 0;
+		unsigned long long read_len = 0;
+		index = m_files.file_index_at_offset( piece * std::uint64_t(m_files.piece_length()) + offset);
+		filename = (char *)malloc( m_files.file_name_len(index));
+		memcpy( filename, m_files.file_name_ptr(index), m_files.file_name_len(index));
+		sscanf(filename,"%llx", &device_offset);
+		free(filename);
+		for( i = 0 ; i < index; i++ )
+			piece_sum += m_files.file_size(i);
+		for( i = 0 ; i < num_bufs ; i ++){
+			read_len += bufs[i].iov_len;
+		}
+		top = offset + piece * std::uint64_t(m_files.piece_length()) - piece_sum + read_len;
+		if ( top > m_files.file_size(index) )
+		{
+			unsigned long long overflow = top - m_files.file_size(index);
+			unsigned long long remind = read_len - overflow;
+			ret = preadv(this->fd, bufs, remind, device_offset + offset + piece * std::uint64_t(m_files.piece_length()) - piece_sum);
+			index = m_files.file_index_at_offset( piece * std::uint64_t(m_files.piece_length()) + offset + read_len);
+			filename = (char *)malloc( m_files.file_name_len(index));
+			memcpy( filename, m_files.file_name_ptr(index), m_files.file_name_len(index));
+			sscanf(filename,"%llx", &device_offset);
+			free(filename);
+			ret += preadv(this->fd, bufs, overflow, device_offset);
+		}
+		else{
+			ret = preadv(this->fd, bufs, num_bufs, device_offset + offset + piece * std::uint64_t(m_files.piece_length()) - piece_sum);
+		}
+		return ret;
 	}
 
 	int writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
 	{
-		return pwritev(this->fd, bufs, num_bufs, piece * std::uint64_t(m_files.piece_length()) + offset);
+		int index = 0, i;
+		int ret = 0;
+		char* filename;
+		unsigned long long device_offset = 0;
+		unsigned long long piece_sum = 0;
+		unsigned long long top = 0;
+		unsigned long long write_len = 0;
+		index = m_files.file_index_at_offset( piece * std::uint64_t(m_files.piece_length()) + offset);
+		filename = (char *)malloc( m_files.file_name_len(index));
+		memcpy( filename, m_files.file_name_ptr(index), m_files.file_name_len(index));
+		sscanf(filename,"%llx", &device_offset);
+		free(filename);
+		for( i = 0 ; i < index; i++ )
+			piece_sum += m_files.file_size(i);
+		for( i = 0 ; i < num_bufs ; i ++){
+			write_len += bufs[i].iov_len;
+		}
+		top = offset + piece * std::uint64_t(m_files.piece_length()) - piece_sum + write_len;
+		if ( top > m_files.file_size(index) )
+		{
+			unsigned long long overflow = top - m_files.file_size(index);
+			unsigned long long remind = write_len - overflow;
+			ret = pwritev(this->fd, bufs, remind, device_offset + offset + piece * std::uint64_t(m_files.piece_length()) - piece_sum);
+			index = m_files.file_index_at_offset( piece * std::uint64_t(m_files.piece_length()) + offset + write_len);
+			filename = (char *)malloc( m_files.file_name_len(index));
+			memcpy( filename, m_files.file_name_ptr(index), m_files.file_name_len(index));
+			sscanf(filename,"%llx", &device_offset);
+			free(filename);
+			ret += pwritev(this->fd, bufs, overflow, device_offset);
+		}
+		else{
+			ret = pwritev(this->fd, bufs, num_bufs, device_offset + offset + piece * std::uint64_t(m_files.piece_length()) - piece_sum);
+		}
+		return ret;
 	}
 
 	// Not need
