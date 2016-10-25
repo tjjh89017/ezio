@@ -18,8 +18,8 @@
 
 namespace lt = libtorrent;
 
-struct temp_storage : lt::storage_interface {
-	temp_storage(lt::file_storage const& fs, const std::string tp) : m_files(fs), target_partition(tp) {}
+struct raw_storage : lt::storage_interface {
+	raw_storage(lt::file_storage const& fs, const std::string tp) : m_files(fs), target_partition(tp) {}
 	// Open disk fd
 	void initialize(lt::storage_error& se)
 	{
@@ -68,9 +68,9 @@ struct temp_storage : lt::storage_interface {
 };
 
 
-lt::storage_interface* temp_storage_constructor(lt::storage_params const& params)
+lt::storage_interface* raw_storage_constructor(lt::storage_params const& params)
 {
-	return new temp_storage(*params.files, params.path);
+	return new raw_storage(*params.files, params.path);
 }
 
 int main(int argc, char const* argv[])
@@ -100,7 +100,7 @@ int main(int argc, char const* argv[])
 		atp.url = argv[1];
 	}
 	atp.save_path = argv[2];
-	atp.storage = temp_storage_constructor;
+	atp.storage = raw_storage_constructor;
 
 	lt::torrent_handle handle = ses.add_torrent(atp);
 	//boost::progress_display show_progress(100, std::cout);
