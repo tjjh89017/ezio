@@ -13,6 +13,12 @@ BT-based Disk Cloner (?
 
 ### NOTE: depends libtorrent-rasterbar 1.1.1
 
+### Prerequisite
+
+``` bash
+apt-get install libboost1.58-all-dev libssl-dev
+```
+
 ### Build
 
 ```bash
@@ -49,35 +55,14 @@ ls utils/{linux,initrd.img}
 
 ## TODO
 
-### Indent
-2 space to 1 tab (4-space width)
-
-done!
-
 ### Hard-Code
 前期先把一些少量改動都寫死，後期在重構
 
 ### Choosing Disk to clone
 要可以選硬碟去複寫
 
-### storage_interface
-目前不知道怎麼實作 `readv / writev` ，文件太爛看不懂
-
-Sloved! 直接用 `preadv` `pwritev`
-
-### R/W Function
-目前傾向用 syscall wrapper `open` 、 `read` 、 `write` ，而非使用 C library 提供的檔案操作，不使用 buffering 相關的操作，而是未來直接跟 BT 一起處理 buffer 問題。
-
-Sloved! 直接用 `preadv` `pwritev`
-
-### static linking
-這樣可以讓包裝成 PXE bootable 時候簡單一些
-
 ### Disk or Partition write
 目標支援整個硬碟的複寫，以及分割區複寫
-
-### Config based
-從 server 下載 config 跟 torrent ，然後依照 config 來執行。 config 可以選擇寫入哪個分割區以及硬碟。
 
 ### Rename?
 可能之後把名稱改成 BT 龍（ Torrent Dragon ）之類的
@@ -91,6 +76,9 @@ Sloved! 直接用 `preadv` `pwritev`
 ### PXE Bootable
 可能用 `debian-installer` 修改後包裝
 
+### Sequencial BT
+連續寫入，減少 disk seeking time
+
 ## Info
 
 * [BT (BitTorrent)](https://en.wikipedia.org/wiki/BitTorrent)
@@ -103,3 +91,6 @@ Sloved! 直接用 `preadv` `pwritev`
 ## 數據
 
 某地使用 CloneZilla ，使用 4 台 server ，複製總共 60 台電腦，映像檔大小約為 80 GiB ，使用時間約為 1 小時。
+
+2016/11/16
+某地使用 BT 龍，使用 1 台 server，複製總共 40 台電腦，映像檔大小約為 67 GiB，使用時間約為 30 分鐘，速度約為 40 Mib/s。
