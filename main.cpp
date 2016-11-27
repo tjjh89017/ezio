@@ -221,6 +221,7 @@ int main(int argc, char const* argv[])
 
 	lt::torrent_handle handle = ses.add_torrent(atp);
 	handle.set_max_uploads(4);
+	handle.set_sequential_download(1);
 	//boost::progress_display show_progress(100, std::cout);
 	unsigned long last_progess = 0, progress = 0;
 	lt::torrent_status status;
