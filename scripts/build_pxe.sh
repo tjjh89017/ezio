@@ -26,9 +26,11 @@ subnet ${Subnet} netmask ${Netmask} {
 " >> /etc/dhcp/dhcpd.conf
 systemctl restart isc-dhcp-server
 echo \
-"OPTIONS=\"-l -s /tftp\"
-RUN_DAEMON=\"yes\"
-" >> /etc/default/tftpd-hpa
+'TFTP_USERNAME="tftp"
+TFTP_DIRECTORY="/tftp"
+TFTP_ADDRESS="[::]:69"
+TFTP_OPTIONS="--secure"
+' > /etc/default/tftpd-hpa
 systemctl restart tftpd-hpa
 
 mkdir -p /tftp
