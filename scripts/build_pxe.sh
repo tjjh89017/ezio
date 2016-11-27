@@ -54,3 +54,7 @@ LABEL local
   localboot 0
 " > /tftp/pxelinux.cfg/default
 chmod -R +r /tftp
+
+mkdir -p /tftp/kernel
+cp static-ezio /tftp/
+cp utils/linux utils/initrd.img /tftp/kernel
