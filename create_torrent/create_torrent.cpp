@@ -87,7 +87,7 @@ int main(int argc, char const* argv[])
 		t.set_creator("EZIO@NCTU");
 		lt::bencode(back_inserter(torrent), t.generate());
 		torrent_file.open( output_path, fstream::out);
-		torrent_file << &torrent[0];
+		torrent_file.write(&torrent[0], torrent.size());
 	}
 	catch (std::exception& e)
 	{
