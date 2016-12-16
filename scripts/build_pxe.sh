@@ -25,6 +25,8 @@ subnet ${Subnet} netmask ${Netmask} {
 }
 " >> /etc/dhcp/dhcpd.conf
 systemctl restart isc-dhcp-server
+
+mkdir -p /tftp
 echo \
 'TFTP_USERNAME="tftp"
 TFTP_DIRECTORY="/tftp"
@@ -33,7 +35,6 @@ TFTP_OPTIONS="--secure"
 ' > /etc/default/tftpd-hpa
 systemctl restart tftpd-hpa
 
-mkdir -p /tftp
 cp /usr/lib/syslinux/modules/bios/* /tftp
 cp /usr/lib/PXELINUX/pxelinux.0 /tftp
 mkdir -p /tftp/pxelinux.cfg
