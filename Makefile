@@ -1,11 +1,13 @@
 PROG = ezio
-STATIC_PROG = static-$(PROG)
+STATIC_PROG = $(PROG)-static
 
 CC =
 CXX = g++
 LD = g++
-CXXFLAGS = -std=c++11 -I./
+CXXFLAGS = -g -std=c++11 -I./
 LDFLAGS = -ltorrent-rasterbar -lboost_system -lpthread -lstdc++ -lm -lgcc -lssl -lcrypto -lboost_chrono -lboost_random -ldl
+prefix = $(DESTDIR)/usr
+sbindir = $(prefix)/sbin
 
 OBJS = main.o
 INC = 
@@ -20,7 +22,7 @@ $(PROG): $(OBJS) $(INC)
 	$(LD) -o $(PROG) $(OBJS) $(LDFLAGS) $(CXXFLAGS)
 
 $(STATIC_PROG): $(OBJS) $(INC)
-	$(LD) -static -o $(STATIC_PROG) $(OBJS) $(LDFLAGS) $(CXXFLAGS)
+	$(LD) -static -pthread -o $(STATIC_PROG) $(OBJS) $(LDFLAGS) $(CXXFLAGS)
 	strip -s $(STATIC_PROG)
 
 .cpp.o:
@@ -34,3 +36,8 @@ clean:
 .PHONY: netboot
 netboot: static
 	make -C utils all
+
+install:
+	mkdir -p $(sbindir)
+	install -m 755 ezio $(sbindir)/
+	install -m 755 ezio-static $(sbindir)/

@@ -196,7 +196,7 @@ struct temp_storage : lt::storage_interface {
 
 lt::storage_interface* raw_storage_constructor(lt::storage_params const& params)
 {
-	return new raw_storage(*params.files, params.path);
+	return new temp_storage(*params.files, params.path);
 }
 
 void usage()
@@ -278,7 +278,7 @@ int main(int argc, char ** argv)
 	else{
 		atp.url = bt_info;
 	}
-	atp.storage = temp_storage_constructor;
+	atp.storage = raw_storage_constructor;
 
 	lt::torrent_handle handle = ses.add_torrent(atp);
 	handle.set_max_uploads(max_upload_ezio);
@@ -354,7 +354,7 @@ int main(int argc, char ** argv)
 			<< "[D: " << std::setprecision(2) << (float)status.download_payload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
 			<< "[T: " << (int)status.active_time  << " secs] "
 			*/
-			<< "[U: " << std::setprecision(2) << (float)status.upload_payload_rate / 1024 / 1024 /1024 * 60 << " MB/min] "
+			<< "[U: " << std::setprecision(2) << (float)status.upload_payload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
 			<< "[T: " << (int)status.seeding_time  << " secs] "
 			<< std::flush;
 
