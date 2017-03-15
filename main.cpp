@@ -20,8 +20,10 @@
 #include <libtorrent/io.hpp>
 #include <libtorrent/settings_pack.hpp>
 #include <libtorrent/torrent_info.hpp>
+#include <libtorrent/peer_info.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 
-#include <boost/progress.hpp>
+#include "logger.hpp"
 
 namespace lt = libtorrent;
 
@@ -303,6 +305,8 @@ int main(int argc, char ** argv)
 	unsigned long last_progess = 0, progress = 0;
 	lt::torrent_status status;
 
+	Logger &log = Logger::getInstance();
+
 	std::cout << "Start downloading" << std::endl;
 
 	for(;;){
@@ -322,6 +326,20 @@ int main(int argc, char ** argv)
 			<< "[UT: " << (int)status.seeding_time  << " secs] "
 			<< std::flush;
 
+		// Log info
+		log.info() << "time=" << boost::posix_time::second_clock::local_time() << std::endl;
+		log.info() << "download_payload_rate=" << status.download_payload_rate << std::endl;
+		log.info() << "upload_payload_rate=" << status.upload_payload_rate << std::endl;
+
+		std::vector<lt::peer_info> peers;
+		handle.get_peer_info(peers);
+
+		for (auto peer : peers) {
+			log.info() << "ip=" << peer.ip.address().to_string() << std::endl
+				<< "payload_up_speed=" << peer.payload_up_speed << std::endl
+				<< "payload_down_speed=" << peer.payload_down_speed << std::endl;
+		}
+
 		for (lt::alert const* a : alerts) {
 			// std::cout << a->message() << std::endl;
 			// if we receive the finished alert or an error, we're done
@@ -336,7 +354,7 @@ int main(int argc, char ** argv)
 				return 1;
 			}
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 	}
 	done:
 	std::cout << std::endl;
