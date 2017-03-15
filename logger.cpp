@@ -2,7 +2,7 @@
 
 Logger::Logger() {
 
-	this->log.open("ezio.log");
+	this->log.open("ezio.log", std::ios::out);
 }
 
 Logger& Logger::getInstance() {
