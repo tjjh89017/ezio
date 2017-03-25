@@ -276,7 +276,6 @@ int main(int argc, char ** argv)
 	else{
 		atp.url = bt_info;
 	}
-	atp.save_path = argv[2];
 	atp.storage = raw_storage_constructor;
 
 	lt::torrent_handle handle = ses.add_torrent(atp);
