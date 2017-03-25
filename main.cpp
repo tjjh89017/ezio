@@ -23,7 +23,7 @@ namespace lt = libtorrent;
 int timeout_ezio = 15; // Default timeout (min)
 int seed_limit_ezio = 3; // Default seeding ratio limit
 int max_upload_ezio = 4;
-int max_contact_tracker_times = 10; // Max error times for scrape tracker
+int max_contact_tracker_times = 30; // Max error times for scrape tracker
 
 struct raw_storage : lt::storage_interface {
 	raw_storage(lt::file_storage const& fs, const std::string tp) : m_files(fs), target_partition(tp) {}
