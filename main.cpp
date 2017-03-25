@@ -4,6 +4,11 @@
 #include <getopt.h>
 #include <stddef.h>
 
+#ifdef __linux__
+#include <sys/sysinfo.h>
+#define RAM_2G (2UL * 1024 * 1024 * 1024)
+#endif
+
 #include <libtorrent/session.hpp>
 #include <libtorrent/add_torrent_params.hpp>
 #include <libtorrent/torrent_handle.hpp>
@@ -266,6 +271,19 @@ int main(int argc, char ** argv)
 	// setting
 	// we don't need DHT
 	set.set_bool(lt::settings_pack::enable_dht, false);
+#ifdef __linux__
+	// Determine Physical Ram Size
+	// if more than 2GB, set cache to half of Ram
+	struct sysinfo info;
+	if(sysinfo(&info) == 0) {
+		unsigned long totalram = info.totalram * info.mem_unit;
+		if(totalram > RAM_2G) {
+			// unit: blocks per 16KiB
+			int size = (int)(totalram / 16 / 1024 / 2);
+			set.set_int(lt::settings_pack::cache_size, size);
+		}
+	}
+#endif
 	ses.apply_settings(set);
 
 	// magnet or torrent
