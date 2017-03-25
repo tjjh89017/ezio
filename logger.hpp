@@ -4,12 +4,14 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 class Logger {
 
 public:
 
 	static Logger& getInstance();
+	~Logger();
 
 	std::ostream& info();
 	std::ostream& debug();
@@ -23,6 +25,10 @@ private:
 	void operator=(Logger const&){};
 
 	std::fstream log;
+	std::stringstream buffer;
+
+	// buffer 1MiB
+	const static long MAX_BUFFER = 1024 * 1024;
 };
 
 #endif
