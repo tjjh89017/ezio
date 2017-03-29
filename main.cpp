@@ -213,6 +213,7 @@ void usage()
                 << "	-m N: assign maxminum upload number as N. Default value is " << max_upload_ezio <<"\n"
                 << "	-s: enable sequential download\n"
                 << "	-t N: assign timeout as N min(s). Default value " << timeout_ezio
+                << "	-l file: assign log file"
       		<< std::endl;
 }
 
@@ -222,9 +223,11 @@ int main(int argc, char ** argv)
 	int opt;
 	int opt_n = 0;
 	int seq_flag = 0;
+	int log_flag = 0;
+	std::string logfile = "";
 
 	opterr = 0;
-	while (( opt = getopt (argc, argv, "e:m:st:")) != -1)
+	while (( opt = getopt (argc, argv, "e:m:st:l:")) != -1)
 	  switch (opt)
 	    {
 	    case 'e':
@@ -245,6 +248,12 @@ int main(int argc, char ** argv)
 	      timeout_ezio = atoi(optarg);
 	      ++opt_n;
 	      ++opt_n;
+	      break;
+	    case 'l':
+              logfile = optarg;
+              log_flag = 1;
+              ++opt_n;
+              ++opt_n;
 	      break;
 	    case '?':
 	      usage();
@@ -305,7 +314,11 @@ int main(int argc, char ** argv)
 	unsigned long last_progess = 0, progress = 0;
 	lt::torrent_status status;
 
-	Logger &log = Logger::getInstance();
+	Logger *log;
+	if(log_flag){
+		Logger::setLogFile(logfile);
+		log = &Logger::getInstance();
+	}
 
 	std::cout << "Start downloading" << std::endl;
 
@@ -327,17 +340,19 @@ int main(int argc, char ** argv)
 			<< std::flush;
 
 		// Log info
-		log.info() << "time=" << boost::posix_time::second_clock::local_time() << std::endl;
-		log.info() << "download_payload_rate=" << status.download_payload_rate << std::endl;
-		log.info() << "upload_payload_rate=" << status.upload_payload_rate << std::endl;
+		if(log_flag){
+			log->info() << "time=" << boost::posix_time::second_clock::local_time() << std::endl;
+			log->info() << "download_payload_rate=" << status.download_payload_rate << std::endl;
+			log->info() << "upload_payload_rate=" << status.upload_payload_rate << std::endl;
 
-		std::vector<lt::peer_info> peers;
-		handle.get_peer_info(peers);
+			std::vector<lt::peer_info> peers;
+			handle.get_peer_info(peers);
 
-		for (auto peer : peers) {
-			log.info() << "ip=" << peer.ip.address().to_string() << std::endl
-				<< "payload_up_speed=" << peer.payload_up_speed << std::endl
-				<< "payload_down_speed=" << peer.payload_down_speed << std::endl;
+			for (auto peer : peers) {
+				log->info() << "ip=" << peer.ip.address().to_string() << std::endl
+					<< "payload_up_speed=" << peer.payload_up_speed << std::endl
+					<< "payload_down_speed=" << peer.payload_down_speed << std::endl;
+			}
 		}
 
 		for (lt::alert const* a : alerts) {

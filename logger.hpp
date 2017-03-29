@@ -11,6 +11,7 @@ class Logger {
 public:
 
 	static Logger& getInstance();
+	static void setLogFile(std::string);
 	~Logger();
 
 	std::ostream& info();
@@ -26,6 +27,7 @@ private:
 
 	std::fstream log;
 	std::stringstream buffer;
+	static std::string logfile;
 
 	// buffer 1MiB
 	const static long MAX_BUFFER = 1024 * 1024;

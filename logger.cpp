@@ -1,8 +1,10 @@
 #include "logger.hpp"
 
+std::string Logger::logfile = "ezio.log";
+
 Logger::Logger() {
 
-	this->log.open("ezio.log", std::ios::out);
+	this->log.open(logfile, std::ios::out);
 }
 
 Logger::~Logger() {
@@ -11,6 +13,11 @@ Logger::~Logger() {
 	this->log << this->buffer.str() << std::flush;
 	this->buffer.str("");
 	this->log.close();
+}
+
+void Logger::setLogFile(std::string name) {
+
+	Logger::logfile = name;
 }
 
 Logger& Logger::getInstance() {
