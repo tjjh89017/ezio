@@ -30,6 +30,7 @@ namespace lt = libtorrent;
 int timeout_ezio = 15; // Default timeout (min)
 int seed_limit_ezio = 3; // Default seeding ratio limit
 int max_upload_ezio = 4;
+int max_connection_ezio = max_upload_ezio + 2;
 int max_contact_tracker_times = 30; // Max error times for scrape tracker
 
 struct raw_storage : lt::storage_interface {
@@ -211,6 +212,7 @@ void usage()
                 << "	-e N: assign seeding ratio limit as N. Default value is " << seed_limit_ezio <<"\n"
                 << "	-k N: assign maxminum failure number to contact tracker as N. Default value is " << max_contact_tracker_times<< "\n"
                 << "	-m N: assign maxminum upload number as N. Default value is " << max_upload_ezio <<"\n"
+                << "	-c N: assign maxminum connection number as N. Default value is " << max_upload_ezio + 2 <<"\n"
                 << "	-s: enable sequential download\n"
                 << "	-t N: assign timeout as N min(s). Default value " << timeout_ezio
                 << "	-l file: assign log file"
@@ -227,7 +229,7 @@ int main(int argc, char ** argv)
 	std::string logfile = "";
 
 	opterr = 0;
-	while (( opt = getopt (argc, argv, "e:m:st:l:")) != -1)
+	while (( opt = getopt (argc, argv, "e:m:c:st:l:")) != -1)
 	  switch (opt)
 	    {
 	    case 'e':
@@ -237,6 +239,11 @@ int main(int argc, char ** argv)
 	      break;
 	    case 'm':
 	      max_upload_ezio = atoi(optarg);
+	      ++opt_n;
+	      ++opt_n;
+	      break;
+	    case 'c':
+	      max_connection_ezio = atoi(optarg);
 	      ++opt_n;
 	      ++opt_n;
 	      break;
@@ -309,6 +316,7 @@ int main(int argc, char ** argv)
 
 	lt::torrent_handle handle = ses.add_torrent(atp);
 	handle.set_max_uploads(max_upload_ezio);
+	handle.set_max_connections(max_connection_ezio);
 	handle.set_sequential_download(seq_flag);
 	//boost::progress_display show_progress(100, std::cout);
 	unsigned long last_progess = 0, progress = 0;
