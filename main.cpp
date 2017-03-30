@@ -214,7 +214,7 @@ void usage()
                 << "	-m N: assign maxminum upload number as N. Default value is " << max_upload_ezio <<"\n"
                 << "	-c N: assign maxminum connection number as N. Default value is " << max_upload_ezio + 2 <<"\n"
                 << "	-s: enable sequential download\n"
-                << "	-t N: assign timeout as N min(s). Default value " << timeout_ezio
+                << "	-t N: assign timeout as N min(s). Default value " << timeout_ezio <<"\n"
                 << "	-l file: assign log file"
       		<< std::endl;
 }
