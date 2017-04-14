@@ -1,5 +1,6 @@
 language: cpp
-sudo: required
+dist: trusty
+sudo: false
 
 compiler:
     - g++
@@ -10,10 +11,16 @@ addons:
             - build-essential
             - cmake
             - libboost-all-dev
+            - libboost-system1.54.0
+            - libboost-chrono1.54.0
+            - libboost-random1.54.0
             - libssl-dev
 
 before_install:
     - bash tests/before_install.sh
+    - export LIBTORRENT=$PWD/libtorrent-rasterbar/build/
+    - export LIBRARY_PATH=$LIBTORRENT/lib/:$LIBRARY_PATH
+    - export CPLUS_INCLUDE_PATH=$LIBTORRENT/include/:$CPLUS_INCLUDE_PATH
 
 install:
     - bash tests/install.sh
