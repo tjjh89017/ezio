@@ -2,6 +2,9 @@ language: cpp
 dist: trusty
 sudo: false
 
+notifications:
+    email: false
+
 compiler:
     - g++
 
