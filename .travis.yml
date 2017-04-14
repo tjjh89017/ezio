@@ -1,0 +1,25 @@
+language: c++
+sudo: false
+
+compiler:
+    - g++
+
+addons:
+    apt:
+        package:
+            - build-essential
+            - cmake
+            - libboost-all-dev
+            - libssl-dev
+
+before_install:
+    - bash tests/before_install.sh
+
+install:
+    - bash tests/install.sh
+
+before_script:
+    - bash tests/before_script.sh
+
+script:
+    - basg tests/script.sh
