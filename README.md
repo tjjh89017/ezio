@@ -1,5 +1,7 @@
 # Ezio
 
+[![Build Status](https://travis-ci.org/tjjh89017/ezio.svg?branch=master)](https://travis-ci.org/tjjh89017/ezio)
+
 <h1><font color="red">WARNING: Docs is out-of-date. Contact the maintainer if you need the latest usage.</font></h1>
 <h1><font color="red">WARNING: It will erase your data.</font></h1>
 <h1><font color="red">WARNING: Netboot is experimental.</font></h1>
