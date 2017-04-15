@@ -40,4 +40,7 @@ before_script:
 
 script:
     - bash tests/script.sh
+
+after_success:
+    - bash tests/before_deploy.sh
     - bash tests/deploy.sh
