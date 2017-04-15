@@ -19,7 +19,10 @@ addons:
             - gcc-5
 
 before_install:
-    - if [ "$CXX" = "g++" ]; then export CXX="g++-5"; fi
+    - openssl aes-256-cbc -K $encrypted_9a56aef8f4d0_key -iv $encrypted_9a56aef8f4d0_iv -in tests/ezio.pem.enc -out tests/ezio.pem -d
+    - chmod 600 tests/ezio.pem
+    - eval $(ssh-agent)
+    - ssh-add tests/ezio.pem
     - bash tests/before_install.sh
     - export LIBTORRENT=$PWD/libtorrent-rasterbar/build/
     - export LIBRARY_PATH=$LIBTORRENT/lib/:$LIBRARY_PATH
@@ -34,3 +37,4 @@ before_script:
 
 script:
     - bash tests/script.sh
+    - bash tests/deploy.sh
