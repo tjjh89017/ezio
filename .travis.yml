@@ -23,6 +23,7 @@ addons:
 
 before_install:
     - openssl aes-256-cbc -K $encrypted_9a56aef8f4d0_key -iv $encrypted_9a56aef8f4d0_iv -in tests/ezio.pem.enc -out tests/ezio.pem -d
+    - openssl aes-256-cbc -K $encrypted_f32060d02f25_key -iv $encrypted_f32060d02f25_iv -in tests/ezio-openrc.sh.enc -out tests/ezio-openrc.sh -d
     - chmod 600 tests/ezio.pem
     - eval $(ssh-agent)
     - ssh-add tests/ezio.pem
