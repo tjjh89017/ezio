@@ -339,7 +339,7 @@ int main(int argc, char ** argv)
 		last_progess = progress;
 		progress = status.progress * 100;
 		//show_progress += progress - last_progess;
-		std::cout << "\r"
+		std::cout << std::fixed << "\r"
 			<< "[P: " << progress << "%] "
 			<< "[D: " << std::setprecision(2) << (float)status.download_payload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
 			<< "[DT: " << (int)status.active_time  << " secs] "
@@ -405,7 +405,7 @@ int main(int argc, char ** argv)
 		std::vector<lt::alert*> alerts;
 		ses.pop_alerts(&alerts);
 
-		std::cout << "\r"
+		std::cout << std::fixed << "\r"
 			/*
 			<< "[P: " << progress << "%] "
 			<< "[D: " << std::setprecision(2) << (float)status.download_payload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
