@@ -99,7 +99,8 @@ def main():
     print("wait for result")
     for ip, process in procs:
         output = process.communicate()[0]
-        #output = output.replace('\r', '\n')
+        output = output.decode()
+        output = output.replace('\r', '\n')
         print(ip)
         print(output)
 
