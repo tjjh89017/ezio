@@ -77,11 +77,20 @@ Todo: bt client
 
 TODO `ezio.conf`
 
+```bash
+TORRENT=/path/to/torrent/in/tftp/server/a.torrent
+TARGET=/dev/sda1 # point to the target partition
+```
+
 ### Start tracker, tftp server, and seeder
 
-TODO
+You can use opentracker to announce.
+
+Normal BT client can be the seeder.
 
 ### Boot up receivers (clients)
+
+TODO: PXE
 
 ## Troubleshooting
 #### Todo: automake version conflict
@@ -90,5 +99,23 @@ TODO
 
 In `main.cpp#28` implements a `libtorrent` [custom storage](http://libtorrent.org/reference-Custom_Storage.html#overview), to allow the receiver to write received blocks directly to raw disk.
 
+We store the "offset" in hex into torrent, the "length" into file attribute.
+so BT will know where the block is, and it can use the offset to seek in the disk
 
-
+```
+{
+    'announce': 'http://tracker.site1.com/announce',
+    'info':
+    {
+        'name': 'root',
+        'piece length': 262144,
+        'files':
+        [
+            {'path': ['0000000000000000'], 'length': 4096}, // store offset and length of blocks
+            {'path': ['0000000000020000'], 'length': 8192},
+            ...
+        ],
+        'pieces': 'some piece hash here'
+    }
+}
+```
