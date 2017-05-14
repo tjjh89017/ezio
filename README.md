@@ -8,7 +8,7 @@ EZIO is a tool for rapid server disk image cloning/deployment within local area 
 #### ezio
 - libtorrent-rasterbar 1.1.1
   - this is a special distribution, make sure you install the right version
-- boost 0.58 or later
+- boost 1.58 or later
 - partclone
 #### partclone
 - openssh-server 
