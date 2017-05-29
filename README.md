@@ -5,6 +5,17 @@
 EZIO is a tool for rapid server disk image cloning/deployment within local area network. We utilize BitTorrent protocol to speed up the data distribution. Also, we use `partclone` to dump used filesystem blocks, and EZIO receiver can directly write received blocks to raw disk, which greatly improves performance. 
 ## Building on ubuntu
 ### Dependencies
+
+- Ubuntu>=16.10
+```shell
+sudo apt-get install libtorrent-rasterbar-dev -y
+```
+
+- Ubuntu==16.04
+```shell
+# compile libtorrent>=1.1.1
+```
+
 #### ezio
 - libtorrent-rasterbar 1.1.1
   - this is a special distribution, make sure you install the right version
@@ -26,31 +37,37 @@ EZIO is a tool for rapid server disk image cloning/deployment within local area 
 
 @mangokingTW made a fork of partclone that outputs sections of continuous blocks into files, these files are used later to create a torrent file.
 
-    $ git clone https://github.com/mangokingTW/partclone
-    $ cd partclone 
+```shell
+sudo apt-get install libssl-dev uuid-dev -y
+git clone https://github.com/tjjh89017/partclone
+cd partclone
+```
 ...... then choose the filesystem support you want. 
 
 For example, extfs suppoort:
 
-    $ ./configure --enable-extfs
-    
+```shell
+./configure --enable-extfs
+```
+
 ...... and you should see the result like this picture:
 ![](https://i.imgur.com/KJ9f5Ie.png)
 <br>
 And we can start to build.
 
-    $ make
-    ### if build success, src folder should appear.
-    $ cd src && ls
-    ### you would see partclone.Xfs, where X is the fs you choose.
-    
-    
+```shell
+make
+# if build success, src folder should appear.
+cd src && ls
+# you would see partclone.Xfs, where X is the fs you choose.
+```
 
 ### EZIO
 
-
-    git clone https://github.com/tjjh89017/ezio
-    cd ezio && make
+```shell
+git clone https://github.com/tjjh89017/ezio
+cd ezio && make
+```
     
 ## Usage
 
@@ -58,7 +75,9 @@ Here we demonstrate how to clone a disk to machines across the network.
 
 ### Dump partition using Partclone
 
-    ./partclone.Xfs -c -s (source partition) -o (output file name)
+```shell
+./partclone.Xfs -c -T -s (source partition) -o (output directory name)
+```
     
 - Notice that in current version, the generated files will directly appear in current directory. You may prefer to make an extra folder and use partclone under it.
 - also, root permission may be required.
@@ -67,6 +86,17 @@ The generated result should look like this:
 ![](https://i.imgur.com/8o815PL.png)
 
 Each file stores a section of used continuous filesystem blocks. The file name denotes its offset on the partition.
+
+#### Example
+```shell
+./partclone.extfs -c -T -s /dev/sda1 -o target/ | ezio/utils/partclone_create_torrent.py
+```
+Then you will see `a.torrent` which contains all files in `target/`
+
+```
+-T output btfiles and output info for create torrent
+-t output torrent info only (for parition-to-partition cloning)
+```
 
 ### Make a torrent file
 
