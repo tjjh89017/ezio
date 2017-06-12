@@ -6,7 +6,6 @@
 
 #ifdef __linux__
 #include <sys/sysinfo.h>
-#define RAM_2G (2UL * 1024 * 1024 * 1024)
 #endif
 
 #include <libtorrent/session.hpp>
@@ -23,6 +22,7 @@
 #include <libtorrent/peer_info.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
+#include "core_ext.hpp"
 #include "logger.hpp"
 #include "storage.hpp"
 
@@ -130,9 +130,9 @@ int main(int argc, char ** argv)
 	struct sysinfo info;
 	if (sysinfo(&info) == 0) {
 		unsigned long totalram = info.totalram * info.mem_unit;
-		if (totalram > RAM_2G) {
+		if (totalram > 2_GiB) {
 			// unit: blocks per 16KiB
-			int size = (int)(totalram / 16 / 1024 / 2);
+			int size = (int)(totalram / 2 / 16_KiB);
 			set.set_int(lt::settings_pack::cache_size, size);
 		}
 	}
@@ -174,9 +174,9 @@ int main(int argc, char ** argv)
 		//show_progress += progress - last_progess;
 		std::cout << std::fixed << "\r"
 			<< "[P: " << progress << "%] "
-			<< "[D: " << std::setprecision(2) << (float) status.download_payload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
+			<< "[D: " << std::setprecision(2) << (float) status.download_payload_rate / 1_GiB * 1_min << " GiB/min] "
 			<< "[DT: " << (int) status.active_time  << " secs] "
-			<< "[U: " << std::setprecision(2) << (float) status.upload_payload_rate / 1024 / 1024 /1024 *60 << " GB/min] "
+			<< "[U: " << std::setprecision(2) << (float) status.upload_payload_rate / 1_GiB * 1_min << " GiB/min] "
 			<< "[UT: " << (int) status.seeding_time  << " secs] "
 			<< std::flush;
 
@@ -224,7 +224,7 @@ int main(int argc, char ** argv)
 	std::cout << "Start high-performance seeding" << std::endl;
 
 	// seed until idle (secs)
-	int timeout = timeout_ezio * 60;
+	int timeout = timeout_ezio * 1_min;
 
 	// seed until seed rate
 	boost::int64_t seeding_rate_limit = seed_limit_ezio;
@@ -240,7 +240,7 @@ int main(int argc, char ** argv)
 		ses.pop_alerts(&alerts);
 
 		std::cout << std::fixed << "\r"
-			<< "[U: " << std::setprecision(2) << (float) status.upload_payload_rate / 1024 / 1024 / 1024 * 60 << " GB/min] "
+			<< "[U: " << std::setprecision(2) << (float) status.upload_payload_rate / 1_GiB * 1_min << " GiB/min] "
 			<< "[T: " << (int) status.seeding_time << " secs] "
 			<< std::flush;
 
