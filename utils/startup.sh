@@ -3,23 +3,31 @@
 # Get tftp server from $siaddr
 TFTP=$(cat /tftp)
 
+
 # download config file
 busybox tftp -g -l ezio.conf -r ezio.conf $TFTP
 
 # parsing config file
-# TODO using better way to do this
+while read line
+do
+    if echo $line | grep -F = &>/dev/null
+    then
+        varname=$(echo "$line" | cut -d '=' -f 1)
+        export $varname=$(echo "$line" | cut -d '=' -f 2-)
+    fi
+done < ezio.conf
 
 # torrent
-TORRENT=$(cat ezio.conf | grep 'torrent' | sed 's|.*=[_[:blank:]]*||')
+TORRENT=$torrent
 # get file
 [ -n "$TORRENT" ] && busybox tftp -g -l $TORRENT -r $TORRENT $TFTP
 
 # magnet uri
-MAGNET=$(cat ezio.conf | grep 'magnet' | sed 's|.*=[_[:blank:]]*||')
+MAGNET=$magnet
 [ -z "$TORRENT" ] && TORRENT=$MAGNET
 
 # target disk
-TARGET=$(cat ezio.conf | grep 'disk' | sed 's|.*=[_[:blank:]]*||')
+TARGET=$disk
 
 # exec ezio
 static-ezio "$TORRENT" "$TARGET"
