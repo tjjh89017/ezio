@@ -2,8 +2,42 @@
 
 [![Build Status](https://travis-ci.org/tjjh89017/ezio.svg?branch=master)](https://travis-ci.org/tjjh89017/ezio)
 
+## Introduction
+
 EZIO is a tool for rapid server disk image cloning/deployment within local area network. We utilize BitTorrent protocol to speed up the data distribution. Also, we use `partclone` to dump used filesystem blocks, and EZIO receiver can directly write received blocks to raw disk, which greatly improves performance. 
-## Building on ubuntu
+
+## Motivation
+
+EZIO is inspired by Clonezilla and BTsync (Resilio) for its idea to transfer data and massive deployment. The issue of Clonezilla is that, it is too slow in real world due to multicast feature. In real world, all clients must register to Clonezilla server before startting deployment, which cost too much time. In addition, whenever there is a client that doesn't get data or gets discorrect one and need to be re-transferred, it causes server a lot of effort. Most importanlty, in most case, the clients which cannot get data correctly may be broken, it will make server to re-transfer data again and again until it reaches its re-transfer limit and quit. Due to above issues of Clonezilla, EZIO make a difference by changing transfer mechanism. EZIO implement transfer function on top of BitTorrent, and make a lot of progress on deployment speed. 
+
+## Feature
+
+
+- Faster than Clonezilla by implementing data transfer on top of the BitTorrent protocol. Clonezilla uses multicast for transfer,for which in practice are extremely slow due to limitation of multicast and clients'  status. Limitation of multicast, for example, they will cost too much time waiting all the clients to register to the server. As for Computer status, for example, when there are a small amount of computers which don't have enough disk storage or might be broken, in this case, they won't get data from server successfully and need to re-transfer data, which  cost lots of time.
+
+
+
+- Plenty of File systems are supported: 
+    (1) ext2, ext3, ext4, reiserfs, reiser4, xfs, jfs, btrfs, f2fs and nilfs2 of GNU/Linux
+    (2) FAT12, FAT16, FAT32, NTFS of MS Windows
+    (3) HFS+ of Mac OS
+    (4) UFS of FreeBSD, NetBSD, and OpenBSD
+    (5) minix of Minix
+    (6) VMFS3 and VMFS5 of VMWare ESX. 
+    Therefore you can clone GNU/Linux, MS windows, Intel-based Mac OS, FreeBSD, NetBSD, OpenBSD, Minix, VMWare ESX and Chrome OS/Chromium OS, no matter it's 32-bit (x86) or 64-bit (x86-64) OS. For these file systems, only used blocks in partition are saved and restored. For unsupported file system, sector-to-sector copy is done by dd in EZIO.
+
+- Different from BTsync file level transfer, EZIO is block level transfer. Whenever a client gets wrong data, in file level transfer, it will take a lot of time re-transfer whole file. However, in block level transfer, all we need to do is to re-transfer the specific piece of data.
+
+- Saves data in the hard disk by using partclone. 
+
+
+# Installation
+
+### Minimum System Requirements
+
+- 64bit
+- 1GB RAM
+
 ### Dependencies
 
 - Ubuntu>=16.10
@@ -15,6 +49,10 @@ sudo apt-get install libtorrent-rasterbar-dev -y
 ```shell
 # compile libtorrent>=1.1.1
 ```
+
+
+
+
 
 #### ezio
 - libtorrent-rasterbar 1.1.1
@@ -149,3 +187,35 @@ so BT will know where the block is, and it can use the offset to seek in the dis
     }
 }
 ```
+
+
+## Limitation
+
+
+- Making a torrent cost lots of time due to sha-1 hash need to be done on every single piece of data.
+
+- EZIO will be extremely slow when the number of clients is too small.
+
+- Due to partclone limitation, for unsupported filesystem, sector-to-sector copy is done by dd in EZIO.
+
+## Future
+
+- Hope to become a sub-module in Clonezilla
+- Make a entire disk, including partition, a torrent
+
+## Contribute
+
+- Issue Tracker: https://github.com/tjjh89017/ezio/issues
+- Source Code: https://github.com/tjjh89017/ezio
+
+## Support 
+
+If you are having issues, please let us know.
+EZIO main developer email is located at: tjjh89017@hotmail.com
+
+
+## License
+
+The project is licensed under the GNU General Public License v2.0 license.
+
+
