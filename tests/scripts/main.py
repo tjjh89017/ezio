@@ -15,8 +15,8 @@ def get_session():
         username=os.environ['OS_USERNAME'],
         password=os.environ['OS_PASSWORD'],
         project_name=os.environ['OS_PROJECT_NAME'],
-        user_domain_name='local',
-        project_domain_name='local',
+        user_domain_name=os.environ['OS_USER_DOMAIN_NAME'],
+        project_domain_name=os.environ['OS_USER_DOMAIN_NAME'],
     )
     return session.Session(auth=auth, verify=False)
 
@@ -59,12 +59,14 @@ def main():
     nova = Client("2.1", session=ses, insecure=True)
 
     # create 10 VM
-    flavor = nova.flavors.find(name='m1.medium')
+    flavor = nova.flavors.find(name='ezio')
     image = nova.glance.find_image('ezio')
+    net = nova.neutron.find_network('Provider')
+    nics = [{'net-id': net.id}]
     key_name = 'ezio'
     min_count = 10
 
-    nova.servers.create("ezio", image, flavor, key_name=key_name, min_count=min_count)
+    nova.servers.create("ezio", image, flavor, key_name=key_name, min_count=min_count, nics=nics)
 
     while True:
         time.sleep(10)
