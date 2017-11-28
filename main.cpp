@@ -293,6 +293,7 @@ int main(int argc, char ** argv)
 	lt::settings_pack set;
 
 	// setting
+	lt::high_performance_seed(set);
 	// we don't need DHT
 	set.set_bool(lt::settings_pack::enable_dht, false);
 #ifdef __linux__
@@ -390,9 +391,7 @@ int main(int argc, char ** argv)
 
 
 	// Start high performance seed
-	lt::high_performance_seed(set);
 	ses.apply_settings(set);
-	std::cout << "Start high-performance seeding" << std::endl;
 
 	// seed until idle (secs)
 	int timeout = timeout_ezio * 60;
