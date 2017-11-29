@@ -342,6 +342,7 @@ int main(int argc, char ** argv)
 		ses.pop_alerts(&alerts);
 
 		status = handle.status();
+		handle.force_reannounce();
 		// progress
 		last_progess = progress;
 		progress = status.progress * 100;
