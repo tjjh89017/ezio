@@ -221,7 +221,9 @@ void usage()
                 << "	-c N: assign maxminum connection number as N. Default value is " << max_upload_ezio + 2 <<"\n"
                 << "	-s: enable sequential download\n"
                 << "	-t N: assign timeout as N min(s). Default value " << timeout_ezio <<"\n"
-                << "	-l file: assign log file"
+                << "	-l file: assign log file"<<"\n"
+		<< "	-U: seed mode"<<"\n"
+		<< "	-f: read data from file rather than raw disk"<<"\n"
       		<< std::endl;
 }
 
@@ -232,10 +234,12 @@ int main(int argc, char ** argv)
 	int opt_n = 0;
 	int seq_flag = 0;
 	int log_flag = 0;
+	int seed_flag = 0;
+	int file_flag = 0;
 	std::string logfile = "";
 
 	opterr = 0;
-	while (( opt = getopt (argc, argv, "e:m:c:st:l:")) != -1)
+	while (( opt = getopt (argc, argv, "e:m:c:st:l:Uf")) != -1)
 	  switch (opt)
 	    {
 	    case 'e':
@@ -268,6 +272,14 @@ int main(int argc, char ** argv)
               ++opt_n;
               ++opt_n;
 	      break;
+	    case 'U':
+              seed_flag = atp.flag_seed_mode;
+	      ++opt_n;
+	      break;
+	    case 'f':
+              file_flag = 1;
+	      ++opt_n;
+	      break;
 	    case '?':
 	      usage();
 	      return 1;
@@ -283,6 +295,7 @@ int main(int argc, char ** argv)
 	std::string bt_info = argv[optind];
 	++optind;;
 	atp.save_path = argv[optind];
+	atp.flags |= seed_flag;
 
 	if (seq_flag) {
 	  std::cout << "//NOTE// Sequential download is enabled!" << std::endl;
@@ -293,6 +306,7 @@ int main(int argc, char ** argv)
 	lt::settings_pack set;
 
 	// setting
+	lt::high_performance_seed(set);
 	// we don't need DHT
 	set.set_bool(lt::settings_pack::enable_dht, false);
 #ifdef __linux__
@@ -318,7 +332,10 @@ int main(int argc, char ** argv)
 	else{
 		atp.url = bt_info;
 	}
-	atp.storage = raw_storage_constructor;
+
+	if(file_flag == 0){
+		atp.storage = raw_storage_constructor;
+	}
 
 	lt::torrent_handle handle = ses.add_torrent(atp);
 	handle.set_max_uploads(max_upload_ezio);
@@ -341,6 +358,7 @@ int main(int argc, char ** argv)
 		ses.pop_alerts(&alerts);
 
 		status = handle.status();
+		handle.force_reannounce();
 		// progress
 		last_progess = progress;
 		progress = status.progress * 100;
@@ -390,9 +408,7 @@ int main(int argc, char ** argv)
 
 
 	// Start high performance seed
-	lt::high_performance_seed(set);
 	ses.apply_settings(set);
-	std::cout << "Start high-performance seeding" << std::endl;
 
 	// seed until idle (secs)
 	int timeout = timeout_ezio * 60;
@@ -404,6 +420,7 @@ int main(int argc, char ** argv)
 	int fail_contact_tracker = 0;
 	for (;;) {
 		status = handle.status();
+		handle.force_reannounce();
 		int utime = status.time_since_upload;
 		int dtime = status.time_since_download;
 		boost::int64_t total_payload_upload = status.total_payload_upload;
@@ -419,6 +436,7 @@ int main(int argc, char ** argv)
 			*/
 			<< "[U: " << std::setprecision(2) << (float)status.upload_payload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
 			<< "[T: " << (int)status.seeding_time  << " secs] "
+			<< status.state
 			<< std::flush;
 
 		if(utime == -1 && timeout < dtime){
