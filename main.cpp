@@ -34,9 +34,8 @@ int max_connection_ezio = max_upload_ezio + 2;
 int max_contact_tracker_times = 30; // Max error times for scrape tracker
 
 struct raw_storage : lt::storage_interface {
-	raw_storage(lt::file_storage const& fs, const std::string tp) : m_files(fs), target_partition(tp) {}
 	// Open disk fd
-	void initialize(lt::storage_error& se)
+	raw_storage(lt::file_storage const& fs, const std::string tp) : m_files(fs), target_partition(tp)
 	{
 		this->fd = open(target_partition.c_str(), O_RDWR | O_CREAT);
 		if(this->fd < 0){
@@ -47,6 +46,13 @@ struct raw_storage : lt::storage_interface {
 		}
 		return;
 	}
+
+	~raw_storage()
+	{
+		close(this->fd);
+	}
+
+	void initialize(lt::storage_error& se) {}
 
 	// assume no resume
 	bool has_any_file(lt::storage_error& ec) { return false; }
