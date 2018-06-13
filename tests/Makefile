@@ -9,7 +9,7 @@ GTEST_SRCS_ = $(GTEST_DIR)/src/*.cc $(GTEST_DIR)/src/*.h $(GTEST_HEADERS)
 TEST = all_test
 TEST_SRC = $(wildcard *.cpp)
 TEST_OBJS = $(patsubst %.cpp,%.o,$(TEST_SRC))
-OBJS = $(patsubst %,../%,$(subst _test,,$(TEST_OBJS)))
+OBJS = $(patsubst %,../%,$(subst test_,,$(TEST_OBJS)))
 
 .PHONY: all
 all: $(TEST)
