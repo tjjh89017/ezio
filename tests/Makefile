@@ -1,6 +1,6 @@
 GTEST_DIR = $(realpath googletest/googletest/)
-CPPFLAGS += -isystem $(GTEST_DIR)/include
-CXXFLAGS += -g -Wall -Wextra -pthread
+CPPFLAGS += -isystem $(GTEST_DIR)/include -I../ -Ilib/
+CXXFLAGS += -ltorrent-rasterbar -lboost_system -lstdc++ -lm -lgcc -lssl -lcrypto -lboost_chrono -lboost_random -ldl -lpthread -std=c++11 -g -Wall -Wextra -pthread  
 
 GTEST_HEADERS = $(GTEST_DIR)/include/gtest/*.h \
 		$(GTEST_DIR)/include/gtest/internal/*.h
@@ -42,5 +42,5 @@ $(OBJS):
 %.o: %.cpp $(GTEST_HEADERS)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-$(TEST): $(OBJS) $(TEST_OBJS) gtest_main.a
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -lpthread $^ -o $@
+$(TEST): $(OBJS) $(TEST_OBJS) gtest_main.a lib/syscall.a
+	$(CXX) $^ -o $@ $(CPPFLAGS) $(CXXFLAGS)
