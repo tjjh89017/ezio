@@ -1,8 +1,9 @@
 #include "raw_storage.hpp"
+#include <exception>
 
 lt::storage_interface* raw_storage::raw_storage_constructor(lt::storage_params const& params)
 {
-	return new raw_storage(*params.files, params.path);
+    return nullptr;
 }
 
 raw_storage::raw_storage(lt::file_storage const& fs, const std::string tp) : m_files(fs), target_partition(tp)
@@ -91,6 +92,36 @@ int raw_storage::readv(lt::file::iovec_t const* bufs, int num_bufs, int piece, i
 	return ret;
 }
 
+namespace ezioTest 
+{
+
+class TestError : public std::exception
+{
+    int m_errno;
+public:
+    TestError(int _errno = 0) :
+        m_errno(_errno)
+    {}
+};
+
+
+class FS
+{
+    int ret = 0;
+public:
+   static ssize_t write(int fildes, const void *buf, size_t nbyte, off_t offset)
+   {
+        int ret = pwrite(fildes, buf, nbyte, offset);
+        if(-1 == ret) {
+            throw TestError(ret);
+        }
+
+        return ret;
+   }
+};
+
+}
+
 int raw_storage::writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, int offset, int flags, lt::storage_error& ec)
 {
 	int index = 0;
@@ -146,7 +177,7 @@ int raw_storage::writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, 
 			remain_len = m_files.file_size(index);
 		}
 		else{
-			ret += pwrite(this->fd, data_ptr, data_len, fd_offset);
+			ret += ezioTest::FS::write(this->fd, data_ptr, data_len, fd_offset);
 			data_len -= data_len;
 		}
 	}
