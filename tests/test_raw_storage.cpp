@@ -3,38 +3,38 @@
 #include "writer.hpp"
 
 class RawStorageTest : public ::testing::Test {
-    protected:
-        void SetUp() override {
-        }
+protected:
+    void SetUp() override {
+    }
 
-        void TearDown() override {
-        }
+    void TearDown() override {
+    }
 
-        lt::storage_error ec;
+    lt::storage_error ec;
 };
 
 class mock_writer : public raw_writer {
-    public:
-        mock_writer() : off(0) {}
-        int write(int fd, const void *buf, size_t count, off_t offset)
-        {
-            EXPECT_EQ(expect_offset[off], offset) << "off: " << off;
-            EXPECT_EQ(expect_content[off].size(), count) << "off: " << off;
-            EXPECT_EQ(0, memcmp(expect_content[off].c_str(), (const char *)buf, count)) << "off: " << off;
-            off++;
-            return count;
-        }
+public:
+    mock_writer() : off(0) {}
+    int write(int fd, const void *buf, size_t count, off_t offset)
+    {
+        EXPECT_EQ(expect_offset[off], offset) << "off: " << off;
+        EXPECT_EQ(expect_content[off].size(), count) << "off: " << off;
+        EXPECT_EQ(0, memcmp(expect_content[off].c_str(), (const char *)buf, count)) << "off: " << off;
+        off++;
+        return count;
+    }
 
-        void add_expect(std::string str, off_t n) 
-        { 
-            expect_content.push_back(str); 
-            expect_offset.push_back(n);
-        }
+    void add_expect(std::string str, off_t n)
+    {
+        expect_content.push_back(str);
+        expect_offset.push_back(n);
+    }
 
-    private:
-        std::vector<off_t> expect_offset;
-        std::vector<std::string> expect_content;
-        int off;
+private:
+    std::vector<off_t> expect_offset;
+    std::vector<std::string> expect_content;
+    int off;
 };
 
 

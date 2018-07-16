@@ -37,3 +37,6 @@ clean:
 .PHONY: netboot
 netboot: static
 	make -C utils all
+
+format:
+	astyle -rn "*.cpp" "*.hpp"
