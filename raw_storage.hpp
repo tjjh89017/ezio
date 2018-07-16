@@ -14,6 +14,8 @@
 #include <libtorrent/torrent_info.hpp>
 #include <libtorrent/peer_info.hpp>
 
+#include "writer.hpp"
+
 namespace lt = libtorrent;
 
 class raw_storage : lt::storage_interface {
@@ -45,10 +47,13 @@ public:
 	void delete_files(int i, lt::storage_error& ec);
 	bool tick();
 
+    // debug port
+    void set_writer(raw_writer *w) { writer = w; }
 private:
 	lt::file_storage m_files;
 	int fd;
 	const std::string target_partition;
+    raw_writer *writer;
 };
 
 #endif

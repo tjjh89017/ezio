@@ -1,8 +1,12 @@
 #include "raw_storage.hpp"
 
+static sys_writer s_sys_writer;
+
 lt::storage_interface* raw_storage::raw_storage_constructor(lt::storage_params const& params)
 {
-	return new raw_storage(*params.files, params.path);
+	auto ret = new raw_storage(*params.files, params.path);
+    ret->writer = &s_sys_writer;
+    return ret;
 }
 
 raw_storage::raw_storage(lt::file_storage const& fs, const std::string tp) : m_files(fs), target_partition(tp)
@@ -135,7 +139,8 @@ int raw_storage::writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, 
 	data_ptr = data_buf;
 	while(data_len > 0){
 		if( data_len > remain_len ){
-			ret += pwrite(this->fd, data_ptr, remain_len, fd_offset);
+            // FIXME(xnum): handle error
+			ret += writer->write(this->fd, data_ptr, remain_len, fd_offset);
 			data_len -= remain_len;
 			data_ptr += remain_len;
 			cur_offset += remain_len;
@@ -146,7 +151,8 @@ int raw_storage::writev(lt::file::iovec_t const* bufs, int num_bufs, int piece, 
 			remain_len = m_files.file_size(index);
 		}
 		else{
-			ret += pwrite(this->fd, data_ptr, data_len, fd_offset);
+            // FIXME(xnum): handle error
+			ret += writer->write(this->fd, data_ptr, data_len, fd_offset);
 			data_len -= data_len;
 		}
 	}
