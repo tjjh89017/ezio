@@ -9,7 +9,8 @@ LDFLAGS = -ltorrent-rasterbar -lboost_system -lstdc++ -lm -lgcc -lssl -lcrypto -
 
 OBJS = main.o \
 	raw_storage.o \
-	logger.o
+	logger.o \
+	writer.o
 INC = 
 
 .PHONY: all
@@ -36,3 +37,6 @@ clean:
 .PHONY: netboot
 netboot: static
 	make -C utils all
+
+format:
+	astyle -rn "*.cpp" "*.hpp"

@@ -10,27 +10,27 @@ class Logger {
 
 public:
 
-	static Logger& getInstance();
-	static void setLogFile(std::string);
-	~Logger();
+    static Logger& getInstance();
+    static void setLogFile(std::string);
+    ~Logger();
 
-	std::ostream& info();
-	std::ostream& debug();
+    std::ostream& info();
+    std::ostream& debug();
 
 private:
 
-	Logger();
+    Logger();
 
-	// dont implement
-	Logger(Logger const&){};
-	void operator=(Logger const&){};
+    // dont implement
+    Logger(Logger const&) {};
+    void operator=(Logger const&) {};
 
-	std::fstream log;
-	std::stringstream buffer;
-	static std::string logfile;
+    std::fstream log;
+    std::stringstream buffer;
+    static std::string logfile;
 
-	// buffer 1MiB
-	const static long MAX_BUFFER = 1024 * 1024;
+    // buffer 1MiB
+    const static long MAX_BUFFER = 1024 * 1024;
 };
 
 #endif

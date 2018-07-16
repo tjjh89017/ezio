@@ -9,7 +9,8 @@ GTEST_SRCS_ = $(GTEST_DIR)/src/*.cc $(GTEST_DIR)/src/*.h $(GTEST_HEADERS)
 TEST = all_test
 TEST_SRC = $(wildcard *.cpp)
 TEST_OBJS = $(patsubst %.cpp,%.o,$(TEST_SRC))
-OBJS = $(patsubst %,../%,$(subst test_,,$(TEST_OBJS)))
+# OBJS = $(patsubst %,../%,$(subst test_,,$(TEST_OBJS)))
+OBJS = ../raw_storage.o ../writer.o
 
 .PHONY: all
 all: $(TEST)
@@ -42,5 +43,5 @@ $(OBJS):
 %.o: %.cpp $(GTEST_HEADERS)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-$(TEST): $(OBJS) $(TEST_OBJS) gtest_main.a lib/syscall.a
+$(TEST): $(OBJS) $(TEST_OBJS) gtest_main.a
 	$(CXX) $^ -o $@ $(CPPFLAGS) $(CXXFLAGS)
