@@ -1,0 +1,27 @@
+syntax = "proto3";
+package ezio;
+
+message Speed {
+	int32 download = 1;
+	int32 upload = 2;
+}
+
+message Torrent {
+	string hash = 1;
+	double progress = 2;
+	Speed speed = 3;
+}
+
+message UpdateRequest {
+	// update status only in hashs, if empty update all
+	repeated string hashs = 1;
+}
+
+message UpdateStatus {
+	repeated string hashs = 1;
+	map<string, Torrent> torrents = 2;
+}
+
+service EZIO {
+	rpc GetTorrentStatus(UpdateRequest) returns (UpdateStatus) {}
+}
