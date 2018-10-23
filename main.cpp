@@ -25,102 +25,36 @@
 
 #include "logger.hpp"
 #include "raw_storage.hpp"
+#include "config.hpp"
 
 namespace lt = libtorrent;
 
+/*
 int timeout_ezio = 15; // Default timeout (min)
 int seed_limit_ezio = 3; // Default seeding ratio limit
 int max_upload_ezio = 4;
 int max_connection_ezio = max_upload_ezio + 2;
 int max_contact_tracker_times = 30; // Max error times for scrape tracker
-
-void usage()
-{
-      std::cerr << "Usage: ezio [OPTIONS] <magnet-url/torrent-file> <target-partition-path>\n"
-                << "OPTIONS:\n"
-                << "	-e N: assign seeding ratio limit as N. Default value is " << seed_limit_ezio <<"\n"
-                << "	-k N: assign maxminum failure number to contact tracker as N. Default value is " << max_contact_tracker_times<< "\n"
-                << "	-m N: assign maxminum upload number as N. Default value is " << max_upload_ezio <<"\n"
-                << "	-c N: assign maxminum connection number as N. Default value is " << max_upload_ezio + 2 <<"\n"
-                << "	-s: enable sequential download\n"
-                << "	-t N: assign timeout as N min(s). Default value " << timeout_ezio <<"\n"
-                << "	-l file: assign log file"<<"\n"
-		<< "	-U: seed mode"<<"\n"
-		<< "	-f: read data from file rather than raw disk"<<"\n"
-      		<< std::endl;
-}
+*/
 
 int main(int argc, char ** argv)
 {
-	lt::add_torrent_params atp;
-	int opt;
-	int opt_n = 0;
-	int seq_flag = 0;
+
+	// need to remove
 	int log_flag = 0;
-	int seed_flag = 0;
-	int file_flag = 0;
+
+	config current;
+	current.parse_from_argv(argc, argv);
+
+	lt::add_torrent_params atp;
 	std::string logfile = "";
-
-	opterr = 0;
-	while (( opt = getopt (argc, argv, "e:m:c:st:l:Uf")) != -1)
-	  switch (opt)
-	    {
-	    case 'e':
-	      seed_limit_ezio = atoi(optarg);
-	      ++opt_n;
-	      ++opt_n;
-	      break;
-	    case 'm':
-	      max_upload_ezio = atoi(optarg);
-	      ++opt_n;
-	      ++opt_n;
-	      break;
-	    case 'c':
-	      max_connection_ezio = atoi(optarg);
-	      ++opt_n;
-	      ++opt_n;
-	      break;
-	    case 's':
-	      seq_flag = 1;
-	      ++opt_n;
-	      break;
-	    case 't':
-	      timeout_ezio = atoi(optarg);
-	      ++opt_n;
-	      ++opt_n;
-	      break;
-	    case 'l':
-              logfile = optarg;
-              log_flag = 1;
-              ++opt_n;
-              ++opt_n;
-	      break;
-	    case 'U':
-              seed_flag = atp.flag_seed_mode;
-	      ++opt_n;
-	      break;
-	    case 'f':
-              file_flag = 1;
-	      ++opt_n;
-	      break;
-	    case '?':
-	      usage();
-	      return 1;
-	    default:
-	      usage();
-	      exit(EXIT_FAILURE);
+	std::string bt_info = current.torrent;
+	atp.save_path = current.save_path;
+	if(current.seed_flag){
+		atp.flags |= atp.flag_seed_mode;
 	}
 
-	if (argc - opt_n != 3) {
-		usage();
-		return 1;
-	}
-	std::string bt_info = argv[optind];
-	++optind;;
-	atp.save_path = argv[optind];
-	atp.flags |= seed_flag;
-
-	if (seq_flag) {
+	if (current.sequential_flag) {
 	  std::cout << "//NOTE// Sequential download is enabled!" << std::endl;
 	}
 
@@ -156,14 +90,14 @@ int main(int argc, char ** argv)
 		atp.url = bt_info;
 	}
 
-	if(file_flag == 0){
+	if(current.file_flag == 0){
 		atp.storage = raw_storage::raw_storage_constructor;
 	}
 
 	lt::torrent_handle handle = ses.add_torrent(atp);
-	handle.set_max_uploads(max_upload_ezio);
-	handle.set_max_connections(max_connection_ezio);
-	handle.set_sequential_download(seq_flag);
+	handle.set_max_uploads(current.max_upload_ezio);
+	handle.set_max_connections(current.max_connection_ezio);
+	handle.set_sequential_download(current.sequential_flag);
 	//boost::progress_display show_progress(100, std::cout);
 	unsigned long last_progess = 0, progress = 0;
 	lt::torrent_status status;
@@ -234,10 +168,10 @@ int main(int argc, char ** argv)
 	ses.apply_settings(set);
 
 	// seed until idle (secs)
-	int timeout = timeout_ezio * 60;
+	int timeout = current.timeout_ezio * 60;
 
 	// seed until seed rate
-	boost::int64_t seeding_rate_limit = seed_limit_ezio;
+	boost::int64_t seeding_rate_limit = current.seed_limit_ezio;
 	boost::int64_t total_size = handle.torrent_file()->total_size();
 
 	int fail_contact_tracker = 0;
@@ -279,7 +213,7 @@ int main(int argc, char ** argv)
 			}
 		}
 
-		if(fail_contact_tracker > max_contact_tracker_times){
+		if(fail_contact_tracker > current.max_contact_tracker_times){
 	                std::cout << "\nTracker is gone! Finish seeding!" << std::endl;
 			break;
 		}
@@ -287,6 +221,5 @@ int main(int argc, char ** argv)
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 	std::cout << "\nDone, shutting down" << std::endl;
-
 	return 0;
 }
