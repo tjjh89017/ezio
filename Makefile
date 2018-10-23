@@ -8,6 +8,7 @@ CXXFLAGS = -std=c++11 -I./
 LDFLAGS = -ltorrent-rasterbar -lboost_system -lstdc++ -lm -lgcc -lssl -lcrypto -lboost_chrono -lboost_random -ldl -lpthread
 
 OBJS = main.o \
+	raw_storage.o \
 	logger.o
 INC = 
 

@@ -27,21 +27,21 @@ before_install:
     - chmod 600 tests/ezio.pem
     - eval $(ssh-agent)
     - ssh-add tests/ezio.pem
-    - bash tests/before_install.sh
+    - bash tests/scripts/before_install.sh
     - export LIBTORRENT=$PWD/libtorrent-rasterbar/build/
     - export LIBRARY_PATH=$LIBTORRENT/lib/:$LIBRARY_PATH
     - export CPLUS_INCLUDE_PATH=$LIBTORRENT/include/:$CPLUS_INCLUDE_PATH
 
 install:
     - sed -i 's/g++/g++-5/g' Makefile
-    - bash tests/install.sh
+    - bash tests/scripts/install.sh
 
 before_script:
-    - bash tests/before_script.sh
+    - bash tests/scripts/before_script.sh
 
 script:
-    - bash tests/script.sh
+    - bash tests/scripts/script.sh
 
 after_success:
-    - bash tests/before_deploy.sh
-    - bash tests/deploy.sh
+    - bash tests/scripts/before_deploy.sh
+    - bash tests/scripts/deploy.sh
