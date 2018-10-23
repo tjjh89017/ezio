@@ -5,9 +5,10 @@ CC =
 CXX = g++
 LD = g++
 CXXFLAGS = -std=c++11 -I./
-LDFLAGS = -ltorrent-rasterbar -lboost_system -lstdc++ -lm -lgcc -lssl -lcrypto -lboost_chrono -lboost_random -ldl -lpthread
+LDFLAGS = -ltorrent-rasterbar -lboost_system -lstdc++ -lm -lgcc -lssl -lcrypto -lboost_program_options -lboost_chrono -lboost_random -ldl -lpthread
 
 OBJS = main.o \
+	config.o \
 	raw_storage.o \
 	logger.o
 INC = 
