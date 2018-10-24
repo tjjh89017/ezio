@@ -6,8 +6,8 @@ Status EZIOServiceImpl::GetTorrentStatus(ServerContext* context, const UpdateReq
 {
 	// get status from session
 	
-	// we ignore request hashs first, always return all
-	auto hash = request->hashs();
+	// we ignore request hashes first, always return all
+	auto hash = request->hashes();
 	for(auto h : hash){
 		//std::cout << h << std::endl;
 		// do some filter for below
@@ -17,7 +17,7 @@ Status EZIOServiceImpl::GetTorrentStatus(ServerContext* context, const UpdateReq
 	std::stringstream ss;
 	std::vector<lt::torrent_handle> torrents = ses.get_torrents();
 	for(lt::torrent_handle const &h : torrents) {
-		auto hash = status->add_hashs();
+		auto hash = status->add_hashes();
 		ss << h.info_hash();
 		ss >> *hash;
 		//std::cout << *hash << std::endl;

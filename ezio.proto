@@ -15,12 +15,12 @@ message Torrent {
 message UpdateRequest {
 	// update status only in hashs, if empty update all
 	// lowercase hex sha1 hash
-	repeated string hashs = 1;
+	repeated string hashes = 1;
 }
 
 message UpdateStatus {
 	// lowercase hex sha1 hash
-	repeated string hashs = 1;
+	repeated string hashes = 1;
 	map<string, Torrent> torrents = 2;
 }
 
