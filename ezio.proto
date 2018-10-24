@@ -1,0 +1,29 @@
+syntax = "proto3";
+package ezio;
+
+message Torrent {
+	// hex sha1 hash lowercase
+	string hash = 1;
+	// float point number bewteen [0, 1]
+	double progress = 2;
+	// download rate byte per second
+	int32 download = 3;
+	// upload rate byte per second
+	int32 upload = 4;
+}
+
+message UpdateRequest {
+	// update status only in hashs, if empty update all
+	// lowercase hex sha1 hash
+	repeated string hashes = 1;
+}
+
+message UpdateStatus {
+	// lowercase hex sha1 hash
+	repeated string hashes = 1;
+	map<string, Torrent> torrents = 2;
+}
+
+service EZIO {
+	rpc GetTorrentStatus(UpdateRequest) returns (UpdateStatus) {}
+}

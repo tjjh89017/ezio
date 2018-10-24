@@ -26,6 +26,9 @@
 #include "logger.hpp"
 #include "raw_storage.hpp"
 #include "config.hpp"
+#ifdef ENABLE_GRPC
+#include "service.hpp"
+#endif
 
 namespace lt = libtorrent;
 
@@ -101,6 +104,10 @@ int main(int argc, char ** argv)
 	//boost::progress_display show_progress(100, std::cout);
 	unsigned long last_progess = 0, progress = 0;
 	lt::torrent_status status;
+
+#ifdef ENABLE_GRPC
+	gRPCService grpcservice(ses);
+#endif
 
 	Logger *log;
 	if(log_flag){
@@ -221,5 +228,9 @@ int main(int argc, char ** argv)
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 	std::cout << "\nDone, shutting down" << std::endl;
+
+#ifdef ENABLE_GRPC
+	grpcservice.stop();
+#endif
 	return 0;
 }
