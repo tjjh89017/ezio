@@ -6,6 +6,7 @@
 #include <vector>
 #include <libtorrent/session.hpp>
 #include <libtorrent/torrent_handle.hpp>
+#include <libtorrent/torrent_status.hpp>
 #include <grpc++/grpc++.h>
 #include "ezio.grpc.pb.h"
 
@@ -13,7 +14,6 @@ using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
-using ezio::Speed;
 using ezio::Torrent;
 using ezio::UpdateStatus;
 using ezio::UpdateRequest;

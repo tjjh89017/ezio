@@ -1,23 +1,25 @@
 syntax = "proto3";
 package ezio;
 
-message Speed {
-	int32 download = 1;
-	int32 upload = 2;
-}
-
 message Torrent {
+	// hex sha1 hash lowercase
 	string hash = 1;
+	// float point number bewteen [0, 1]
 	double progress = 2;
-	Speed speed = 3;
+	// download rate byte per second
+	int32 download = 3;
+	// upload rate byte per second
+	int32 upload = 4;
 }
 
 message UpdateRequest {
 	// update status only in hashs, if empty update all
+	// lowercase hex sha1 hash
 	repeated string hashs = 1;
 }
 
 message UpdateStatus {
+	// lowercase hex sha1 hash
 	repeated string hashs = 1;
 	map<string, Torrent> torrents = 2;
 }
