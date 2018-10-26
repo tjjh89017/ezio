@@ -63,7 +63,7 @@ def get_progress(stub, hashes):
     result = stub.GetTorrentStatus(request)
 
     for torrent in result.hashes:
-        prog = result.torrents[result.hashes[0]].progress*100 
+        prog = result.torrents[torrent].progress*100 
         print("Current Progress (%s): %.2f %%" % (torrent, prog))
 
 def get_download_speed(stub, hashes):
