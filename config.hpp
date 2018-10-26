@@ -5,6 +5,7 @@
 #include <boost/program_options.hpp>
 
 #include <iostream>
+#include <vector>
 
 namespace bpo = boost::program_options;
 
@@ -29,11 +30,14 @@ public:
 	bool seed_flag = false;
 	// -f
 	bool file_flag = false;
+
+	std::vector<std::string> torrents;
+	std::vector<std::string> save_paths;
 	
 	// torrent name
-	std::string torrent;
+	std::string legacy_torrent;
 	// storage to
-	std::string save_path;
+	std::string legacy_save_path;
 };
 
 #endif
