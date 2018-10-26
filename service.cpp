@@ -18,18 +18,20 @@ Status EZIOServiceImpl::GetTorrentStatus(ServerContext* context, const UpdateReq
 	std::vector<lt::torrent_handle> torrents = ses.get_torrents();
 	for(lt::torrent_handle const &h : torrents) {
 		auto hash = status->add_hashes();
+		ss.str("");
+		ss.clear();
 		ss << h.info_hash();
 		ss >> *hash;
-		//std::cout << *hash << std::endl;
+		std::cout << *hash << std::endl;
 
 		// disable those info we don't need
 		lt::torrent_status t_stat = h.status(0);
 
 		//std::cout << t_stat.download_payload_rate << std::endl;
 		//std::cout << t_stat.upload_payload_rate << std::endl;
-		//std::cout << t_stat.progress << std::endl;
+		std::cout << t_stat.progress << std::endl;
 
-		Torrent t;;
+		Torrent t;
 		t.set_hash(*hash);
 		t.set_progress(t_stat.progress);
 		t.set_download(t_stat.download_payload_rate);

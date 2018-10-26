@@ -49,18 +49,6 @@ int main(int argc, char ** argv)
 	config current;
 	current.parse_from_argv(argc, argv);
 
-	lt::add_torrent_params atp;
-	std::string logfile = "";
-	std::string bt_info = current.torrent;
-	atp.save_path = current.save_path;
-	if(current.seed_flag){
-		atp.flags |= atp.flag_seed_mode;
-	}
-
-	if (current.sequential_flag) {
-	  std::cout << "//NOTE// Sequential download is enabled!" << std::endl;
-	}
-
 	lt::session ses;
 	lt::error_code ec;
 	lt::settings_pack set;
@@ -84,30 +72,47 @@ int main(int argc, char ** argv)
 #endif
 	ses.apply_settings(set);
 
-	// magnet or torrent
-	// TODO find a better way
-	if(bt_info.substr(bt_info.length() - 8, 8) == ".torrent"){
-		atp.ti = boost::make_shared<lt::torrent_info>(bt_info, boost::ref(ec), 0);
-	}
-	else{
-		atp.url = bt_info;
-	}
-
-	if(current.file_flag == 0){
-		atp.storage = raw_storage::raw_storage_constructor;
-	}
-
-	lt::torrent_handle handle = ses.add_torrent(atp);
-	handle.set_max_uploads(current.max_upload_ezio);
-	handle.set_max_connections(current.max_connection_ezio);
-	handle.set_sequential_download(current.sequential_flag);
-	//boost::progress_display show_progress(100, std::cout);
-	unsigned long last_progess = 0, progress = 0;
-	lt::torrent_status status;
-
 #ifdef ENABLE_GRPC
 	gRPCService grpcservice(ses);
 #endif
+
+	std::string logfile = "";
+	for(auto torrent = current.torrents.begin(), save_path = current.save_paths.begin();
+			torrent != current.torrents.end() && save_path != current.save_paths.end();
+			torrent++, save_path++){
+		lt::add_torrent_params atp;
+		std::string bt_info = *torrent;
+		atp.save_path = *save_path;
+		if(current.seed_flag){
+			atp.flags |= atp.flag_seed_mode;
+		}
+
+		if (current.sequential_flag) {
+		  std::cout << "//NOTE// Sequential download is enabled!" << std::endl;
+		}
+
+		// magnet or torrent
+		// TODO find a better way
+		if(bt_info.substr(bt_info.length() - 8, 8) == ".torrent"){
+			atp.ti = boost::make_shared<lt::torrent_info>(bt_info, boost::ref(ec), 0);
+		}
+		else{
+			atp.url = bt_info;
+		}
+
+		if(current.file_flag == 0){
+			atp.storage = raw_storage::raw_storage_constructor;
+		}
+
+		lt::torrent_handle handle = ses.add_torrent(atp);
+		handle.set_max_uploads(current.max_upload_ezio);
+		handle.set_max_connections(current.max_connection_ezio);
+		handle.set_sequential_download(current.sequential_flag);
+
+	}
+
+	unsigned long progress = 0;
+	lt::torrent_status status;
 
 	Logger *log;
 	if(log_flag){
@@ -117,22 +122,29 @@ int main(int argc, char ** argv)
 
 	std::cout << "Start downloading" << std::endl;
 
+	auto torrents = ses.get_torrents();
 	for(;;){
 		std::vector<lt::alert*> alerts;
 		ses.pop_alerts(&alerts);
 
-		status = handle.status();
-		handle.force_reannounce();
+		int download_rate = 0, upload_rate = 0;
+		progress = 0;
+		for(auto handle : torrents){
+			handle.force_reannounce();
+			status = handle.status();
+			download_rate += status.download_payload_rate;
+			upload_rate += status.upload_payload_rate;
+			progress += status.progress * 100;
+		}
 		// progress
-		last_progess = progress;
-		progress = status.progress * 100;
+		progress /= torrents.size();
 		//show_progress += progress - last_progess;
 		std::cout << std::fixed << "\r"
 			<< "[P: " << progress << "%] "
-			<< "[D: " << std::setprecision(2) << (float)status.download_payload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
-			<< "[DT: " << (int)status.active_time  << " secs] "
-			<< "[U: " << std::setprecision(2) << (float)status.upload_payload_rate / 1024 / 1024 /1024 *60 << " GB/min] "
-			<< "[UT: " << (int)status.seeding_time  << " secs] "
+			<< "[D: " << std::setprecision(2) << (float)download_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
+			//<< "[DT: " << (int)status.active_time  << " secs] "
+			<< "[U: " << std::setprecision(2) << (float)upload_rate / 1024 / 1024 /1024 *60 << " GB/min] "
+			//<< "[UT: " << (int)status.seeding_time  << " secs] "
 			<< std::flush;
 
 		// Log info
@@ -142,7 +154,7 @@ int main(int argc, char ** argv)
 			log->info() << "upload_payload_rate=" << status.upload_payload_rate << std::endl;
 
 			std::vector<lt::peer_info> peers;
-			handle.get_peer_info(peers);
+			//handle.get_peer_info(peers);
 
 			for (auto peer : peers) {
 				log->info() << "ip=" << peer.ip.address().to_string() << std::endl
@@ -155,21 +167,40 @@ int main(int argc, char ** argv)
 			// std::cout << a->message() << std::endl;
 			// if we receive the finished alert or an error, we're done
 			if (lt::alert_cast<lt::torrent_finished_alert>(a)) {
-				goto done;
+				// check all torrents
+				bool all_done = true;
+				for(auto handle : torrents){
+					status = handle.status();
+					if(!status.is_finished)
+						all_done = false;
+						break;
+				}
+				if(all_done){
+					goto done;
+				}
 			}
 			if (status.is_finished) {
-				goto done;
+				// check all torrents
+				bool all_done = true;
+				for(auto handle : torrents){
+					status = handle.status();
+					if(!status.is_finished)
+						all_done = false;
+						break;
+				}
+				if(all_done){
+					goto done;
+				}
 			}
 			if (lt::alert_cast<lt::torrent_error_alert>(a)) {
 				std::cerr << "Error" << std::endl;
 				return 1;
 			}
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 	done:
 	std::cout << std::endl;
-
 
 	// Start high performance seed
 	ses.apply_settings(set);
@@ -179,58 +210,76 @@ int main(int argc, char ** argv)
 
 	// seed until seed rate
 	boost::int64_t seeding_rate_limit = current.seed_limit_ezio;
-	boost::int64_t total_size = handle.torrent_file()->total_size();
 
 	int fail_contact_tracker = 0;
 	for (;;) {
-		status = handle.status();
-		handle.force_reannounce();
-		int utime = status.time_since_upload;
-		int dtime = status.time_since_download;
-		boost::int64_t total_payload_upload = status.total_payload_upload;
-		// ses.set_alert_mask(lt::alert::tracker_notification | lt::alert::error_notification);
-		std::vector<lt::alert*> alerts;
-		ses.pop_alerts(&alerts);
-
+		int upload_rate = 0;
+		for(auto handle : torrents){
+			handle.force_reannounce();
+			status = handle.status();
+			upload_rate += status.upload_payload_rate;
+		}
 		std::cout << std::fixed << "\r"
 			/*
 			<< "[P: " << progress << "%] "
 			<< "[D: " << std::setprecision(2) << (float)status.download_payload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
 			<< "[T: " << (int)status.active_time  << " secs] "
 			*/
-			<< "[U: " << std::setprecision(2) << (float)status.upload_payload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
-			<< "[T: " << (int)status.seeding_time  << " secs] "
-			<< status.state
+			<< "[U: " << std::setprecision(2) << (float)upload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
+			//<< "[T: " << (int)status.seeding_time  << " secs] "
+			//<< status.state
 			<< std::flush;
 
-		if(utime == -1 && timeout < dtime){
-			break;
-		}
-		else if(timeout < utime){
-			break;
-		}
-		else if(seeding_rate_limit < (total_payload_upload / total_size)){
-			break;
-		}
+		bool all_done = true;
+		for(auto handle : torrents){
+			status = handle.status();
+			int utime = status.time_since_upload;
+			int dtime = status.time_since_download;
+			boost::int64_t total_size = handle.torrent_file()->total_size();
+			boost::int64_t total_payload_upload = status.total_payload_upload;
 
-		handle.scrape_tracker();
-		for (lt::alert const* a : alerts) {
-			if (lt::alert_cast<lt::scrape_failed_alert>(a)) {
-				++fail_contact_tracker;;
+			if(utime == -1 && timeout < dtime){
+				handle.auto_managed(false);
+				handle.pause();
+			}
+			else if(timeout < utime){
+				handle.auto_managed(false);
+				handle.pause();
+			}
+			else if(seeding_rate_limit < (total_payload_upload / total_size)){
+				handle.auto_managed(false);
+				handle.pause();
+			}
+
+			handle.scrape_tracker();
+			std::vector<lt::alert*> alerts;
+			ses.pop_alerts(&alerts);
+			for (lt::alert const* a : alerts) {
+				if (lt::alert_cast<lt::scrape_failed_alert>(a)) {
+					++fail_contact_tracker;
+				}
+			}
+
+			if(fail_contact_tracker > current.max_contact_tracker_times){
+				std::cout << "\nTracker is gone! Finish seeding!" << std::endl;
+				goto finish;
+			}
+			if(!status.paused){
+				all_done = false;
 			}
 		}
-
-		if(fail_contact_tracker > current.max_contact_tracker_times){
-	                std::cout << "\nTracker is gone! Finish seeding!" << std::endl;
-			break;
+		if(all_done){
+			goto finish;
 		}
 
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
+	finish:
 	std::cout << "\nDone, shutting down" << std::endl;
 
 #ifdef ENABLE_GRPC
 	grpcservice.stop();
 #endif
+
 	return 0;
 }
