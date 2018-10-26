@@ -13,8 +13,8 @@ void config::parse_from_argv(int argc, char **argv)
 		("sequential,s", bpo::bool_switch(&sequential_flag)->default_value(false), "enable sequential download")
 		("file,f", bpo::bool_switch(&file_flag)->default_value(false), "read data from file rather than raw disk")
 		("upload,U", bpo::bool_switch(&seed_flag)->default_value(false), "seed mode")
-		("torrent", bpo::value<std::vector<std::string>>(&torrents), "")
-		("save_path", bpo::value<std::vector<std::string>>(&save_paths), "")
+		("torrent,T", bpo::value<std::vector<std::string>>(&torrents), "multiple torrent support --torrent a.torrent --torrent b.torrent")
+		("save_path,L", bpo::value<std::vector<std::string>>(&save_paths), "multiple torrent support --save_path a/ --save_path b/")
 		("legacy_torrent", bpo::value<std::string>(&legacy_torrent), "")
 		("legacy_save_path", bpo::value<std::string>(&legacy_save_path), "");
 
