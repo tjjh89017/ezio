@@ -1,0 +1,7 @@
+absl-py==0.6.0
+googleapis-common-protos==1.5.3
+grpcio==1.16.0
+grpcio-tools==1.16.0
+protobuf==3.6.1
+six==1.11.0
+tqdm==4.28.1
