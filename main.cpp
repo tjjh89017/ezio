@@ -211,7 +211,11 @@ int main(int argc, char ** argv)
 	// seed until seed rate
 	boost::int64_t seeding_rate_limit = current.seed_limit_ezio;
 
+	// wait for seed mode to start
+	std::this_thread::sleep_for(std::chrono::seconds(3));
+
 	int fail_contact_tracker = 0;
+	torrents = ses.get_torrents();
 	for (;;) {
 		int upload_rate = 0;
 		for(auto handle : torrents){
@@ -238,6 +242,12 @@ int main(int argc, char ** argv)
 			boost::int64_t total_size = handle.torrent_file()->total_size();
 			boost::int64_t total_payload_upload = status.total_payload_upload;
 
+			// we don't need to check who is paused already
+			if(status.paused){
+				continue;
+			}
+
+			all_done = false;
 			if(utime == -1 && timeout < dtime){
 				handle.auto_managed(false);
 				handle.pause();
@@ -262,10 +272,8 @@ int main(int argc, char ** argv)
 
 			if(fail_contact_tracker > current.max_contact_tracker_times){
 				std::cout << "\nTracker is gone! Finish seeding!" << std::endl;
-				goto finish;
-			}
-			if(!status.paused){
-				all_done = false;
+				handle.auto_managed(false);
+				handle.pause();
 			}
 		}
 		if(all_done){
