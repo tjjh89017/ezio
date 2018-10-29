@@ -57,6 +57,9 @@ int main(int argc, char ** argv)
 	lt::high_performance_seed(set);
 	// we don't need DHT
 	set.set_bool(lt::settings_pack::enable_dht, false);
+
+	// tuning cache
+	set.set_bool(lt::settings_pack::volatile_read_cache, true);
 #ifdef __linux__
 	// Determine Physical Ram Size
 	// if more than 2GB, set cache to half of Ram
