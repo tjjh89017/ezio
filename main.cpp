@@ -60,6 +60,14 @@ int main(int argc, char ** argv)
 
 	// tuning cache
 	set.set_bool(lt::settings_pack::volatile_read_cache, true);
+	set.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::suggest_read_cache);
+	set.set_int(lt::settings_pack::send_buffer_watermark, 128 * 1024 * 1024);
+	set.set_int(lt::settings_pack::send_buffer_watermark_factor, 150);
+	set.set_int(lt::settings_pack::send_buffer_low_watermark, 40 * 1024 * 1024);
+
+	// threads
+	set.set_int(lt::settings_pack::network_threads, 4);
+	set.set_int(lt::settings_pack::aio_threads, 16);
 #ifdef __linux__
 	// Determine Physical Ram Size
 	// if more than 2GB, set cache to half of Ram
