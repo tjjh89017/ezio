@@ -24,18 +24,27 @@ from argparse import RawTextHelpFormatter
 parser = ArgumentParser(
         description='''input torrent.info from stdin
 example: cat torrent.info | ./partclone_create_torrent.py \ 
--p sda1 -c CloneZilla -f ./btzone/image/sda1/sda1.torrent''',
+-p sda1 -c CloneZilla -o ./btzone/image/sda1/sda1.torrent''',
         formatter_class=RawTextHelpFormatter)
 parser.add_argument("-p", "--partition-name", help="Partition name of this torrent", dest="partition_name", required=True)
-parser.add_argument("-f", "--file", help="Output torrent path and filename", dest="filename", required=True)
+parser.add_argument("-o", "--output-file", help="Output torrent path and filename", dest="filename", required=True)
 parser.add_argument("-c", "--creator", help="Creator of this torrent", dest="creator", required=True)
+parser.add_argument("-i", "--input-file", help="Input torrent.info from file. if none, read from stdin", dest="infile", required=False)
+parser.add_argument("-t", "--tracker", help="Tracker for this torrent", dest="tracker", required=False)
 
 args = parser.parse_args()
 partition_name = args.partition_name
 creator_name = args.creator
 filename = args.filename
+tracker = args.tracker
 
-data = sys.stdin.read()
+data = None
+
+if args.infile:
+    with open(infile, 'r') as f:
+        data = f.read()
+else:
+    data = sys.stdin.read()
 
 # collect sha1
 piece_hash = re.findall(r'^sha1: (.*)$', data, re.M)
@@ -53,8 +62,12 @@ for o, l in zip(offset, length):
 torrent = lt.create_torrent(fs, 16 * 1024 * 1024, flags=0)
 torrent.set_creator(creator_name)
 
+if tracker:
+    torrent.add_tracker(tracker)
+
 for index, h in enumerate(piece_hash):
     torrent.set_hash(index, h.decode('hex'))
 
 with open(filename, 'wb') as f:
     f.write(lt.bencode(torrent.generate()))
+print(filename + " created successfully")
