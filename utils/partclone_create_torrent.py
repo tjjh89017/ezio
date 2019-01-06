@@ -41,7 +41,7 @@ tracker = args.tracker
 data = None
 
 if args.infile:
-    with open(infile, 'r') as f:
+    with open(args.infile, 'r') as f:
         data = f.read()
 else:
     data = sys.stdin.read()
