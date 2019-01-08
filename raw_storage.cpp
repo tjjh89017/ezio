@@ -164,6 +164,8 @@ bool raw_storage::verify_resume_data(lt::bdecode_node const& rd
 				, lt::storage_error& error) { return false; }
 void raw_storage::write_resume_data(lt::entry& rd, lt::storage_error& ec) const { return ; }
 void raw_storage::set_file_priority(std::vector<boost::uint8_t> const& prio, lt::storage_error& ec) {return ;}
+/* for libtorrent-rasterbar>=1.1.8 */
+void raw_storage::set_file_priority(std::vector<boost::uint8_t> & prio, lt::storage_error& ec) {return ;}
 void raw_storage::release_files(lt::storage_error& ec) { return ; }
 void raw_storage::delete_files(int i, lt::storage_error& ec) { return ; }
 

@@ -41,6 +41,8 @@ public:
 					, lt::storage_error& error);
 	void write_resume_data(lt::entry& rd, lt::storage_error& ec) const;
 	void set_file_priority(std::vector<boost::uint8_t> const& prio, lt::storage_error& ec);
+	/* for libtorrent-rasterbar>=1.1.8 */
+	void set_file_priority(std::vector<boost::uint8_t> & prio, lt::storage_error& ec);
 	void release_files(lt::storage_error& ec);
 	void delete_files(int i, lt::storage_error& ec);
 	bool tick();
