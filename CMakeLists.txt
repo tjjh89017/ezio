@@ -16,6 +16,7 @@ set(sources
 set(EZIO ezio)
 
 option(static_runtime "Build EZIO with static runtime" OFF)
+option(strip "Strip all symbol from static executable" OFF)
 
 set(LibtorrentRasterbar_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
@@ -28,9 +29,13 @@ if(static_runtime)
 	set(Boost_USE_STATIC_LIBS ON)
 	set(Boost_USE_STATIC_RUNTIME ON)
 	set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-	set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
+	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static")
 	set(CMAKE_LINK_SEARCH_START_STATIC 1)
 	set(CMAKE_LINK_SEARCH_END_STATIC 1)
+
+	if(strip)
+		set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--strip-all")
+	endif()
 endif()
 	
 
