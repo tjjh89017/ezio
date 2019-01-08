@@ -37,7 +37,7 @@ struct raw_storage : lt::storage_interface {
 	// Open disk fd
 	raw_storage(lt::file_storage const& fs, const std::string tp) : m_files(fs), target_partition(tp)
 	{
-		this->fd = open(target_partition.c_str(), O_RDWR | O_CREAT);
+		this->fd = open(target_partition.c_str(), O_RDWR);
 		if(this->fd < 0){
 			// Failed handle
 			std::cerr << "Failed to open " << target_partition << std::endl;
