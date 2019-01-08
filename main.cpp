@@ -194,6 +194,9 @@ struct raw_storage : lt::storage_interface {
 					, lt::storage_error& error) { return false; }
 	void write_resume_data(lt::entry& rd, lt::storage_error& ec) const { return ; }
 	void set_file_priority(std::vector<boost::uint8_t> const& prio, lt::storage_error& ec) {return ;}
+	/* for libtorrent-rasterbar>=1.1.8 */
+	void set_file_priority(std::vector<boost::uint8_t> & prio, lt::storage_error& ec) {return ;}
+
 	void release_files(lt::storage_error& ec) { return ; }
 	void delete_files(int i, lt::storage_error& ec) { return ; }
 
