@@ -1,11 +1,13 @@
 PROG = ezio
-STATIC_PROG = static-$(PROG)
+STATIC_PROG = $(PROG)-static
 
 CC =
 CXX = g++
 LD = g++
-CXXFLAGS = -std=c++11 -I./ -pthread
+CXXFLAGS = -g -std=c++11 -I./ -pthread
 LDFLAGS = -ltorrent-rasterbar -lboost_system -lstdc++ -lm -lgcc -lssl -lcrypto -lboost_program_options -lboost_chrono -lboost_random -ldl -lpthread
+prefix = $(DESTDIR)/usr
+sbindir = $(prefix)/sbin
 
 PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
@@ -74,6 +76,11 @@ client: $(PYTHON_OBJS)
 clean:
 	rm -rf $(OBJS) $(GRPC_OBJS) $(GRPC_OBJS:.o=.cc) $(GRPC_INC) $(PYTHON_OBJS) $(PROG) $(STATIC_PROG)
 	make -C utils clean
+
+install:
+	mkdir -p $(sbindir)
+	install -m 755 ezio $(sbindir)/
+	install -m 755 ezio-static $(sbindir)/
 
 .PHONY: netboot
 netboot: static
