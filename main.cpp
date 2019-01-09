@@ -66,7 +66,6 @@ int main(int argc, char ** argv)
 	set.set_int(lt::settings_pack::send_buffer_low_watermark, 40 * 1024 * 1024);
 
 	// threads
-	set.set_int(lt::settings_pack::network_threads, 4);
 	set.set_int(lt::settings_pack::aio_threads, 16);
 #ifdef __linux__
 	// Determine Physical Ram Size
