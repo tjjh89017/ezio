@@ -130,7 +130,7 @@ Allowed Options:
 
 #### Proxy
 
-If you want to deploy over Internet or some bottleneck, you can proxy the torrent via regular BT software like [qBittorrent](https://www.qbittorrent.org/). And don't that internal peer to connect outside.
+If you want to deploy over Internet or some bottleneck, you can proxy the torrent via regular BT software like [qBittorrent](https://www.qbittorrent.org/). And don't let internal peer connect outside directly.
 
 ## Easy Usage to Deploy Disk or OS via EZIO
 
@@ -174,7 +174,7 @@ Compare with CloneZilla Multicast Mode with EZIO Mode.
 ### Result
 Time in second
 
-| Number of client | Time (Unicast) | Time (EZIO or BT) | Time (Multicast) | Ratio (BT/Multicast) |
+| Number of client | Time (Unicast) | Time (EZIO) | Time (Multicast) | Ratio (BT/Multicast) |
 | ---: | ---: | ---: | ---: | ---: |
 | 1 | 474 | 675 | 390 | 1.731 |
 | 2 | 948 | 1273 | 474 | 2.686 |
