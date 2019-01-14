@@ -218,6 +218,17 @@ int main(int argc, char ** argv)
 	done:
 	std::cout << std::endl;
 
+	// display avg download speed
+	for (auto handle : torrents) {
+		status = handle.status();
+		if (status.active_time == 0)
+			continue;
+		std::cout << std::fixed << std::setprecision(2)
+			<< std::endl
+			<< "Avg D: " << (double)status.total_done / 1024 / 1024 / 1024 / status.active_time * 60 << " GB/min, "
+			<< (double)status.total_done / 1024 / 1024 / status.active_time  << " MB/s" << std::endl;
+	}
+
 	// Start high performance seed
 	ses.apply_settings(set);
 
