@@ -190,24 +190,23 @@ int main(int argc, char ** argv)
 					goto done;
 				}
 			}
-			if (status.is_finished) {
-				// check all torrents
-				bool all_done = true;
-				for(auto handle : torrents){
-					status = handle.status();
-					if(!status.is_finished)
-						all_done = false;
-						break;
-				}
-				if(all_done){
-					goto done;
-				}
-			}
 			if (lt::alert_cast<lt::torrent_error_alert>(a)) {
 				std::cerr << "Error" << std::endl;
 				return 1;
 			}
 		}
+		// check all torrents
+		bool all_done = true;
+		for(auto handle : torrents){
+			status = handle.status();
+			if(!status.is_finished)
+				all_done = false;
+				break;
+		}
+		if(all_done){
+			goto done;
+		}
+
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 	done:
