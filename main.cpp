@@ -148,13 +148,14 @@ int main(int argc, char ** argv)
 		}
 		// progress
 		progress /= torrents.size();
+		status = torrents[0].status();
 		//show_progress += progress - last_progess;
 		std::cout << std::fixed << "\r"
 			<< "[P: " << progress << "%] "
 			<< "[D: " << std::setprecision(2) << (float)download_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
-			//<< "[DT: " << (int)status.active_time  << " secs] "
+			<< "[DT: " << (int)status.active_time  << " secs] "
 			<< "[U: " << std::setprecision(2) << (float)upload_rate / 1024 / 1024 /1024 *60 << " GB/min] "
-			//<< "[UT: " << (int)status.seeding_time  << " secs] "
+			<< "[UT: " << (int)status.seeding_time  << " secs] "
 			<< std::flush;
 
 		// Log info
@@ -233,6 +234,7 @@ int main(int argc, char ** argv)
 			status = handle.status();
 			upload_rate += status.upload_payload_rate;
 		}
+		status = torrents[0].status();
 		std::cout << std::fixed << "\r"
 			/*
 			<< "[P: " << progress << "%] "
@@ -240,7 +242,7 @@ int main(int argc, char ** argv)
 			<< "[T: " << (int)status.active_time  << " secs] "
 			*/
 			<< "[U: " << std::setprecision(2) << (float)upload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
-			//<< "[T: " << (int)status.seeding_time  << " secs] "
+			<< "[T: " << (int)status.seeding_time  << " secs] "
 			//<< status.state
 			<< std::flush;
 
