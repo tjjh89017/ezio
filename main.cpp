@@ -218,6 +218,17 @@ int main(int argc, char ** argv)
 	done:
 	std::cout << std::endl;
 
+	// display avg download speed
+	for (auto handle : torrents) {
+		status = handle.status();
+		if (status.active_time == 0)
+			continue;
+		std::cout << std::fixed << std::setprecision(2)
+			<< std::endl
+			<< "Avg D: " << (double)status.total_done / 1024 / 1024 / 1024 / status.active_time * 60 << " GB/min, "
+			<< (double)status.total_done / 1024 / 1024 / status.active_time  << " MB/s" << std::endl;
+	}
+
 	// Start high performance seed
 	ses.apply_settings(set);
 
@@ -230,8 +241,11 @@ int main(int argc, char ** argv)
 	// wait for seed mode to start
 	std::this_thread::sleep_for(std::chrono::seconds(3));
 
-	int fail_contact_tracker = 0;
 	torrents = ses.get_torrents();
+
+	// scrape tracker fail count
+	std::map<lt::torrent_handle, int> scrape_fail;
+
 	for (;;) {
 		int upload_rate = 0;
 		for(auto handle : torrents){
@@ -279,22 +293,26 @@ int main(int argc, char ** argv)
 			}
 
 			handle.scrape_tracker();
-			std::vector<lt::alert*> alerts;
-			ses.pop_alerts(&alerts);
-			for (lt::alert const* a : alerts) {
-				if (lt::alert_cast<lt::scrape_failed_alert>(a)) {
-					++fail_contact_tracker;
-				}
-			}
-
-			if(fail_contact_tracker > current.max_contact_tracker_times){
-				std::cout << "\nTracker is gone! Finish seeding!" << std::endl;
-				handle.auto_managed(false);
-				handle.pause();
-			}
 		}
 		if(all_done){
 			goto finish;
+		}
+
+		// scrape fail to count
+		std::vector<lt::alert*> alerts;
+		ses.pop_alerts(&alerts);
+		for (lt::alert const* a : alerts) {
+			if (lt::alert_cast<lt::scrape_failed_alert>(a)) {
+				auto err_torrent = lt::alert_cast<lt::scrape_failed_alert>(a)->handle;
+				scrape_fail[err_torrent] = 1 + scrape_fail[err_torrent];
+			}
+		}
+
+		for(auto it = scrape_fail.begin(); it != scrape_fail.end(); ++it) {
+			if (it->second > current.max_contact_tracker_times) {
+				it->first.auto_managed(false);
+				it->first.pause();
+			}
 		}
 
 		std::this_thread::sleep_for(std::chrono::seconds(1));
