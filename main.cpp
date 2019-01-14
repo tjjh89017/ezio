@@ -80,6 +80,12 @@ int main(int argc, char ** argv)
 		}
 	}
 #endif
+	// Cache size if non-zero, in KiB
+	if(current.cache_size >= 0) {
+		int size = (int)(current.cache_size / 16);
+		set.set_int(lt::settings_pack::cache_size, size);
+	}
+
 	ses.apply_settings(set);
 
 #ifdef ENABLE_GRPC

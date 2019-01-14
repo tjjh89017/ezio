@@ -30,6 +30,8 @@ public:
 	bool seed_flag = false;
 	// -f
 	bool file_flag = false;
+	// --cache in KiB
+	int cache_size = -1;
 
 	std::vector<std::string> torrents;
 	std::vector<std::string> save_paths;
