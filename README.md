@@ -104,6 +104,8 @@ Allowed Options:
   -s [ --sequential ]    enable sequential download
   -f [ --file ]          read data from file rather than raw disk
   -U [ --upload ]        seed mode
+  --cache arg            assign cache size in KiB, default is half of system 
+                         ram
   -T [ --torrent ] arg   multiple torrent support --torrent a.torrent --torrent
                          b.torrent
   -L [ --save_path ] arg multiple torrent support --save_path a/ --save_path b/
@@ -183,6 +185,10 @@ Time in second
 | 16 | 7584 | 1005 | 1454 | 0.691 |
 | 24 | 11376 | 1048 | 1992 | 0.526 |
 | 32 | 15168 | 1143 | 2203 | 0.519 |
+
+## Open Access Journal
+
+More details about EZIO design and benchmark are in [A Novel Massive Deployment Solution Based on the Peer-to-Peer Protocol](https://www.mdpi.com/2076-3417/9/2/296).
 
 ## Limitation
 
