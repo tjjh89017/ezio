@@ -32,6 +32,10 @@ public:
 	bool file_flag = false;
 	// --cache in KiB
 	int cache_size = -1;
+#ifdef ENABLE_GRPC
+	// --listen address
+	std::string listen_address = "127.0.0.1:50051";
+#endif
 
 	std::vector<std::string> torrents;
 	std::vector<std::string> save_paths;

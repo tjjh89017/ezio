@@ -89,7 +89,7 @@ int main(int argc, char ** argv)
 	ses.apply_settings(set);
 
 #ifdef ENABLE_GRPC
-	gRPCService grpcservice(ses);
+	gRPCService grpcservice(ses, current.listen_address);
 #endif
 
 	std::string logfile = "";
