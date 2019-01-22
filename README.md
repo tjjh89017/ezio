@@ -65,6 +65,11 @@ If you want to build a static and stripped runtime
 cmake .. -Dstatic_runtime=ON -Dstrip=ON
 ```
 
+If you want to build gRPC service for UI or Info
+```shell
+cmake .. -Dgrpc_support=ON
+```
+
 ## Usage
 
 ### Partclone
@@ -106,6 +111,8 @@ Allowed Options:
   -U [ --upload ]        seed mode
   --cache arg            assign cache size in KiB, default is half of system 
                          ram
+  --listen arg           gRPC service listen address and port, default is 
+                         127.0.0.1:50051
   -T [ --torrent ] arg   multiple torrent support --torrent a.torrent --torrent
                          b.torrent
   -L [ --save_path ] arg multiple torrent support --save_path a/ --save_path b/
