@@ -137,6 +137,11 @@ Allowed Options:
 ./ezio -T sda1.torrent -L /dev/sda1
 ```
 
+- Proxy or save the image
+```shell
+./ezio -f -T sda1.torrent -L <path to image>
+```
+
 #### Proxy
 
 If you want to deploy over Internet or some bottleneck, you can proxy the torrent via regular BT software like [qBittorrent](https://www.qbittorrent.org/). And don't let internal peer connect outside directly.
