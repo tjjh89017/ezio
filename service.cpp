@@ -42,8 +42,8 @@ Status EZIOServiceImpl::GetTorrentStatus(ServerContext* context, const UpdateReq
 	return Status::OK;
 }
 
-gRPCService::gRPCService(lt::session &tmp) : 
-	server_address("0.0.0.0:50051"),
+gRPCService::gRPCService(lt::session &tmp, std::string listen_address = "127.0.0.1:50051") : 
+	server_address(listen_address),
 	service(tmp)
 {
 	ServerBuilder builder;

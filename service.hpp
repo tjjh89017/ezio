@@ -31,11 +31,11 @@ void grpc_start(lt::session&);
 
 class gRPCService {
 public:
-	gRPCService(lt::session&);
+	gRPCService(lt::session&, std::string);
 	//void start();
 	void stop();
 
-	std::string server_address = "0.0.0.0:50051";
+	std::string server_address;
 	EZIOServiceImpl service;
 	std::unique_ptr<Server> server;
 };
