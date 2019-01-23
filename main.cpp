@@ -198,6 +198,8 @@ int main(int argc, char ** argv)
 			}
 			if (lt::alert_cast<lt::torrent_error_alert>(a)) {
 				std::cerr << "Error" << std::endl;
+				std::cerr << a->what() << std::endl;
+				std::cerr << a->message() << std::endl;
 				return 1;
 			}
 		}

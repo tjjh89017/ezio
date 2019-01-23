@@ -4,12 +4,16 @@ package ezio;
 message Torrent {
 	// hex sha1 hash lowercase
 	string hash = 1;
+	// torrent name
+	string name = 2;
 	// float point number bewteen [0, 1]
-	double progress = 2;
+	double progress = 3;
 	// download rate byte per second
-	int32 download = 3;
+	int32 download = 4;
 	// upload rate byte per second
-	int32 upload = 4;
+	int32 upload = 5;
+	// active time
+	int32 active_time = 6;
 }
 
 message UpdateRequest {
