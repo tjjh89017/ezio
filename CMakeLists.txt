@@ -78,8 +78,10 @@ add_executable(${EZIO}
 find_package(LibtorrentRasterbar 1.1 REQUIRED)
 find_package(Boost 1.56 REQUIRED COMPONENTS system program_options chrono random)
 
-target_compile_definitions(${EZIO}
-	PUBLIC ${GRPC_DEFINE}
+target_compile_definitions(${EZIO} PUBLIC
+	${GRPC_DEFINE}
+	_LARGEFILE64_SOURCE
+	_FILE_OFFSET_BITS=64
 )
 
 target_include_directories(${EZIO} PUBLIC
