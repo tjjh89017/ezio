@@ -25,7 +25,7 @@ Status EZIOServiceImpl::GetTorrentStatus(ServerContext* context, const UpdateReq
 		//std::cout << *hash << std::endl;
 
 		// disable those info we don't need
-		lt::torrent_status t_stat = h.status(0);
+		lt::torrent_status t_stat = h.status(lt::torrent_handle::query_name);
 
 		//std::cout << t_stat.download_payload_rate << std::endl;
 		//std::cout << t_stat.upload_payload_rate << std::endl;
@@ -33,9 +33,11 @@ Status EZIOServiceImpl::GetTorrentStatus(ServerContext* context, const UpdateReq
 
 		Torrent t;
 		t.set_hash(*hash);
+		t.set_name(t_stat.name);
 		t.set_progress(t_stat.progress);
 		t.set_download(t_stat.download_payload_rate);
 		t.set_upload(t_stat.upload_payload_rate);
+		t.set_active_time(t_stat.active_time);
 		t_stats[*hash] = t;
 	}
 	
