@@ -47,6 +47,11 @@ add_executable(${EZIO}
 find_package(LibtorrentRasterbar 1.1 REQUIRED)
 find_package(Boost 1.56 REQUIRED COMPONENTS system program_options chrono random)
 
+target_compile_definitions(${EZIO} PUBLIC
+	_LARGEFILE64_SOURCE
+	_FILE_OFFSET_BITS=64
+)
+
 target_include_directories(${EZIO} PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}
 	${Boost_INCLUDE_DIRS}
