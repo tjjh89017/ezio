@@ -110,17 +110,7 @@ int main(int argc, char ** argv)
 		// magnet or torrent
 		// TODO find a better way
 		if(bt_info.substr(bt_info.length() - 8, 8) == ".torrent"){
-			const boost::int64_t fileSizeLimit = 100 * 1024 * 1024;
-			char *buffer = (char*)malloc(fileSizeLimit);
-			FILE *fp = fopen(bt_info.c_str(), "rb");
-			boost::int64_t size = fread(buffer, 1, fileSizeLimit, fp);
-			const int depthLimit = 100;
-			const int tokenLimit = 10000000;
-			lt::bdecode_node node;
-			bdecode(buffer, buffer + size, node, ec, nullptr, depthLimit, tokenLimit);
-			atp.ti = boost::make_shared<lt::torrent_info>(node, boost::ref(ec));
-			//atp.ti = boost::make_shared<lt::torrent_info>(bt_info, boost::ref(ec), 0);
-			//std::cerr << "test" << ec << std::endl;
+			atp.ti = boost::make_shared<lt::torrent_info>(bt_info, boost::ref(ec), 0);
 		}
 		else{
 			atp.url = bt_info;
