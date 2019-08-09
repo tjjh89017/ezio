@@ -281,6 +281,13 @@ int main(int argc, char ** argv)
 			boost::int64_t total_size = handle.torrent_file()->total_size();
 			boost::int64_t total_payload_upload = status.total_payload_upload;
 
+			handle.scrape_tracker();
+
+			// in force seed mode, never pause any torrent
+			if(current.current.seed_flag){
+				continue;
+			}
+
 			// we don't need to check who is paused already
 			if(status.paused){
 				continue;
@@ -299,8 +306,6 @@ int main(int argc, char ** argv)
 				handle.auto_managed(false);
 				handle.pause();
 			}
-
-			handle.scrape_tracker();
 		}
 		if(all_done){
 			goto finish;
