@@ -284,7 +284,7 @@ int main(int argc, char ** argv)
 			handle.scrape_tracker();
 
 			// in force seed mode, never pause any torrent
-			if(current.current.seed_flag){
+			if(current.seed_flag){
 				continue;
 			}
 
