@@ -285,6 +285,7 @@ int main(int argc, char ** argv)
 
 			// in force seed mode, never pause any torrent
 			if(current.seed_flag){
+				all_done = false;
 				continue;
 			}
 
