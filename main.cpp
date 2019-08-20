@@ -37,7 +37,6 @@ int timeout_ezio = 15; // Default timeout (min)
 int seed_limit_ezio = 3; // Default seeding ratio limit
 int max_upload_ezio = 4;
 int max_connection_ezio = max_upload_ezio + 2;
-int max_contact_tracker_times = 30; // Max error times for scrape tracker
 */
 
 int main(int argc, char ** argv)
@@ -255,9 +254,6 @@ int main(int argc, char ** argv)
 
 	torrents = ses.get_torrents();
 
-	// scrape tracker fail count
-	std::map<lt::torrent_handle, int> scrape_fail;
-
 	for (;;) {
 		int upload_rate = 0;
 		for(auto handle : torrents){
@@ -285,6 +281,14 @@ int main(int argc, char ** argv)
 			boost::int64_t total_size = handle.torrent_file()->total_size();
 			boost::int64_t total_payload_upload = status.total_payload_upload;
 
+			handle.scrape_tracker();
+
+			// in force seed mode, never pause any torrent
+			if(current.seed_flag){
+				all_done = false;
+				continue;
+			}
+
 			// we don't need to check who is paused already
 			if(status.paused){
 				continue;
@@ -303,28 +307,9 @@ int main(int argc, char ** argv)
 				handle.auto_managed(false);
 				handle.pause();
 			}
-
-			handle.scrape_tracker();
 		}
 		if(all_done){
 			goto finish;
-		}
-
-		// scrape fail to count
-		std::vector<lt::alert*> alerts;
-		ses.pop_alerts(&alerts);
-		for (lt::alert const* a : alerts) {
-			if (lt::alert_cast<lt::scrape_failed_alert>(a)) {
-				auto err_torrent = lt::alert_cast<lt::scrape_failed_alert>(a)->handle;
-				scrape_fail[err_torrent] = 1 + scrape_fail[err_torrent];
-			}
-		}
-
-		for(auto it = scrape_fail.begin(); it != scrape_fail.end(); ++it) {
-			if (it->second > current.max_contact_tracker_times) {
-				it->first.auto_managed(false);
-				it->first.pause();
-			}
 		}
 
 		std::this_thread::sleep_for(std::chrono::seconds(1));
