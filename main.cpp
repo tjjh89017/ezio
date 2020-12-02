@@ -77,6 +77,8 @@ int main(int argc, char ** argv)
 #endif
 
 	std::string logfile = "";
+	const boost::int64_t fileSizeLimit = 100 * 1024 * 1024;
+	char *buffer = (char*)malloc(fileSizeLimit);
 	for(auto torrent = current.torrents.begin(), save_path = current.save_paths.begin();
 			torrent != current.torrents.end() && save_path != current.save_paths.end();
 			torrent++, save_path++){
@@ -95,8 +97,6 @@ int main(int argc, char ** argv)
 		// TODO find a better way
 		// TODO migrate to Libtorrent>=1.2.x
 		if(bt_info.substr(bt_info.length() - 8, 8) == ".torrent"){
-			const boost::int64_t fileSizeLimit = 100 * 1024 * 1024;
-			char *buffer = (char*)malloc(fileSizeLimit);
 			FILE *fp = fopen(bt_info.c_str(), "rb");
 			boost::int64_t size = fread(buffer, 1, fileSizeLimit, fp);
 			const int depthLimit = 100;
@@ -121,6 +121,7 @@ int main(int argc, char ** argv)
 		handle.set_sequential_download(current.sequential_flag);
 
 	}
+	free(buffer);
 
 	unsigned long progress = 0;
 	lt::torrent_status status;
