@@ -243,12 +243,13 @@ int main(int argc, char ** argv)
 
 	for (;;) {
 		int upload_rate = 0;
+		int seeding_time = 0;
 		for(auto handle : torrents){
 			handle.force_reannounce();
 			status = handle.status();
 			upload_rate += status.upload_payload_rate;
+			seeding_time = status.seeding_time > seeding_time ? status.seeding_time : seeding_time;
 		}
-		status = torrents[0].status();
 		std::cout << std::fixed << "\r"
 			/*
 			<< "[P: " << progress << "%] "
@@ -256,7 +257,7 @@ int main(int argc, char ** argv)
 			<< "[T: " << (int)status.active_time  << " secs] "
 			*/
 			<< "[U: " << std::setprecision(2) << (float)upload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
-			<< "[T: " << (int)status.seeding_time  << " secs] "
+			<< "[T: " << (int)seeding_time  << " secs] "
 			//<< status.state
 			<< std::flush;
 
