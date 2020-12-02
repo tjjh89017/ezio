@@ -154,7 +154,7 @@ int main(int argc, char ** argv)
 			<< "[P: " << progress << "%] "
 			<< "[D: " << std::setprecision(2) << (float)download_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
 			<< "[DT: " << (int)status.active_time  << " secs] "
-			<< "[U: " << std::setprecision(2) << (float)upload_rate / 1024 / 1024 /1024 *60 << " GB/min] "
+			<< "[U: " << std::setprecision(2) << (float)upload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
 			<< "[UT: " << (int)status.seeding_time  << " secs] "
 			<< std::flush;
 
