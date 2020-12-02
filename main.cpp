@@ -4,11 +4,6 @@
 #include <getopt.h>
 #include <stddef.h>
 
-#ifdef __linux__
-#include <sys/sysinfo.h>
-#define RAM_2G (2UL * 1024 * 1024 * 1024)
-#endif
-
 #include <libtorrent/session.hpp>
 #include <libtorrent/add_torrent_params.hpp>
 #include <libtorrent/torrent_handle.hpp>
@@ -66,25 +61,15 @@ int main(int argc, char ** argv)
 
 	// threads
 	set.set_int(lt::settings_pack::aio_threads, 16);
-#ifdef __linux__
-	// Determine Physical Ram Size
-	// if more than 2GB, set cache to half of Ram
-	struct sysinfo info;
-	if(sysinfo(&info) == 0) {
-		unsigned long totalram = info.totalram * info.mem_unit;
-		if(totalram > RAM_2G) {
-			// unit: blocks per 16KiB
-			int size = (int)(totalram / 16 / 1024 / 2);
-			set.set_int(lt::settings_pack::cache_size, size);
-		}
-	}
-#endif
+
 	// Cache size if non-zero, in KiB
+	// TODO change unit to MiB
 	if(current.cache_size >= 0) {
 		int size = (int)(current.cache_size / 16);
 		set.set_int(lt::settings_pack::cache_size, size);
 	}
 
+	// apply seeting to libtorrent
 	ses.apply_settings(set);
 
 #ifdef ENABLE_GRPC
