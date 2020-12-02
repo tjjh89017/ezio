@@ -93,6 +93,7 @@ int main(int argc, char ** argv)
 
 		// magnet or torrent
 		// TODO find a better way
+		// TODO migrate to Libtorrent>=1.2.x
 		if(bt_info.substr(bt_info.length() - 8, 8) == ".torrent"){
 			const boost::int64_t fileSizeLimit = 100 * 1024 * 1024;
 			char *buffer = (char*)malloc(fileSizeLimit);
