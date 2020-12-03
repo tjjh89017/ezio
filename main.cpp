@@ -184,9 +184,10 @@ int main(int argc, char ** argv)
 				bool all_done = true;
 				for(auto handle : torrents){
 					status = handle.status();
-					if(!status.is_finished)
+					if(!status.is_finished){
 						all_done = false;
 						break;
+					}
 				}
 				if(all_done){
 					goto done;
@@ -203,9 +204,10 @@ int main(int argc, char ** argv)
 		bool all_done = true;
 		for(auto handle : torrents){
 			status = handle.status();
-			if(!status.is_finished)
+			if(!status.is_finished){
 				all_done = false;
 				break;
+			}
 		}
 		if(all_done){
 			goto done;
