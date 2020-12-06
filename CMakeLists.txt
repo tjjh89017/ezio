@@ -75,7 +75,7 @@ add_executable(${EZIO}
 )
 
 # depends
-find_package(LibtorrentRasterbar 1.1 REQUIRED)
+find_package(LibtorrentRasterbar 1.2 REQUIRED)
 find_package(Boost 1.56 REQUIRED COMPONENTS system program_options chrono random)
 
 target_compile_definitions(${EZIO} PUBLIC
