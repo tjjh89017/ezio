@@ -70,14 +70,20 @@ if(grpc_support)
 
 		find_package(absl REQUIRED)
 		list(APPEND static_runtime_LIBRARIES
-			absl::base
-			absl::synchronization
-			absl::strings
-			absl::flat_hash_map
-			absl::numeric
-			absl::flags
+			"-labsl_strings"
+			"-labsl_time"
+			"-labsl_bad_optional_access"
+			"-labsl_throw_delegate"
+			"-labsl_str_format_internal"
+			"-labsl_strings_internal"
+			"-labsl_int128"
+			"-labsl_spinlock_wait"
+			"-labsl_raw_logging_internal"
+			"-labsl_log_severity"
+			"-labsl_time_zone"
+			"-labsl_base"
 		)
-		list(APPEND static_runtime_LIBRARIES "-lz -lpthread")
+		list(APPEND static_runtime_LIBRARIES "-lz -lpthread -lrt")
 	endif()
 endif()
 
