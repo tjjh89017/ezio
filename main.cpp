@@ -86,7 +86,7 @@ int main(int argc, char ** argv)
 		std::string bt_info = *torrent;
 		atp.save_path = *save_path;
 		if(current.seed_flag){
-			atp.flags |= atp.flag_seed_mode;
+			atp.flags |= lt::torrent_flags::seed_mode;
 		}
 
 		if (current.sequential_flag) {
@@ -103,7 +103,7 @@ int main(int argc, char ** argv)
 			const int tokenLimit = 10000000;
 			lt::bdecode_node node;
 			bdecode(buffer, buffer + size, node, ec, nullptr, depthLimit, tokenLimit);
-			atp.ti = boost::make_shared<lt::torrent_info>(node, boost::ref(ec));
+			atp.ti = std::make_shared<lt::torrent_info>(node, boost::ref(ec));
 			//atp.ti = boost::make_shared<lt::torrent_info>(bt_info, boost::ref(ec), 0);
 			//std::cerr << "test" << ec << std::endl;
 		}

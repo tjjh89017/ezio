@@ -37,6 +37,7 @@ if(static_runtime)
 	set(LibtorrentRasterbar_USE_STATIC_LIBS ON)
 	set(Boost_USE_STATIC_LIBS ON)
 	set(Boost_USE_STATIC_RUNTIME ON)
+	set(Boost_NO_BOOST_CMAKE ON)
 	set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static")
 	set(CMAKE_LINK_SEARCH_START_STATIC 1)
@@ -66,6 +67,16 @@ if(grpc_support)
 	if(static_runtime)
 		find_package(CARES REQUIRED)
 		list(APPEND static_runtime_LIBRARIES ${CARES_LIBRARIES})
+
+		find_package(absl REQUIRED)
+		list(APPEND static_runtime_LIBRARIES
+			absl::base
+			absl::synchronization
+			absl::strings
+			absl::flat_hash_map
+			absl::numeric
+			absl::flags
+		)
 		list(APPEND static_runtime_LIBRARIES "-lz -lpthread")
 	endif()
 endif()
