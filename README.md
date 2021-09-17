@@ -55,16 +55,6 @@ make
 sudo make install
 ```
 
-If you want to build a static runtime, you can 
-```shell
-cmake .. -Dstatic_runtime=ON
-```
-
-If you want to build a static and stripped runtime
-```shell
-cmake .. -Dstatic_runtime=ON -Dstrip=ON
-```
-
 If you want to build gRPC service for UI or Info
 ```shell
 cmake .. -Dgrpc_support=ON
