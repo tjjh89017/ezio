@@ -52,22 +52,8 @@ int main(int argc, char ** argv)
 	// we don't need DHT
 	set.set_bool(lt::settings_pack::enable_dht, false);
 
-	// tuning cache
-	set.set_bool(lt::settings_pack::volatile_read_cache, true);
-	set.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::suggest_read_cache);
-	set.set_int(lt::settings_pack::send_buffer_watermark, 128 * 1024 * 1024);
-	set.set_int(lt::settings_pack::send_buffer_watermark_factor, 150);
-	set.set_int(lt::settings_pack::send_buffer_low_watermark, 40 * 1024 * 1024);
-
 	// threads
 	set.set_int(lt::settings_pack::aio_threads, 16);
-
-	// Cache size if non-zero, in KiB
-	// TODO change unit to MiB
-	if(current.cache_size >= 0) {
-		int size = (int)(current.cache_size / 16);
-		set.set_int(lt::settings_pack::cache_size, size);
-	}
 
 	// apply seeting to libtorrent
 	ses.apply_settings(set);

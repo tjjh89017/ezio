@@ -30,8 +30,6 @@ public:
 	bool seed_flag = false;
 	// -f
 	bool file_flag = false;
-	// --cache in KiB
-	int cache_size = -1;
 #ifdef ENABLE_GRPC
 	// --listen address
 	std::string listen_address = "127.0.0.1:50051";

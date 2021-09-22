@@ -13,7 +13,6 @@ void config::parse_from_argv(int argc, char **argv)
 		("sequential,s", bpo::bool_switch(&sequential_flag)->default_value(false), "enable sequential download")
 		("file,f", bpo::bool_switch(&file_flag)->default_value(false), "read data from file rather than raw disk")
 		("upload,U", bpo::bool_switch(&seed_flag)->default_value(false), "seed mode")
-		("cache", bpo::value<int>(&cache_size), "assign cache size in KiB, default is half of system ram")
 #ifdef ENABLE_GRPC
 		("listen", bpo::value<std::string>(&listen_address), "gRPC service listen address and port, default is 127.0.0.1:50051")
 #endif

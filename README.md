@@ -99,8 +99,6 @@ Allowed Options:
   -s [ --sequential ]    enable sequential download
   -f [ --file ]          read data from file rather than raw disk
   -U [ --upload ]        seed mode
-  --cache arg            assign cache size in KiB, default is half of system 
-                         ram
   --listen arg           gRPC service listen address and port, default is 
                          127.0.0.1:50051
   -T [ --torrent ] arg   multiple torrent support --torrent a.torrent --torrent
