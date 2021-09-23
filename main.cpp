@@ -18,7 +18,6 @@
 #include <libtorrent/peer_info.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
-#include "logger.hpp"
 #include "raw_storage.hpp"
 #include "config.hpp"
 #ifdef ENABLE_GRPC
@@ -36,10 +35,6 @@ int max_connection_ezio = max_upload_ezio + 2;
 
 int main(int argc, char ** argv)
 {
-
-	// need to remove
-	int log_flag = 0;
-
 	config current;
 	current.parse_from_argv(argc, argv);
 
@@ -112,12 +107,6 @@ int main(int argc, char ** argv)
 	unsigned long progress = 0;
 	lt::torrent_status status;
 
-	Logger *log;
-	if(log_flag){
-		Logger::setLogFile(logfile);
-		log = &Logger::getInstance();
-	}
-
 	std::cout << "Start downloading" << std::endl;
 
 	auto torrents = ses.get_torrents();
@@ -145,22 +134,6 @@ int main(int argc, char ** argv)
 			<< "[U: " << std::setprecision(2) << (float)upload_rate / 1024 / 1024 /1024 * 60 << " GB/min] "
 			<< "[UT: " << (int)status.seeding_time  << " secs] "
 			<< std::flush;
-
-		// Log info
-		if(log_flag){
-			log->info() << "time=" << boost::posix_time::second_clock::local_time() << std::endl;
-			log->info() << "download_payload_rate=" << status.download_payload_rate << std::endl;
-			log->info() << "upload_payload_rate=" << status.upload_payload_rate << std::endl;
-
-			std::vector<lt::peer_info> peers;
-			//handle.get_peer_info(peers);
-
-			for (auto peer : peers) {
-				log->info() << "ip=" << peer.ip.address().to_string() << std::endl
-					<< "payload_up_speed=" << peer.payload_up_speed << std::endl
-					<< "payload_down_speed=" << peer.payload_down_speed << std::endl;
-			}
-		}
 
 		for (lt::alert const* a : alerts) {
 			// std::cout << a->message() << std::endl;

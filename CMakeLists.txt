@@ -10,7 +10,6 @@ set(sources
 	main
 	config
 	raw_storage
-	logger
 )
 
 set(grpc_sources
