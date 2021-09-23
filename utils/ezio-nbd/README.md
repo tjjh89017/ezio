@@ -26,3 +26,7 @@ sudo mount /dev/nbd0 /tmp/mnt
 sudo umount /tmp/mnt
 sudo nbd-client /dev/nbd0
 ```
+
+## Limitation
+
+If we don't know `torrent.info` or `partition size`, `ezio-nbd.py` will assume partition size is 16TB. It might occur some I/O Error in `dmesg`. It will not cause any other problem for now.
