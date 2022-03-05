@@ -2,7 +2,6 @@
 #define __DAEMON_HPP__
 
 #include <libtorrent/libtorrent.hpp>
-#include "raw_disk_io.hpp"
 #include "service.hpp"
 
 namespace ezio {

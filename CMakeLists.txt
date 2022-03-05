@@ -11,7 +11,6 @@ set(sources
 	#config
 	#raw_storage
 
-	#raw_disk_io
 	daemon
 )
 
