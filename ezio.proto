@@ -18,6 +18,10 @@ message Torrent {
 	int64 upload_rate = 5;
 	// active time
 	int64 active_time = 6;
+	// is_finished
+	bool is_finished = 7;
+	// num_peers connected to
+	int64 num_peers = 8;
 }
 
 message AddRequest {

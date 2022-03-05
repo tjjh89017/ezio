@@ -76,6 +76,8 @@ Status EZIOServiceImpl::GetTorrentStatus(ServerContext* context, const UpdateReq
 		t.set_progress(t_stat.progress);
 		t.set_download_rate(t_stat.download_payload_rate);
 		t.set_upload_rate(t_stat.upload_payload_rate);
+		t.set_is_finished(t_stat.is_finished);
+		t.set_num_peers(t_stat.num_peers);
 		t_stats[*hash] = t;
 	}
 	

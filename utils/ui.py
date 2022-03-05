@@ -98,6 +98,8 @@ class UIView(urwid.WidgetWrap):
                 "U: {:.2f}GB/min, {:.2f}MB/s".format(To_GBmin(upload), To_MBsec(upload))
             )
             self.torrents[h]['active_time'].set_text("T: {} secs".format(torrent.active_time))
+            self.torrents[h]['is_finished'].set_text(str(torrent.is_finished))
+            self.torrents[h]['num_peers'].set_text("peers: {}".format(torrent.num_peers))
 
         self.graph.set_data(l, 100)
 
@@ -155,12 +157,16 @@ class UIView(urwid.WidgetWrap):
             torrent_download = urwid.Text('', align="right")
             torrent_upload = urwid.Text('', align="right")
             torrent_active_time = urwid.Text('', align="right")
+            torrent_is_finished = urwid.Text('', align="right")
+            torrent_num_peers = urwid.Text('', align="right")
             self.torrents[h] = {
                 'name': torrent_name,
                 'progress': torrent_progress,
                 'download': torrent_download,
                 'upload': torrent_upload,
                 'active_time': torrent_active_time,
+                'is_finished': torrent_is_finished,
+                'num_peers': torrent_num_peers,
             }
 
             l.append(torrent_name)
@@ -168,6 +174,8 @@ class UIView(urwid.WidgetWrap):
             l.append(torrent_download)
             l.append(torrent_upload)
             l.append(torrent_active_time)
+            l.append(torrent_is_finished)
+            l.append(torrent_num_peers)
             l.append(urwid.Divider('-'))
 
         w = urwid.ListBox(urwid.SimpleListWalker(l))

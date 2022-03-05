@@ -17,6 +17,7 @@ int main(int argc, char ** argv)
 {
 
 	ezio::ezio& daemon = ezio::ezio::get_instance();
+
 	lt::session_params ses_params;
 	ses_params.disk_io_constructor = lt::default_disk_io_constructor;
 
