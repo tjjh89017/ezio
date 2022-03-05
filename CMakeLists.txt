@@ -8,8 +8,11 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(sources
 	main
-	config
-	raw_storage
+	#config
+	#raw_storage
+
+	#raw_disk_io
+	daemon
 )
 
 set(grpc_sources
@@ -22,33 +25,32 @@ set(protos
 
 set(EZIO ezio)
 
-option(grpc_support "Build EZIO with gRPC support" OFF)
+#option(grpc_support "Build EZIO with gRPC support" OFF)
 
 set(LibtorrentRasterbar_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
-set(Boost_USE_STATIC_LIBS OFF)
-set(Boost_USE_STATIC_RUNTIME OFF)
+#set(Boost_USE_STATIC_LIBS OFF)
+#set(Boost_USE_STATIC_RUNTIME OFF)
 
-if(grpc_support)
-	find_package(Protobuf 3 REQUIRED)
-	find_package(GRPC REQUIRED)
+# depends
+find_package(LibtorrentRasterbar 2.0 REQUIRED)
+find_package(Boost 1.56 REQUIRED COMPONENTS system)
+find_package(Protobuf 3 REQUIRED)
+find_package(GRPC REQUIRED)
 
-	protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${protos})
-	PROTOBUF_GENERATE_GRPC_CPP(GRPC_SRCS GRPC_HDRS ${protos})
+# gen proto
+protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${protos})
+PROTOBUF_GENERATE_GRPC_CPP(GRPC_SRCS GRPC_HDRS ${protos})
 
-	list(APPEND sources ${PROTO_SRCS})
-	list(APPEND sources ${GRPC_SRCS})
-	list(APPEND sources ${grpc_sources})
-	set(GRPC_DEFINE "ENABLE_GRPC")
-endif()
+list(APPEND sources ${PROTO_SRCS})
+list(APPEND sources ${GRPC_SRCS})
+list(APPEND sources ${grpc_sources})
 
+
+# start compile part
 add_executable(${EZIO}
 	${sources}
 )
-
-# depends
-find_package(LibtorrentRasterbar 1.2 REQUIRED)
-find_package(Boost 1.56 REQUIRED COMPONENTS system program_options chrono random)
 
 target_compile_definitions(${EZIO} PUBLIC
 	${GRPC_DEFINE}
@@ -67,6 +69,7 @@ target_include_directories(${EZIO} PUBLIC
 
 target_link_libraries(${EZIO} PRIVATE
 	${LibtorrentRasterbar_LIBRARIES}
+	torrent-rasterbar
 	${Boost_LIBRARIES}
 
 	${PROTOBUF_LIBRARIES}

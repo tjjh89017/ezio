@@ -1,6 +1,10 @@
 syntax = "proto3";
 package ezio;
 
+message Empty {
+
+}
+
 message Torrent {
 	// hex sha1 hash lowercase
 	string hash = 1;
@@ -9,11 +13,22 @@ message Torrent {
 	// float point number bewteen [0, 1]
 	double progress = 3;
 	// download rate byte per second
-	int32 download = 4;
+	int64 download_rate = 4;
 	// upload rate byte per second
-	int32 upload = 5;
+	int64 upload_rate = 5;
 	// active time
-	int32 active_time = 6;
+	int64 active_time = 6;
+}
+
+message AddRequest {
+	// torrent file
+	bytes torrent = 1;
+	// save path, here is disk or partition path
+	string save_path = 2;
+}
+
+message AddResponse {
+	bool result = 1;
 }
 
 message UpdateRequest {
@@ -29,5 +44,7 @@ message UpdateStatus {
 }
 
 service EZIO {
+	rpc Shutdown(Empty) returns (Empty) {}
 	rpc GetTorrentStatus(UpdateRequest) returns (UpdateStatus) {}
+	rpc AddTorrent(AddRequest) returns (AddResponse) {}
 }

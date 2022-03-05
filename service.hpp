@@ -4,9 +4,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include <libtorrent/session.hpp>
-#include <libtorrent/torrent_handle.hpp>
-#include <libtorrent/torrent_status.hpp>
+#include <libtorrent/libtorrent.hpp>
 #include <grpc++/grpc++.h>
 #include "ezio.grpc.pb.h"
 
@@ -14,30 +12,36 @@ using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
+using ezio::Empty;
 using ezio::Torrent;
-using ezio::UpdateStatus;
+using ezio::AddRequest;
+using ezio::AddResponse;
 using ezio::UpdateRequest;
+using ezio::UpdateStatus;
 using ezio::EZIO;
 
-namespace lt = libtorrent;
+namespace ezio {
+
 class EZIOServiceImpl final : public EZIO::Service {
 public:
-	EZIOServiceImpl(lt::session &tmp);
+	EZIOServiceImpl();
+	virtual Status Shutdown(ServerContext* context, const Empty *e1, Empty *e2) override;
 	virtual Status GetTorrentStatus(ServerContext* context, const UpdateRequest* request, UpdateStatus* status) override;
-	lt::session &ses;
+	virtual Status AddTorrent(ServerContext* context, const AddRequest* request, AddResponse* response) override;
 };
-
-void grpc_start(lt::session&);
 
 class gRPCService {
 public:
-	gRPCService(lt::session&, std::string);
-	//void start();
+	gRPCService(std::string);
+	explicit gRPCService();
 	void stop();
+	void wait();
 
 	std::string server_address;
 	EZIOServiceImpl service;
 	std::unique_ptr<Server> server;
 };
+
+} // namespace ezio
 
 #endif

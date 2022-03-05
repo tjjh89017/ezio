@@ -80,8 +80,8 @@ class UIView(urwid.WidgetWrap):
         l = []
         for h in hashes:
             torrent = torrents[h]
-            download = float(torrent.download)
-            upload = float(torrent.upload)
+            download = float(torrent.download_rate)
+            upload = float(torrent.upload_rate)
             # TODO dymanic bound
             # in MB/s
             l.append([To_MBsec(download), 0])
@@ -102,7 +102,10 @@ class UIView(urwid.WidgetWrap):
         self.graph.set_data(l, 100)
 
         # avg progress
-        self.progress.set_completion(sum_progress / len(torrents))
+        l = len(torrents)
+        if l == 0:
+            l = 1
+        self.progress.set_completion(sum_progress / l)
         self.download.set_text(
             "D: {:.2f}GB/min, {:.2f}MB/s".format(To_GBmin(sum_download), To_MBsec(sum_download))
         )
@@ -147,7 +150,7 @@ class UIView(urwid.WidgetWrap):
 
         data = self.controller.get_data()
         for h in data.hashes:
-            torrent_name = urwid.Text(data.torrents[h].name[:30], align="left")
+            torrent_name = urwid.Text(data.torrents[h].name, align="left")
             torrent_progress = self.progress_bar()
             torrent_download = urwid.Text('', align="right")
             torrent_upload = urwid.Text('', align="right")
@@ -179,7 +182,8 @@ class UIView(urwid.WidgetWrap):
         vline = urwid.AttrWrap(urwid.SolidFill(u'\u2502'), 'line')
         controls = self.graph_controls()
 
-        w = urwid.Columns([('weight', 3, self.graph_wrap), ('fixed', 1, vline), ('fixed', 30, controls)])
+        #w = urwid.Columns([('weight', 3, self.graph_wrap), ('fixed', 1, vline), ('fixed', 30, controls)])
+        w = urwid.Columns([('weight', 3, controls)])
         w = urwid.Padding(w, ('fixed left', 1), ('fixed right', 0))
         w = urwid.AttrWrap(w, 'body')
         w = urwid.LineBox(w)
