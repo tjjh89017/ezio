@@ -12,6 +12,7 @@ set(sources
 	#raw_storage
 
 	daemon
+	buffer_pool
 )
 
 set(grpc_sources
