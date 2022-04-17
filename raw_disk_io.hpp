@@ -6,14 +6,16 @@
 #include "buffer_pool.hpp"
 #include "thread_pool.hpp"
 
+namespace ezio
+{
+/*
 std::unique_ptr<libtorrent::disk_interface>
 raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::settings_interface const &,
 	libtorrent::counters &);
+  */
 
-namespace libtorrent
-{
-class raw_disk_io final : public disk_interface
+class raw_disk_io final : public libtorrent::disk_interface
 {
 private:
 	ezio::buffer_pool read_buffer_pool_;
@@ -29,13 +31,13 @@ public:
 	// outstanding disk operations on the storage.
 	// The returned storage_holder is an owning reference to the underlying
 	// storage that was just created. It is fundamentally a storage_index_t
-	storage_holder new_torrent(storage_params const &p,
+	libtorrent::storage_holder new_torrent(libtorrent::storage_params const &p,
 		std::shared_ptr<void> const &torrent) override;
 
 	// remove the storage with the specified index. This is not expected to
 	// delete any files from disk, just to clean up any resources associated
 	// with the specified storage.
-	void remove_torrent(storage_index_t) override;
+	void remove_torrent(libtorrent::storage_index_t) override;
 
 	// perform a read or write operation from/to the specified storage
 	// index and the specified request. When the operation completes, call
@@ -55,14 +57,14 @@ public:
 	// all writes (passed to ``async_write``) are guaranteed to be block
 	// aligned.
 	void async_read(
-		storage_index_t storage, peer_request const &r,
-		std::function<void(disk_buffer_holder, storage_error const &)> handler,
-		disk_job_flags_t flags = {}) override;
+		libtorrent::storage_index_t storage, libtorrent::peer_request const &r,
+		std::function<void(libtorrent::disk_buffer_holder, libtorrent::storage_error const &)> handler,
+		libtorrent::disk_job_flags_t flags = {}) override;
 
-	bool async_write(storage_index_t storage, peer_request const &r,
-		char const *buf, std::shared_ptr<disk_observer> o,
-		std::function<void(storage_error const &)> handler,
-		disk_job_flags_t flags = {}) override;
+	bool async_write(libtorrent::storage_index_t storage, libtorrent::peer_request const &r,
+		char const *buf, std::shared_ptr<libtorrent::disk_observer> o,
+		std::function<void(libtorrent::storage_error const &)> handler,
+		libtorrent::disk_job_flags_t flags = {}) override;
 
 	// Compute hash(es) for the specified piece. Unless the v1_hash flag is
 	// set (in ``flags``), the SHA-1 hash of the whole piece does not need
@@ -73,17 +75,17 @@ public:
 	// enough to hold all v2 blocks in the piece, and this function will
 	// fill in the span with the SHA-256 block hashes of the piece.
 	void async_hash(
-		storage_index_t storage, piece_index_t piece, span<sha256_hash> v2,
-		disk_job_flags_t flags,
-		std::function<void(piece_index_t, sha1_hash const &, storage_error const &)>
+		libtorrent::storage_index_t storage, libtorrent::piece_index_t piece, libtorrent::span<libtorrent::sha256_hash> v2,
+		libtorrent::disk_job_flags_t flags,
+		std::function<void(libtorrent::piece_index_t, libtorrent::sha1_hash const &, libtorrent::storage_error const &)>
 			handler) override;
 
 	// computes the v2 hash (SHA-256) of a single block. The block at
 	// ``offset`` in piece ``piece``.
-	void async_hash2(storage_index_t storage, piece_index_t piece, int offset,
-		disk_job_flags_t flags,
-		std::function<void(piece_index_t, sha256_hash const &,
-			storage_error const &)>
+	void async_hash2(libtorrent::storage_index_t storage, libtorrent::piece_index_t piece, int offset,
+		libtorrent::disk_job_flags_t flags,
+		std::function<void(libtorrent::piece_index_t, libtorrent::sha256_hash const &,
+			libtorrent::storage_error const &)>
 			handler) override;
 
 	// called to request the files for the specified storage/torrent be
@@ -92,8 +94,8 @@ public:
 	// the storage. Whether files are replaced at the destination path or
 	// not is controlled by ``flags`` (see move_flags_t).
 	void async_move_storage(
-		storage_index_t storage, std::string p, move_flags_t flags,
-		std::function<void(status_t, std::string const &, storage_error const &)>
+		libtorrent::storage_index_t storage, std::string p, libtorrent::move_flags_t flags,
+		std::function<void(libtorrent::status_t, std::string const &, libtorrent::storage_error const &)>
 			handler) override;
 
 	// This is called on disk I/O objects to request they close all open
@@ -104,7 +106,7 @@ public:
 	// re-open some of the files, by the time this completion handler is
 	// called, that's fine.
 	void async_release_files(
-		storage_index_t storage,
+		libtorrent::storage_index_t storage,
 		std::function<void()> handler = std::function<void()>()) override;
 
 	// this is called when torrents are added to validate their resume data
@@ -129,16 +131,16 @@ public:
 	// should exist on disk, this should be verified. Pad files and files
 	// with zero priority may be skipped.
 	void async_check_files(
-		storage_index_t storage, add_torrent_params const *resume_data,
-		aux::vector<std::string, file_index_t> links,
-		std::function<void(status_t, storage_error const &)> handler) override;
+		libtorrent::storage_index_t storage, libtorrent::add_torrent_params const *resume_data,
+		libtorrent::aux::vector<std::string, libtorrent::file_index_t> links,
+		std::function<void(libtorrent::status_t, libtorrent::storage_error const &)> handler) override;
 
 	// This is called when a torrent is stopped. It gives the disk I/O
 	// object an opportunity to flush any data to disk that's currently kept
 	// cached. This function should at least do the same thing as
 	// async_release_files().
 	void async_stop_torrent(
-		storage_index_t storage,
+		libtorrent::storage_index_t storage,
 		std::function<void()> handler = std::function<void()>()) override;
 
 	// This function is called when the name of a file in the specified
@@ -147,8 +149,8 @@ public:
 	// potentially outstanding operations against the file (such as read,
 	// write, move, etc.).
 	void async_rename_file(
-		storage_index_t storage, file_index_t index, std::string name,
-		std::function<void(std::string const &, file_index_t, storage_error const &)>
+		libtorrent::storage_index_t storage, libtorrent::file_index_t index, std::string name,
+		std::function<void(std::string const &, libtorrent::file_index_t, libtorrent::storage_error const &)>
 			handler) override;
 
 	// This function is called when some file(s) on disk have been requested
@@ -158,8 +160,8 @@ public:
 	// e.g. session_handle::delete_files - delete all files
 	// session_handle::delete_partfile - only delete part file.
 	void async_delete_files(
-		storage_index_t storage, remove_flags_t options,
-		std::function<void(storage_error const &)> handler) override;
+		libtorrent::storage_index_t storage, libtorrent::remove_flags_t options,
+		std::function<void(libtorrent::storage_error const &)> handler) override;
 
 	// This is called to set the priority of some or all files. Changing the
 	// priority from or to 0 may involve moving data to and from the
@@ -171,10 +173,10 @@ public:
 	// shorter than the total number of files in the torrent, they are
 	// assumed to be set to the default priority.
 	void async_set_file_priority(
-		storage_index_t storage,
-		aux::vector<download_priority_t, file_index_t> prio,
-		std::function<void(storage_error const &,
-			aux::vector<download_priority_t, file_index_t>)>
+		libtorrent::storage_index_t storage,
+		libtorrent::aux::vector<libtorrent::download_priority_t, libtorrent::file_index_t> prio,
+		std::function<void(libtorrent::storage_error const &,
+			libtorrent::aux::vector<libtorrent::download_priority_t, libtorrent::file_index_t>)>
 			handler) override;
 
 	// This is called when a piece fails the hash check, to ensure there are
@@ -183,20 +185,20 @@ public:
 	// object does not need to perform any action other than synchronize
 	// with all outstanding disk operations to the specified piece before
 	// posting the result back.
-	void async_clear_piece(storage_index_t storage, piece_index_t index,
-		std::function<void(piece_index_t)> handler) override;
+	void async_clear_piece(libtorrent::storage_index_t storage, libtorrent::piece_index_t index,
+		std::function<void(libtorrent::piece_index_t)> handler) override;
 
 	// update_stats_counters() is called to give the disk storage an
 	// opportunity to update gauges in the ``c`` stats counters, that aren't
 	// updated continuously as operations are performed. This is called
 	// before a snapshot of the counters are passed to the client.
-	void update_stats_counters(counters &c) const override;
+	void update_stats_counters(libtorrent::counters &c) const override;
 
 	// Return a list of all the files that are currently open for the
 	// specified storage/torrent. This is is just used for the client to
 	// query the currently open files, and which modes those files are open
 	// in.
-	std::vector<open_file_state> get_status(storage_index_t) const override;
+	std::vector<libtorrent::open_file_state> get_status(libtorrent::storage_index_t) const override;
 
 	// this is called when the session is starting to shut down. The disk
 	// I/O object is expected to flush any outstanding write jobs, cancel
@@ -223,6 +225,6 @@ public:
 	void settings_updated() override;
 };
 
-}  // namespace libtorrent
+}  // namespace ezio
 
 #endif
