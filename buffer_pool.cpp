@@ -2,12 +2,6 @@
 
 namespace ezio {
 
-buffer_pool *buffer_pool::get_instance()
-{
-  static buffer_pool inst;
-  return &inst;
-}
-
 buffer_pool::buffer_pool()
 {
   m_buffer = new char[MAX_BUFFER_POOL_SIZE];

@@ -14,20 +14,13 @@ namespace ezio {
 
 class buffer_pool : public libtorrent::buffer_allocator_interface {
 public:
-  static buffer_pool *get_instance();
+  buffer_pool();
+  ~buffer_pool();
 
   char *allocate_buffer();
   void free_disk_buffer(char *) override;
 
 private:
-  buffer_pool();
-  ~buffer_pool();
-
-  buffer_pool(const buffer_pool &) = delete;
-  buffer_pool(buffer_pool &&) = delete;
-  buffer_pool &operator=(const buffer_pool &) = delete;
-  buffer_pool &operator=(buffer_pool &&) = delete;
-
   std::mutex m_pool_mutex;
   char *m_buffer;
   std::deque<char *> m_deque;

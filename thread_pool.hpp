@@ -6,12 +6,13 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/move/utility_core.hpp>
 #include <libtorrent/libtorrent.hpp>
+#include "buffer_pool.hpp"
 
 namespace ezio {
 
 struct read_job {
 public:
-  read_job(char *buffer,
+  read_job(char *buffer, buffer_pool *pool,
            std::function<void(libtorrent::disk_buffer_holder,
                               libtorrent::storage_error const &)>);
 
@@ -19,6 +20,7 @@ public:
 
 private:
   char *buffer_;
+  buffer_pool *pool_;
   std::function<void(libtorrent::disk_buffer_holder,
                      libtorrent::storage_error const &)>
     handler_;

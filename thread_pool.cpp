@@ -8,31 +8,29 @@
 using namespace std;
 using namespace ezio;
 
-read_job::read_job(char *buffer,
+read_job::read_job(char *buffer, buffer_pool *pool,
                    std::function<void(libtorrent::disk_buffer_holder,
                                       libtorrent::storage_error const &)>
                      handler)
-  : buffer_(buffer), handler_(handler)
+  : buffer_(buffer), pool_(pool), handler_(handler)
 {}
 
 void read_job::operator()()
 {
-  auto bufferPool = buffer_pool::get_instance();
-
   // do read/write operation.
 
   lt::storage_error error;
   error.operation = lt::operation_t::file_read;
   error.ec = libtorrent::errors::no_error;
 
-  handler_(libtorrent::disk_buffer_holder(*bufferPool, buffer_, 123), error);
+  handler_(libtorrent::disk_buffer_holder(*pool_, buffer_, 123), error);
 
   SPDLOG_INFO("buffer: {}", buffer_);
 }
 
 void write_job::operator()()
 {
-  SPDLOG_ERROR("hash_job is not implemented");
+  SPDLOG_ERROR("write_job is not implemented");
 }
 
 void hash_job::operator()()

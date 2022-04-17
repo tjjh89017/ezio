@@ -29,11 +29,12 @@ void raw_disk_io::async_read(
   disk_job_flags_t flags)
 {
   auto threadPool = ezio::thread_pool::get_instance();
-  auto bufferPool = ezio::buffer_pool::get_instance();
 
-  auto buffer = bufferPool->allocate_buffer();
+  auto buffer = read_buffer_pool_.allocate_buffer();
 
-  read_job job(buffer, handler);
+  // FIXME: if buffer is nullptr
+
+  read_job job(buffer, &read_buffer_pool_, handler);
   threadPool->submit(job);
 }
 
@@ -41,10 +42,7 @@ bool raw_disk_io::async_write(storage_index_t storage, peer_request const &r,
                               char const *buf, std::shared_ptr<disk_observer> o,
                               std::function<void(storage_error const &)> handler,
                               disk_job_flags_t flags)
-{
-  auto threadPool = ezio::thread_pool::get_instance();
-  auto bufferPool = ezio::buffer_pool::get_instance();
-}
+{}
 
 void raw_disk_io::async_hash(
   storage_index_t storage, piece_index_t piece, span<sha256_hash> v2,
