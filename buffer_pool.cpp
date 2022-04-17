@@ -2,6 +2,12 @@
 
 namespace ezio {
 
+buffer_pool *buffer_pool::get_instance()
+{
+  static buffer_pool inst;
+  return &inst;
+}
+
 buffer_pool::buffer_pool()
 {
   m_buffer = new char[MAX_BUFFER_POOL_SIZE];
@@ -36,6 +42,12 @@ void buffer_pool::free_buffer(char *buf)
 {
   std::unique_lock<std::mutex> l(m_pool_mutex);
   m_deque.push_back(buf);
+}
+
+void buffer_recycler::free_disk_buffer(char *buffer)
+{
+  auto inst = buffer_pool::get_instance();
+  inst->free_buffer(buffer);
 }
 
 } // namespace ezio

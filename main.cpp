@@ -15,10 +15,12 @@ std::string server_address = "0.0.0.0:50051";
 
 int main(int argc, char **argv)
 {
+  /*
   auto inst = ezio::thread_pool::get_instance();
   inst->start(4);
   ezio::io_job job1(server_address.c_str());
   inst->submit(std::move(job1));
+  */
 
   auto &daemon = ezio::ezio::get_instance();
 

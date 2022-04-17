@@ -1,5 +1,8 @@
 #include "raw_disk_io.hpp"
+#include "thread_pool.hpp"
+#include "buffer_pool.hpp"
 
+using namespace ezio;
 using namespace libtorrent;
 
 std::unique_ptr<libtorrent::disk_interface>
@@ -24,13 +27,24 @@ void raw_disk_io::async_read(
   storage_index_t storage, peer_request const &r,
   std::function<void(disk_buffer_holder, storage_error const &)> handler,
   disk_job_flags_t flags)
-{}
+{
+  auto threadPool = ezio::thread_pool::get_instance();
+  auto bufferPool = ezio::buffer_pool::get_instance();
+
+  auto buffer = bufferPool->allocate_buffer();
+
+  io_job job(buffer, handler);
+  threadPool->submit(job);
+}
 
 bool raw_disk_io::async_write(storage_index_t storage, peer_request const &r,
                               char const *buf, std::shared_ptr<disk_observer> o,
                               std::function<void(storage_error const &)> handler,
                               disk_job_flags_t flags)
-{}
+{
+  auto threadPool = ezio::thread_pool::get_instance();
+  auto bufferPool = ezio::buffer_pool::get_instance();
+}
 
 void raw_disk_io::async_hash(
   storage_index_t storage, piece_index_t piece, span<sha256_hash> v2,
