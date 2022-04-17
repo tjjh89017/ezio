@@ -10,22 +10,23 @@
 // 16 KB
 #define DEFAULT_BLOCK_SIZE (16 * 1024)
 
-namespace ezio {
-
-class buffer_pool : public libtorrent::buffer_allocator_interface {
+namespace ezio
+{
+class buffer_pool : public libtorrent::buffer_allocator_interface
+{
 public:
-  buffer_pool();
-  ~buffer_pool();
+	buffer_pool();
+	~buffer_pool();
 
-  char *allocate_buffer();
-  void free_disk_buffer(char *) override;
+	char *allocate_buffer();
+	void free_disk_buffer(char *) override;
 
 private:
-  std::mutex m_pool_mutex;
-  char *m_buffer;
-  std::deque<char *> m_deque;
+	std::mutex m_pool_mutex;
+	char *m_buffer;
+	std::deque<char *> m_deque;
 };
 
-} // namespace ezio
+}  // namespace ezio
 
 #endif

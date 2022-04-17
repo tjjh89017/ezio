@@ -20,17 +20,19 @@ using ezio::UpdateRequest;
 using ezio::UpdateStatus;
 using ezio::EZIO;
 
-namespace ezio {
-
-class EZIOServiceImpl final : public EZIO::Service {
+namespace ezio
+{
+class EZIOServiceImpl final : public EZIO::Service
+{
 public:
 	EZIOServiceImpl();
-	virtual Status Shutdown(ServerContext* context, const Empty *e1, Empty *e2) override;
-	virtual Status GetTorrentStatus(ServerContext* context, const UpdateRequest* request, UpdateStatus* status) override;
-	virtual Status AddTorrent(ServerContext* context, const AddRequest* request, AddResponse* response) override;
+	virtual Status Shutdown(ServerContext *context, const Empty *e1, Empty *e2) override;
+	virtual Status GetTorrentStatus(ServerContext *context, const UpdateRequest *request, UpdateStatus *status) override;
+	virtual Status AddTorrent(ServerContext *context, const AddRequest *request, AddResponse *response) override;
 };
 
-class gRPCService {
+class gRPCService
+{
 public:
 	gRPCService(std::string);
 	explicit gRPCService();
@@ -42,6 +44,6 @@ public:
 	std::unique_ptr<Server> server;
 };
 
-} // namespace ezio
+}  // namespace ezio
 
 #endif
