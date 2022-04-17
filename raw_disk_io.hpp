@@ -24,7 +24,7 @@ private:
 
 public:
 	raw_disk_io();
-	~raw_disk_io(){};
+	~raw_disk_io();
 
 	// this is called when a new torrent is added. The shared_ptr can be
 	// used to hold the internal torrent object alive as long as there are
