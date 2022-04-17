@@ -12,12 +12,12 @@
 
 namespace ezio {
 
-class buffer_pool {
+class buffer_pool : public libtorrent::buffer_allocator_interface {
 public:
   static buffer_pool *get_instance();
 
   char *allocate_buffer();
-  void free_buffer(char *);
+  void free_disk_buffer(char *) override;
 
 private:
   buffer_pool();
@@ -31,11 +31,6 @@ private:
   std::mutex m_pool_mutex;
   char *m_buffer;
   std::deque<char *> m_deque;
-};
-
-class buffer_recycler final : public libtorrent::buffer_allocator_interface {
-public:
-  void free_disk_buffer(char *buffer) override;
 };
 
 } // namespace ezio
