@@ -17,7 +17,7 @@ read_job::read_job(char *buffer,
 
 void read_job::operator()()
 {
-  static buffer_recycler recycler;
+  auto bufferPool = buffer_pool::get_instance();
 
   // do read/write operation.
 
@@ -25,7 +25,7 @@ void read_job::operator()()
   error.operation = lt::operation_t::file_read;
   error.ec = libtorrent::errors::no_error;
 
-  handler_(libtorrent::disk_buffer_holder(recycler, buffer_, 123), error);
+  handler_(libtorrent::disk_buffer_holder(*bufferPool, buffer_, 123), error);
 
   SPDLOG_INFO("buffer: {}", buffer_);
 }

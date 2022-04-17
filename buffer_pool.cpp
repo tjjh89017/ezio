@@ -38,16 +38,10 @@ char *buffer_pool::allocate_buffer()
   return buf;
 }
 
-void buffer_pool::free_buffer(char *buf)
+void buffer_pool::free_disk_buffer(char *buf)
 {
   std::unique_lock<std::mutex> l(m_pool_mutex);
   m_deque.push_back(buf);
-}
-
-void buffer_recycler::free_disk_buffer(char *buffer)
-{
-  auto inst = buffer_pool::get_instance();
-  inst->free_buffer(buffer);
 }
 
 } // namespace ezio
