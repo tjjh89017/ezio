@@ -5,9 +5,8 @@
 #include <spdlog/spdlog.h>
 #include "buffer_pool.hpp"
 
-using namespace std;
-using namespace ezio;
-
+namespace ezio
+{
 read_job::read_job(char *buffer, buffer_pool *pool,
 	std::function<void(libtorrent::disk_buffer_holder,
 		libtorrent::storage_error const &)>
@@ -51,20 +50,20 @@ thread_pool::thread_pool()
 
 void thread_pool::start(int num_threads)
 {
-	unique_lock<mutex> lk(mtx_);
+	std::unique_lock<std::mutex> lk(mtx_);
 	if (started_) {
 		SPDLOG_ERROR("thread_pool has been started");
 		return;
 	}
 
 	started_ = true;
-	io_pool_ = make_unique<boost::asio::thread_pool>(num_threads);
-	hash_pool_ = make_unique<boost::asio::thread_pool>(num_threads);
+	io_pool_ = std::make_unique<boost::asio::thread_pool>(num_threads);
+	hash_pool_ = std::make_unique<boost::asio::thread_pool>(num_threads);
 }
 
 void thread_pool::stop()
 {
-	unique_lock<mutex> lk(mtx_);
+	std::unique_lock<std::mutex> lk(mtx_);
 	if (!started_) {
 		SPDLOG_ERROR("thread_pool has been stopped");
 		return;
@@ -119,3 +118,5 @@ void thread_pool::submit(hash_job &&job)
 
 	boost::asio::post(*hash_pool_, job);
 }
+
+}  // namespace ezio

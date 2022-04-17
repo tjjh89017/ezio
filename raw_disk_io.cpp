@@ -2,9 +2,8 @@
 #include "thread_pool.hpp"
 #include "buffer_pool.hpp"
 
-using namespace ezio;
-using namespace libtorrent;
-
+namespace libtorrent
+{
 std::unique_ptr<libtorrent::disk_interface>
 raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::settings_interface const &s,
@@ -37,7 +36,7 @@ void raw_disk_io::async_read(
 
 	// FIXME: if buffer is nullptr
 
-	read_job job(buffer, &read_buffer_pool_, handler);
+	ezio::read_job job(buffer, &read_buffer_pool_, handler);
 	threadPool->submit(job);
 }
 
@@ -134,3 +133,5 @@ void raw_disk_io::submit_jobs()
 void raw_disk_io::settings_updated()
 {
 }
+
+}  // namespace libtorrent
