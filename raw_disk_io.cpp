@@ -33,7 +33,7 @@ void raw_disk_io::async_read(
 
   auto buffer = bufferPool->allocate_buffer();
 
-  io_job job(buffer, handler);
+  read_job job(buffer, handler);
   threadPool->submit(job);
 }
 
