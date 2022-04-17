@@ -13,6 +13,7 @@ set(sources
 
 	daemon
 	buffer_pool
+  thread_pool
 )
 
 set(grpc_sources
