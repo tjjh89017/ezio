@@ -16,6 +16,11 @@ raw_disk_io::raw_disk_io()
 {
 }
 
+raw_disk_io::~raw_disk_io()
+{
+	thread_pool_.stop();
+}
+
 libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params const &p,
 	std::shared_ptr<void> const &torrent)
 {
