@@ -14,6 +14,7 @@ set(sources
 	daemon
 	buffer_pool
   thread_pool
+  raw_disk_io
 )
 
 set(grpc_sources
