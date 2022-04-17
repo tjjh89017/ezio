@@ -3,20 +3,37 @@
 #include <boost/asio/post.hpp>
 #include <boost/assert.hpp>
 #include <spdlog/spdlog.h>
+#include "buffer_pool.hpp"
 
 using namespace std;
 using namespace ezio;
 
-io_job::io_job(const char *buffer) : buffer_(buffer)
+io_job::io_job(char *buffer,
+               std::function<void(libtorrent::disk_buffer_holder,
+                                  libtorrent::storage_error const &)>
+                 handler)
+  : buffer_(buffer), handler_(handler)
 {}
 
 void io_job::operator()()
 {
+  static buffer_recycler recycler;
+
+  // do read/write operation.
+
+  lt::storage_error error;
+  error.operation = lt::operation_t::file_read;
+  error.ec = libtorrent::errors::no_error;
+
+  handler_(libtorrent::disk_buffer_holder(recycler, buffer_, 123), error);
+
   SPDLOG_INFO("buffer: {}", buffer_);
 }
 
 void hash_job::operator()()
-{}
+{
+  SPDLOG_ERROR("hash_job is not implemented");
+}
 
 thread_pool *thread_pool::get_instance()
 {

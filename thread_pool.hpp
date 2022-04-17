@@ -5,18 +5,22 @@
 #include <memory>
 #include <boost/asio/thread_pool.hpp>
 #include <boost/move/utility_core.hpp>
-//#include <channel.hpp>
+#include <libtorrent/libtorrent.hpp>
 
 namespace ezio {
 
 struct io_job {
 public:
-  io_job(const char *buffer);
+  io_job(char *buffer, std::function<void(libtorrent::disk_buffer_holder,
+                                          libtorrent::storage_error const &)>);
 
   void operator()();
 
 private:
-  const char *buffer_;
+  char *buffer_;
+  std::function<void(libtorrent::disk_buffer_holder,
+                     libtorrent::storage_error const &)>
+    handler_;
 };
 
 struct hash_job {
