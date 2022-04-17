@@ -38,12 +38,6 @@ void hash_job::operator()()
 	SPDLOG_ERROR("hash_job is not implemented");
 }
 
-thread_pool *thread_pool::get_instance()
-{
-	static thread_pool inst;
-	return &inst;
-}
-
 thread_pool::thread_pool()
 {
 }
