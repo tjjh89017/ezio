@@ -57,6 +57,11 @@ sudo make install
 
 If you want to build gRPC service for UI or Info
 ```shell
+apt-get install libgrpc-dev \
+                libgrpc++-dev \
+                libprotobuf-dev \
+                protobuf-compiler-grpc
+
 cmake .. -Dgrpc_support=ON
 ```
 
