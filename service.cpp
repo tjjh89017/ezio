@@ -1,4 +1,5 @@
 #include "service.hpp"
+#include <spdlog/spdlog.h>
 #include "daemon.hpp"
 
 namespace ezio {
@@ -28,8 +29,7 @@ EZIOServiceImpl::EZIOServiceImpl()
 Status EZIOServiceImpl::Shutdown(ServerContext *context, const Empty *e1,
                                  Empty *e2)
 {
-  // TODO fix this
-  std::cout << "shutdown" << std::endl;
+  SPDLOG_INFO("shutdown");
 
   ezio &daemon = ezio::ezio::get_instance();
   daemon.stop();
@@ -40,8 +40,7 @@ Status EZIOServiceImpl::GetTorrentStatus(ServerContext *context,
                                          const UpdateRequest *request,
                                          UpdateStatus *status)
 {
-  // TODO fix this
-  std::cout << "GetTorrentStatus" << std::endl;
+  SPDLOG_INFO("GetTorrentStatus request: {}", request->DebugString());
 
   ezio &daemon = ezio::ezio::get_instance();
   lt::session &ses = *daemon.get_session();
@@ -89,7 +88,7 @@ Status EZIOServiceImpl::AddTorrent(ServerContext *context,
                                    const AddRequest *request,
                                    AddResponse *response)
 {
-  std::cout << "AddTorrent" << std::endl;
+  SPDLOG_INFO("AddTorrent");
 
   ezio &daemon = ezio::ezio::get_instance();
   lt::session &ses = *daemon.get_session();
