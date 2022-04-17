@@ -12,19 +12,17 @@
 namespace ezio {
 
 class buffer_pool {
-
 public:
-	buffer_pool();
-	~buffer_pool();
+  buffer_pool();
+  ~buffer_pool();
 
-	char* allocate_buffer();
-	void free_buffer(char*);
+  char *allocate_buffer();
+  void free_buffer(char *);
 
 private:
-	std::mutex m_pool_mutex;
-	char *m_buffer;
-	std::deque<char*> m_deque;
-
+  std::mutex m_pool_mutex;
+  char *m_buffer;
+  std::deque<char *> m_deque;
 };
 
 } // namespace ezio

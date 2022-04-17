@@ -2,6 +2,7 @@
 #include <iostream>
 #include <boost/asio/post.hpp>
 #include <boost/assert.hpp>
+#include <spdlog/spdlog.h>
 
 using namespace std;
 using namespace ezio;
@@ -11,7 +12,7 @@ io_job::io_job(const char *buffer) : buffer_(buffer)
 
 void io_job::operator()()
 {
-  cout << "buffer: " << buffer_ << endl;
+  SPDLOG_INFO("buffer: {}", buffer_);
 }
 
 void hash_job::operator()()
@@ -30,7 +31,7 @@ void thread_pool::start(int num_threads)
 {
   unique_lock<mutex> lk(mtx_);
   if(started_) {
-    // SPDLOG_ERROR("thread_pool has been started");
+    SPDLOG_ERROR("thread_pool has been started");
     return;
   }
 
@@ -43,7 +44,7 @@ void thread_pool::stop()
 {
   unique_lock<mutex> lk(mtx_);
   if(!started_) {
-    // SPDLOG_ERROR("thread_pool has been stopped");
+    SPDLOG_ERROR("thread_pool has been stopped");
     return;
   }
 
