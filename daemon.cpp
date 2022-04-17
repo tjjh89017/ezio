@@ -4,49 +4,47 @@
 
 namespace ezio {
 
-ezio::ezio() : session(nullptr)
-{
+ezio::ezio()
+{}
 
-}
-
-ezio& ezio::get_instance()
+ezio &ezio::get_instance()
 {
-	static ezio instance;
-	return instance;
+  static ezio instance;
+  return instance;
 }
 
 void ezio::stop()
 {
-	shutdown = true;
+  shutdown_ = true;
 }
 
 void ezio::wait(int sec)
 {
-	while (!shutdown) {
-		std::this_thread::sleep_for(std::chrono::seconds(sec));
-	}
+  while(!shutdown_) {
+    std::this_thread::sleep_for(std::chrono::seconds(sec));
+  }
 
-	grpcservice->stop();
+  grpcservice_->stop();
 }
 
-void ezio::set_session(lt::session* s)
+void ezio::set_session(std::unique_ptr<lt::session> s)
 {
-	session = s;
+  session_.swap(s);
 }
 
-lt::session* ezio::get_session()
+lt::session *ezio::get_session()
 {
-	return session;
+  return session_.get();
 }
 
-void ezio::set_grpcservice(gRPCService* g)
+void ezio::set_grpcservice(std::unique_ptr<gRPCService> g)
 {
-	grpcservice = g;
+  grpcservice_.swap(g);
 }
 
-gRPCService* ezio::get_grpcservice()
+gRPCService *ezio::get_grpcservice()
 {
-	return grpcservice;
+  return grpcservice_.get();
 }
 
 } // namespace ezio

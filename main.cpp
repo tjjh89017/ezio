@@ -34,12 +34,14 @@ int main(int argc, char **argv)
   lt::session_params ses_params(p);
   ses_params.disk_io_constructor = lt::default_disk_io_constructor;
 
-  lt::session *session = new lt::session(ses_params);
-  daemon.set_session(session);
+  std::unique_ptr<lt::session> session =
+    std::make_unique<lt::session>(ses_params);
+  daemon.set_session(std::move(session));
 
-  ezio::gRPCService grpcservice(server_address);
+  std::unique_ptr<ezio::gRPCService> grpcservice =
+    std::make_unique<ezio::gRPCService>(server_address);
 
-  daemon.set_grpcservice(&grpcservice);
+  daemon.set_grpcservice(std::move(grpcservice));
 
   std::cout << "Server listening on " << server_address << std::endl;
   daemon.wait(10);
