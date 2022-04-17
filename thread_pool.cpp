@@ -8,14 +8,14 @@
 using namespace std;
 using namespace ezio;
 
-io_job::io_job(char *buffer,
-               std::function<void(libtorrent::disk_buffer_holder,
-                                  libtorrent::storage_error const &)>
-                 handler)
+read_job::read_job(char *buffer,
+                   std::function<void(libtorrent::disk_buffer_holder,
+                                      libtorrent::storage_error const &)>
+                     handler)
   : buffer_(buffer), handler_(handler)
 {}
 
-void io_job::operator()()
+void read_job::operator()()
 {
   static buffer_recycler recycler;
 
@@ -28,6 +28,11 @@ void io_job::operator()()
   handler_(libtorrent::disk_buffer_holder(recycler, buffer_, 123), error);
 
   SPDLOG_INFO("buffer: {}", buffer_);
+}
+
+void write_job::operator()()
+{
+  SPDLOG_ERROR("hash_job is not implemented");
 }
 
 void hash_job::operator()()
@@ -73,7 +78,14 @@ void thread_pool::stop()
   hash_pool_.reset(nullptr);
 }
 
-void thread_pool::submit(const io_job &job)
+void thread_pool::submit(const read_job &job)
+{
+  BOOST_ASSERT(started_);
+
+  boost::asio::post(*io_pool_, job);
+}
+
+void thread_pool::submit(const write_job &job)
 {
   BOOST_ASSERT(started_);
 
@@ -87,7 +99,14 @@ void thread_pool::submit(const hash_job &job)
   boost::asio::post(*hash_pool_, job);
 }
 
-void thread_pool::submit(io_job &&job)
+void thread_pool::submit(read_job &&job)
+{
+  BOOST_ASSERT(started_);
+
+  boost::asio::post(*io_pool_, job);
+}
+
+void thread_pool::submit(write_job &&job)
 {
   BOOST_ASSERT(started_);
 
