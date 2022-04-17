@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <libtorrent/libtorrent.hpp>
+#include "buffer_pool.hpp"
 
 std::unique_ptr<libtorrent::disk_interface>
 raw_disk_io_constructor(libtorrent::io_context &ioc,
@@ -12,6 +13,9 @@ raw_disk_io_constructor(libtorrent::io_context &ioc,
 namespace libtorrent {
 
 class raw_disk_io final : public disk_interface {
+private:
+  ezio::buffer_pool read_buffer_pool_, write_buffer_pool_;
+
 public:
   raw_disk_io();
   ~raw_disk_io(){};
