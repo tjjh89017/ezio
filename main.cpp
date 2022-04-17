@@ -9,35 +9,41 @@
 
 #include "daemon.hpp"
 #include "service.hpp"
+#include "thread_pool.hpp"
 
 std::string server_address = "0.0.0.0:50051";
 
-int main(int argc, char ** argv)
+int main(int argc, char **argv)
 {
+  auto inst = ezio::thread_pool::get_instance();
+  inst->start(4);
+  ezio::io_job job1(server_address.c_str());
+  inst->submit(std::move(job1));
 
-	ezio::ezio& daemon = ezio::ezio::get_instance();
+  auto &daemon = ezio::ezio::get_instance();
 
-	lt::settings_pack p;
-	// setup alert mask
-	p.set_int(lt::settings_pack::alert_mask, lt::alert_category::error | lt::alert_category::status);
+  lt::settings_pack p;
+  // setup alert mask
+  p.set_int(lt::settings_pack::alert_mask,
+            lt::alert_category::error | lt::alert_category::status);
 
-	// disable all encrypt to avoid bug https://github.com/arvidn/libtorrent/issues/6735#issuecomment-1036675263
-	p.set_int(lt::settings_pack::out_enc_policy, lt::settings_pack::pe_disabled);
-	p.set_int(lt::settings_pack::in_enc_policy, lt::settings_pack::pe_disabled);
+  // disable all encrypt to avoid bug https://github.com/arvidn/libtorrent/issues/6735#issuecomment-1036675263
+  p.set_int(lt::settings_pack::out_enc_policy, lt::settings_pack::pe_disabled);
+  p.set_int(lt::settings_pack::in_enc_policy, lt::settings_pack::pe_disabled);
 
-	lt::session_params ses_params(p);
-	ses_params.disk_io_constructor = lt::default_disk_io_constructor;
+  lt::session_params ses_params(p);
+  ses_params.disk_io_constructor = lt::default_disk_io_constructor;
 
-	lt::session *session = new lt::session(ses_params);
-	daemon.set_session(session);
+  lt::session *session = new lt::session(ses_params);
+  daemon.set_session(session);
 
-	ezio::gRPCService grpcservice(server_address);
+  ezio::gRPCService grpcservice(server_address);
 
-	daemon.set_grpcservice(&grpcservice);
+  daemon.set_grpcservice(&grpcservice);
 
-	std::cout << "Server listening on " << server_address << std::endl;
-	daemon.wait(10);
-	std::cout << "shutdown in main" << std::endl;
+  std::cout << "Server listening on " << server_address << std::endl;
+  daemon.wait(10);
+  std::cout << "shutdown in main" << std::endl;
 
-	return 0;
+  return 0;
 }
