@@ -1,6 +1,7 @@
 #ifndef __RAW_DISK_IO_HPP__
 #define __RAW_DISK_IO_HPP__
 
+#include <map>
 #include <memory>
 #include <libtorrent/libtorrent.hpp>
 #include "buffer_pool.hpp"
@@ -15,19 +16,18 @@ raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::counters &);
   */
 
+class partition_storage;
+
 class raw_disk_io final : public libtorrent::disk_interface, libtorrent::buffer_allocator_interface
 {
 private:
 	ezio::buffer_pool read_buffer_pool_;
-	ezio::buffer_pool write_buffer_pool_;
 	ezio::thread_pool thread_pool_;
 
 	// callbacks are posted on this
 	libtorrent::io_context &ioc_;
 
-	// fd to partition.
-	int fd_{0};
-	void *partition_mapping_addr_{nullptr};
+	std::map<libtorrent::storage_index_t, std::unique_ptr<partition_storage>> storages_;
 
 public:
 	raw_disk_io(libtorrent::io_context &);

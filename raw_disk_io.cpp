@@ -1,6 +1,7 @@
 #include <string>
 #include <sys/mman.h>
 
+#include <boost/assert.hpp>
 #include <spdlog/spdlog.h>
 
 #include "raw_disk_io.hpp"
@@ -9,6 +10,83 @@
 
 namespace ezio
 {
+class partition_storage
+{
+private:
+	// fd to partition.
+	int fd_{0};
+	void *mapping_addr_{nullptr};
+	size_t mapping_len_{0};
+
+	libtorrent::file_storage const &fs_;
+
+public:
+	partition_storage(const std::string &path, libtorrent::file_storage const &fs) :
+		fs_(fs)
+	{
+		if (fd_) {
+			SPDLOG_WARN("failed to new_torrent({}), already opened.", path);
+			return;
+		}
+
+		fd_ = open(path.c_str(), O_RDWR);
+		if (fd_ < 0) {
+			SPDLOG_CRITICAL("failed to open ({}) = {}", path, strerror(fd_));
+			exit(1);
+		}
+
+		// calc total size for calling mmap() later.
+		size_t length = 0;
+		for (const auto &file_index : fs.file_range()) {
+			std::string file_name(fs.file_name(file_index));
+			int64_t file_size = fs.file_size(file_index);
+
+			try {
+				int64_t file_offset = std::stoll(file_name);
+				int64_t end = file_offset + file_size;
+				if (length < end) {
+					length = end;
+				}
+			} catch (const std::exception &e) {
+				SPDLOG_CRITICAL("failed to read file_name({}) at ({}): {}",
+					file_name, file_index, e.what());
+				exit(1);
+			}
+		}
+
+		mapping_len_ = length;
+		mapping_addr_ = mmap(nullptr, length, PROT_READ | PROT_WRITE,
+			MAP_SHARED, fd_, 0);
+		if (mapping_addr_ == MAP_FAILED) {
+			SPDLOG_CRITICAL("failed to mmap: {}", strerror(errno));
+			exit(1);
+		}
+	}
+
+	~partition_storage()
+	{
+		int ec = munmap(mapping_addr_, mapping_len_);
+		if (ec) {
+			SPDLOG_ERROR("munmap: {}", strerror(ec));
+		}
+
+		ec = close(fd_);
+		if (ec) {
+			SPDLOG_ERROR("close: {}", strerror(ec));
+		}
+	}
+
+	void read(char *buffer, libtorrent::piece_index_t const piece, int const offset,
+		int const length, libtorrent::storage_error &error)
+	{
+	}
+
+	void write(char *buffer, libtorrent::piece_index_t const piece, int const offset,
+		int const length, libtorrent::storage_error &error)
+	{
+	}
+};
+
 std::unique_ptr<libtorrent::disk_interface>
 raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::settings_interface const &s,
@@ -18,15 +96,13 @@ raw_disk_io_constructor(libtorrent::io_context &ioc,
 }
 
 raw_disk_io::raw_disk_io(libtorrent::io_context &ioc) :
-	ioc_(ioc), fd_(0)
+	ioc_(ioc)
 {
 }
 
 raw_disk_io::~raw_disk_io()
 {
 	thread_pool_.stop();
-
-	close(fd_);
 }
 
 libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params const &p,
@@ -34,44 +110,15 @@ libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params c
 {
 	const std::string &target_partition = p.path;
 
-	if (fd_) {
-		SPDLOG_WARN("failed to new_torrent({}), already opened.", target_partition);
-		return libtorrent::storage_holder(0, *this);
+	int idx = storages_.size();
+	auto storage = std::make_unique<partition_storage>(target_partition, p.files);
+	storages_.emplace(idx, std::move(storage));
+
+	if (idx > 0) {
+		SPDLOG_WARN("new_torrent current idx => {}, should be 0", idx);
 	}
 
-	fd_ = open(target_partition.c_str(), O_RDWR);
-	if (fd_ < 0) {
-		SPDLOG_CRITICAL("failed to open ({}) = {}", target_partition, strerror(fd_));
-		exit(1);
-	}
-
-	// calc total size for calling mmap() later.
-	size_t length = 0;
-	for (const auto &file_index : p.files.file_range()) {
-		std::string file_name(p.files.file_name(file_index));
-		int64_t file_size = p.files.file_size(file_index);
-
-		try {
-			int64_t file_offset = std::stoll(file_name);
-			int64_t end = file_offset + file_size;
-			if (length < end) {
-				length = end;
-			}
-		} catch (const std::exception &e) {
-			SPDLOG_CRITICAL("failed to read file_name({}) at ({}): {}",
-				file_name, file_index, e.what());
-			exit(1);
-		}
-	}
-
-	partition_mapping_addr_ = mmap(nullptr, length, PROT_READ | PROT_WRITE,
-		MAP_SHARED, fd_, 0);
-	if (partition_mapping_addr_ == MAP_FAILED) {
-		SPDLOG_CRITICAL("failed to mmap: {}", strerror(errno));
-		exit(1);
-	}
-
-	return libtorrent::storage_holder(0, *this);
+	return libtorrent::storage_holder(idx, *this);
 }
 
 void raw_disk_io::remove_torrent(libtorrent::storage_index_t idx)
@@ -80,16 +127,30 @@ void raw_disk_io::remove_torrent(libtorrent::storage_index_t idx)
 }
 
 void raw_disk_io::async_read(
-	libtorrent::storage_index_t storage, libtorrent::peer_request const &r,
+	libtorrent::storage_index_t idx, libtorrent::peer_request const &r,
 	std::function<void(libtorrent::disk_buffer_holder, libtorrent::storage_error const &)> handler,
 	libtorrent::disk_job_flags_t flags)
 {
-	auto buffer = read_buffer_pool_.allocate_buffer();
+	BOOST_ASSERT(DEFAULT_BLOCK_SIZE >= r.length);
 
-	// FIXME: if buffer is nullptr
+	libtorrent::storage_error error;
+	char *buf = read_buffer_pool_.allocate_buffer();
 
-	ezio::read_job job(buffer, &read_buffer_pool_, handler);
-	thread_pool_.submit(job);
+	if (!buf) {
+		error.ec = libtorrent::errors::no_memory;
+		error.operation = libtorrent::operation_t::alloc_cache_piece;
+		post(ioc_, [=, h = std::move(handler)] {
+			h(libtorrent::disk_buffer_holder(read_buffer_pool_, nullptr, 0), error);
+		});
+		return;
+	}
+
+	storages_[idx]->read(buf, r.piece, r.start, r.length, error);
+	auto buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, buf, r.length);
+
+	post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
+		h(std::move(b), error);
+	});
 }
 
 bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::peer_request const &r,
@@ -97,6 +158,12 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	std::function<void(libtorrent::storage_error const &)> handler,
 	libtorrent::disk_job_flags_t flags)
 {
+	libtorrent::storage_error error;
+	storages_[storage]->write(const_cast<char *>(buf), r.piece, r.start, r.length, error);
+
+	post(ioc_, [=, h = std::move(handler)] {
+		h(error);
+	});
 	return false;
 }
 
@@ -212,10 +279,9 @@ void raw_disk_io::settings_updated()
 }
 
 // implements buffer_allocator_interface
-void raw_disk_io::free_disk_buffer(char *)
+void raw_disk_io::free_disk_buffer(char *c)
 {
-	// never free any buffer. We only return buffers owned by the storage
-	// object
+	read_buffer_pool_.free_disk_buffer(c);
 }
 
 }  // namespace ezio
