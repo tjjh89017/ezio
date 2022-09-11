@@ -9,14 +9,13 @@
 
 #include "daemon.hpp"
 #include "service.hpp"
-#include "thread_pool.hpp"
+#include "config.hpp"
+#include "raw_disk_io.hpp"
 
 std::string server_address = "0.0.0.0:50051";
 
 int main(int argc, char **argv)
 {
-	auto &daemon = ezio::ezio::get_instance();
-
 	lt::settings_pack p;
 	// setup alert mask
 	p.set_int(lt::settings_pack::alert_mask,
@@ -27,16 +26,15 @@ int main(int argc, char **argv)
 	p.set_int(lt::settings_pack::in_enc_policy, lt::settings_pack::pe_disabled);
 
 	lt::session_params ses_params(p);
-	ses_params.disk_io_constructor = lt::default_disk_io_constructor;
+	ses_params.disk_io_constructor = ezio::raw_disk_io_constructor;
 
-	std::unique_ptr<lt::session> session =
-		std::make_unique<lt::session>(ses_params);
-	daemon.set_session(std::move(session));
+	// create session and inject to daemon.
+	lt::session session(ses_params);
+	ezio::ezio daemon(session);
 
-	std::unique_ptr<ezio::gRPCService> grpcservice =
-		std::make_unique<ezio::gRPCService>(server_address);
-
-	daemon.set_grpcservice(std::move(grpcservice));
+	// inject daemon to gRPC service.
+	ezio::gRPCService service(daemon);
+	service.start(server_address);
 
 	std::cout << "Server listening on " << server_address << std::endl;
 	daemon.wait(10);

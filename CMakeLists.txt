@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 14)
 
 set(sources
 	main
-	#config
+  #config
 	#raw_storage
 
 	daemon

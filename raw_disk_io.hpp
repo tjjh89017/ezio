@@ -9,20 +9,18 @@
 
 namespace ezio
 {
-/*
 std::unique_ptr<libtorrent::disk_interface>
 raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::settings_interface const &,
 	libtorrent::counters &);
-  */
 
 class partition_storage;
 
 class raw_disk_io final : public libtorrent::disk_interface
 {
 private:
-	ezio::buffer_pool read_buffer_pool_;
-	ezio::thread_pool thread_pool_;
+	buffer_pool read_buffer_pool_;
+	thread_pool thread_pool_;
 
 	// callbacks are posted on this
 	libtorrent::io_context &ioc_;

@@ -2,33 +2,40 @@
 #define __DAEMON_HPP__
 
 #include <atomic>
+#include <string>
+#include <vector>
 #include <libtorrent/libtorrent.hpp>
+#include <boost/core/noncopyable.hpp>
 #include "service.hpp"
 
 namespace ezio
 {
-class ezio
+struct torrent_status {
+	std::string hash;
+	std::string name;
+	double progress;
+	int64_t download_rate;
+	int64_t upload_rate;
+	int64_t active_time;
+	bool is_finished;
+	int64_t num_peers;
+};
+
+class ezio : boost::noncopyable
 {
 public:
-	static ezio &get_instance();
+	ezio(lt::session &);
+	~ezio() = default;
 
 	void stop();
-	void wait(int sec);
-
-	void set_session(std::unique_ptr<lt::session>);
-	lt::session *get_session();
-	void set_grpcservice(std::unique_ptr<gRPCService>);
-	gRPCService *get_grpcservice();
+	void wait(int interval_second);
+	void add_torrent(std::string torrent_body, std::string save_path);
+	std::map<std::string, torrent_status> get_torrent_status(std::vector<std::string> hashes);
 
 private:
-	ezio();
-	~ezio() = default;
-	ezio(const ezio &) = delete;
-	ezio &operator=(const ezio &) = delete;
+	lt::session &session_;
 
 	std::atomic_bool shutdown_;
-	std::unique_ptr<lt::session> session_;
-	std::unique_ptr<gRPCService> grpcservice_;
 };
 
 }  // namespace ezio
