@@ -72,6 +72,7 @@ target_include_directories(${EZIO} PUBLIC
 target_link_libraries(${EZIO} PRIVATE
 	${LibtorrentRasterbar_LIBRARIES}
 	torrent-rasterbar
+	spdlog fmt
 	${Boost_LIBRARIES}
 
 	${PROTOBUF_LIBRARIES}
