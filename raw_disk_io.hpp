@@ -27,6 +27,7 @@ private:
 
 	// fd to partition.
 	int fd_{0};
+	void *partition_mapping_addr_{nullptr};
 
 public:
 	raw_disk_io(libtorrent::io_context &);

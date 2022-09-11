@@ -1,5 +1,7 @@
-#include <spdlog/spdlog.h>
 #include <string>
+#include <sys/mman.h>
+
+#include <spdlog/spdlog.h>
 
 #include "raw_disk_io.hpp"
 #include "thread_pool.hpp"
@@ -23,6 +25,8 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc) :
 raw_disk_io::~raw_disk_io()
 {
 	thread_pool_.stop();
+
+	close(fd_);
 }
 
 libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params const &p,
@@ -38,6 +42,32 @@ libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params c
 	fd_ = open(target_partition.c_str(), O_RDWR);
 	if (fd_ < 0) {
 		SPDLOG_CRITICAL("failed to open ({}) = {}", target_partition, strerror(fd_));
+		exit(1);
+	}
+
+	// calc total size for calling mmap() later.
+	size_t length = 0;
+	for (const auto &file_index : p.files.file_range()) {
+		std::string file_name(p.files.file_name(file_index));
+		int64_t file_size = p.files.file_size(file_index);
+
+		try {
+			int64_t file_offset = std::stoll(file_name);
+			int64_t end = file_offset + file_size;
+			if (length < end) {
+				length = end;
+			}
+		} catch (const std::exception &e) {
+			SPDLOG_CRITICAL("failed to read file_name({}) at ({}): {}",
+				file_name, file_index, e.what());
+			exit(1);
+		}
+	}
+
+	partition_mapping_addr_ = mmap(nullptr, length, PROT_READ | PROT_WRITE,
+		MAP_SHARED, fd_, 0);
+	if (partition_mapping_addr_ == MAP_FAILED) {
+		SPDLOG_CRITICAL("failed to mmap: {}", strerror(errno));
 		exit(1);
 	}
 
