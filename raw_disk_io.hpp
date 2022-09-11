@@ -15,15 +15,21 @@ raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::counters &);
   */
 
-class raw_disk_io final : public libtorrent::disk_interface
+class raw_disk_io final : public libtorrent::disk_interface, libtorrent::buffer_allocator_interface
 {
 private:
 	ezio::buffer_pool read_buffer_pool_;
 	ezio::buffer_pool write_buffer_pool_;
 	ezio::thread_pool thread_pool_;
 
+	// callbacks are posted on this
+	libtorrent::io_context &ioc_;
+
+	// fd to partition.
+	int fd_{0};
+
 public:
-	raw_disk_io();
+	raw_disk_io(libtorrent::io_context &);
 	~raw_disk_io();
 
 	// this is called when a new torrent is added. The shared_ptr can be
@@ -223,6 +229,9 @@ public:
 	// function is called to allow the disk I/O object to react to any
 	// changed settings relevant to its operations.
 	void settings_updated() override;
+
+	// implements buffer_allocator_interface
+	void free_disk_buffer(char *) override;
 };
 
 }  // namespace ezio
