@@ -48,7 +48,7 @@ public:
 					length = end;
 				}
 			} catch (const std::exception &e) {
-				SPDLOG_CRITICAL("failed to read file_name({}) at ({}): {}",
+				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
 					file_name, file_index, e.what());
 				exit(1);
 			}
@@ -79,11 +79,59 @@ public:
 	void read(char *buffer, libtorrent::piece_index_t const piece, int const offset,
 		int const length, libtorrent::storage_error &error)
 	{
+		auto file_slices = fs_.map_block(piece, offset, length);
+
+		for (const auto &file_slice : file_slices) {
+			const auto &file_index = file_slice.file_index;
+
+			int64_t partition_offset = 0;
+
+			// to find partition_offset from file name.
+			std::string file_name(fs_.file_name(file_index));
+			try {
+				partition_offset = std::stoll(file_name);
+				partition_offset += file_slice.offset;
+			} catch (const std::exception &e) {
+				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
+					file_name, file_index, e.what());
+				error.file(file_index);
+				error.ec = libtorrent::errors::parse_failed;
+				error.operation = libtorrent::operation_t::file_read;
+				return;
+			}
+
+			memcpy(buffer, mapping_addr_ + partition_offset, file_slice.size);
+			buffer += file_slice.size;
+		}
 	}
 
 	void write(char *buffer, libtorrent::piece_index_t const piece, int const offset,
 		int const length, libtorrent::storage_error &error)
 	{
+		auto file_slices = fs_.map_block(piece, offset, length);
+
+		for (const auto &file_slice : file_slices) {
+			const auto &file_index = file_slice.file_index;
+
+			int64_t partition_offset = 0;
+
+			// to find partition_offset from file name.
+			std::string file_name(fs_.file_name(file_index));
+			try {
+				partition_offset = std::stoll(file_name);
+				partition_offset += file_slice.offset;
+			} catch (const std::exception &e) {
+				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
+					file_name, file_index, e.what());
+				error.file(file_index);
+				error.ec = libtorrent::errors::parse_failed;
+				error.operation = libtorrent::operation_t::file_write;
+				return;
+			}
+
+			memcpy(mapping_addr_ + partition_offset, buffer, file_slice.size);
+			buffer += file_slice.size;
+		}
 	}
 };
 
@@ -276,12 +324,6 @@ void raw_disk_io::submit_jobs()
 
 void raw_disk_io::settings_updated()
 {
-}
-
-// implements buffer_allocator_interface
-void raw_disk_io::free_disk_buffer(char *c)
-{
-	read_buffer_pool_.free_disk_buffer(c);
 }
 
 }  // namespace ezio
