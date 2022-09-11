@@ -22,26 +22,25 @@ using ezio::EZIO;
 
 namespace ezio
 {
-class EZIOServiceImpl final : public EZIO::Service
-{
-public:
-	EZIOServiceImpl();
-	virtual Status Shutdown(ServerContext *context, const Empty *e1, Empty *e2) override;
-	virtual Status GetTorrentStatus(ServerContext *context, const UpdateRequest *request, UpdateStatus *status) override;
-	virtual Status AddTorrent(ServerContext *context, const AddRequest *request, AddResponse *response) override;
-};
+class ezio;
 
-class gRPCService
+class gRPCService final : public EZIO::Service
 {
 public:
-	gRPCService(std::string);
+	gRPCService(ezio &);
 	explicit gRPCService();
+	void start(std::string);
 	void stop();
 	void wait();
 
-	std::string server_address;
-	EZIOServiceImpl service;
-	std::unique_ptr<Server> server;
+
+	virtual Status Shutdown(ServerContext *context, const Empty *e1, Empty *e2) override;
+	virtual Status GetTorrentStatus(ServerContext *context, const UpdateRequest *request, UpdateStatus *response) override;
+	virtual Status AddTorrent(ServerContext *context, const AddRequest *request, AddResponse *response) override;
+
+private:
+	ezio &daemon_;
+	std::unique_ptr<Server> server_;
 };
 
 }  // namespace ezio
