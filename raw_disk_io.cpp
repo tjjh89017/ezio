@@ -24,11 +24,6 @@ public:
 	partition_storage(const std::string &path, libtorrent::file_storage const &fs) :
 		fs_(fs)
 	{
-		if (fd_) {
-			SPDLOG_WARN("failed to new_torrent({}), already opened.", path);
-			return;
-		}
-
 		fd_ = open(path.c_str(), O_RDWR);
 		if (fd_ < 0) {
 			SPDLOG_CRITICAL("failed to open ({}) = {}", path, strerror(fd_));
@@ -79,6 +74,9 @@ public:
 	void read(char *buffer, libtorrent::piece_index_t const piece, int const offset,
 		int const length, libtorrent::storage_error &error)
 	{
+		BOOST_ASSERT(buffer != nullptr);
+		BOOST_ASSERT(mapping_addr_ != nullptr);
+
 		auto file_slices = fs_.map_block(piece, offset, length);
 
 		for (const auto &file_slice : file_slices) {
@@ -108,6 +106,9 @@ public:
 	void write(char *buffer, libtorrent::piece_index_t const piece, int const offset,
 		int const length, libtorrent::storage_error &error)
 	{
+		BOOST_ASSERT(buffer != nullptr);
+		BOOST_ASSERT(mapping_addr_ != nullptr);
+
 		auto file_slices = fs_.map_block(piece, offset, length);
 
 		for (const auto &file_slice : file_slices) {
