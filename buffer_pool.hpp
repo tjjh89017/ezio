@@ -3,6 +3,7 @@
 
 #include <deque>
 #include <mutex>
+#include <boost/core/noncopyable.hpp>
 #include <libtorrent/libtorrent.hpp>
 
 // 256 MB
@@ -12,7 +13,7 @@
 
 namespace ezio
 {
-class buffer_pool : public libtorrent::buffer_allocator_interface
+class buffer_pool : public libtorrent::buffer_allocator_interface, boost::noncopyable
 {
 public:
 	buffer_pool();
