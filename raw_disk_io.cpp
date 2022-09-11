@@ -37,7 +37,7 @@ public:
 			int64_t file_size = fs.file_size(file_index);
 
 			try {
-				int64_t file_offset = std::stoll(file_name);
+				int64_t file_offset = std::stoll(file_name, 0, 16);
 				int64_t end = file_offset + file_size;
 				if (length < end) {
 					length = end;
@@ -87,7 +87,7 @@ public:
 			// to find partition_offset from file name.
 			std::string file_name(fs_.file_name(file_index));
 			try {
-				partition_offset = std::stoll(file_name);
+				partition_offset = std::stoll(file_name, 0, 16);
 				partition_offset += file_slice.offset;
 			} catch (const std::exception &e) {
 				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
@@ -119,7 +119,7 @@ public:
 			// to find partition_offset from file name.
 			std::string file_name(fs_.file_name(file_index));
 			try {
-				partition_offset = std::stoll(file_name);
+				partition_offset = std::stoll(file_name, 0, 16);
 				partition_offset += file_slice.offset;
 			} catch (const std::exception &e) {
 				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
