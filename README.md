@@ -37,12 +37,18 @@ EZIO is inspired by Clonezilla and BTsync (Resilio) for its idea to transfer dat
 - 1GB RAM
 
 ### Dependencies
-- Ubuntu>=16.10
-- libtorrent-rasterbar>=1.1.1
-- libboost>=1.58
-- cmake>=3.0
+- Debian 11 or above
+- libtorrent-rasterbar>=2.0.8
+- libboost>=1.74
+- cmake>=3.16
+- spdlog
+- gRPC
 ```shell
-sudo apt-get install libtorrent-rasterbar-dev -y
+sudo apt-get install -y libtorrent-rasterbar-dev \
+                        libgrpc-dev \
+                        libgrpc++-dev \
+                        libprotobuf-dev \
+                        protobuf-compiler-grpc
 ```
 
 ### Build and Install
@@ -53,16 +59,6 @@ cd build
 cmake ../
 make
 sudo make install
-```
-
-If you want to build gRPC service for UI or Info
-```shell
-apt-get install libgrpc-dev \
-                libgrpc++-dev \
-                libprotobuf-dev \
-                protobuf-compiler-grpc
-
-cmake .. -Dgrpc_support=ON
 ```
 
 ## Usage
