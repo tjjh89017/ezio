@@ -19,6 +19,10 @@ struct torrent_status {
 	int64_t active_time;
 	bool is_finished;
 	int64_t num_peers;
+	int64_t state;
+	int64_t total_done;
+	int64_t total;
+	int64_t num_pieces;
 };
 
 class ezio : boost::noncopyable

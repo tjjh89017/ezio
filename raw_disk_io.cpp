@@ -3,9 +3,9 @@
 
 #include <boost/assert.hpp>
 #include <spdlog/spdlog.h>
+#include <libtorrent/hasher.hpp>
 
 #include "raw_disk_io.hpp"
-#include "thread_pool.hpp"
 #include "buffer_pool.hpp"
 
 namespace ezio
@@ -71,13 +71,19 @@ public:
 		}
 	}
 
-	void read(char *buffer, libtorrent::piece_index_t const piece, int const offset,
+	int piece_size(libtorrent::piece_index_t const piece)
+	{
+		return fs_.piece_size(piece);
+	}
+
+	int read(char *buffer, libtorrent::piece_index_t const piece, int const offset,
 		int const length, libtorrent::storage_error &error)
 	{
 		BOOST_ASSERT(buffer != nullptr);
 		BOOST_ASSERT(mapping_addr_ != nullptr);
 
 		auto file_slices = fs_.map_block(piece, offset, length);
+		int ret = 0;
 
 		for (const auto &file_slice : file_slices) {
 			const auto &file_index = file_slice.file_index;
@@ -95,12 +101,14 @@ public:
 				error.file(file_index);
 				error.ec = libtorrent::errors::parse_failed;
 				error.operation = libtorrent::operation_t::file_read;
-				return;
+				return ret;
 			}
 
 			memcpy(buffer, mapping_addr_ + partition_offset, file_slice.size);
+			ret += file_slice.size;
 			buffer += file_slice.size;
 		}
+		return ret;
 	}
 
 	void write(char *buffer, libtorrent::piece_index_t const piece, int const offset,
@@ -136,8 +144,7 @@ public:
 	}
 };
 
-std::unique_ptr<libtorrent::disk_interface>
-raw_disk_io_constructor(libtorrent::io_context &ioc,
+std::unique_ptr<libtorrent::disk_interface> raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::settings_interface const &s,
 	libtorrent::counters &c)
 {
@@ -151,7 +158,6 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc) :
 
 raw_disk_io::~raw_disk_io()
 {
-	thread_pool_.stop();
 }
 
 libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params const &p,
@@ -222,6 +228,41 @@ void raw_disk_io::async_hash(
 	std::function<void(libtorrent::piece_index_t, libtorrent::sha1_hash const &, libtorrent::storage_error const &)>
 		handler)
 {
+	libtorrent::storage_error error;
+	char *buf = read_buffer_pool_.allocate_buffer();
+
+	if (!buf) {
+		error.ec = libtorrent::errors::no_memory;
+		error.operation = libtorrent::operation_t::alloc_cache_piece;
+		post(ioc_, [=, h = std::move(handler)] {
+			h(piece, libtorrent::sha1_hash{}, error);
+		});
+		return;
+	}
+	
+	libtorrent::hasher ph;
+	auto buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, buf, DEFAULT_BLOCK_SIZE);
+	
+	partition_storage *st = storages_[storage].get(); 
+
+	int const piece_size = st->piece_size(piece);
+	int const blocks_in_piece = (piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
+
+	int offset = 0;
+	int const blocks_to_read = blocks_in_piece;
+	for (int i = 0; i < blocks_to_read; i++) {
+		auto const len = std::min(DEFAULT_BLOCK_SIZE, piece_size - offset);
+		int const ret = st->read(buf, piece, offset, len, error);
+		if (ret <= 0) {
+			break;
+		}
+		offset += DEFAULT_BLOCK_SIZE;
+		ph.update(buf, ret);
+	}
+
+	libtorrent::sha1_hash const hash = ph.final();
+
+	post(ioc_, [=, h = std::move(handler)]{ h(piece, hash, error); });
 }
 
 void raw_disk_io::async_hash2(

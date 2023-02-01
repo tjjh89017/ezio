@@ -30,10 +30,12 @@ void gRPCService::wait()
 Status gRPCService::Shutdown(ServerContext *context, const Empty *e1,
 	Empty *e2)
 {
-	SPDLOG_INFO("shutdown");
+	SPDLOG_DEBUG("shutdown");
 
 	daemon_.stop();
+	SPDLOG_DEBUG("shutdown2");
 	stop();
+	SPDLOG_DEBUG("shutdown3");
 	return Status::OK;
 }
 
@@ -41,7 +43,7 @@ Status gRPCService::GetTorrentStatus(ServerContext *context,
 	const UpdateRequest *request,
 	UpdateStatus *response)
 {
-	SPDLOG_INFO("GetTorrentStatus request: {}", request->DebugString());
+	SPDLOG_DEBUG("GetTorrentStatus request: {}", request->DebugString());
 
 	std::vector<std::string> hashes(request->hashes().begin(), request->hashes().end());
 	auto result = daemon_.get_torrent_status(hashes);
@@ -60,6 +62,10 @@ Status gRPCService::GetTorrentStatus(ServerContext *context,
 		t.set_is_finished(t_stat.is_finished);
 		t.set_active_time(t_stat.active_time);
 		t.set_num_peers(t_stat.num_peers);
+		t.set_state(t_stat.state);
+		t.set_total_done(t_stat.total_done);
+		t.set_total(t_stat.total);
+		t.set_num_pieces(t_stat.num_pieces);
 		response->mutable_torrents()->insert({hash, t});
 	}
 

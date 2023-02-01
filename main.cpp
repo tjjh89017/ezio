@@ -4,6 +4,7 @@
 #include <chrono>
 #include <getopt.h>
 #include <stddef.h>
+#include "spdlog/cfg/env.h"
 
 #include <libtorrent/libtorrent.hpp>
 
@@ -16,6 +17,8 @@ std::string server_address = "0.0.0.0:50051";
 
 int main(int argc, char **argv)
 {
+	spdlog::cfg::load_env_levels();
+
 	lt::settings_pack p;
 	// setup alert mask
 	p.set_int(lt::settings_pack::alert_mask,
@@ -32,7 +35,6 @@ int main(int argc, char **argv)
 	lt::session session(ses_params);
 	ezio::ezio daemon(session);
 
-	// inject daemon to gRPC service.
 	ezio::gRPCService service(daemon);
 	service.start(server_address);
 

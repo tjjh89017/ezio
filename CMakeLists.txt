@@ -7,18 +7,11 @@ project(ezio CXX)
 set(CMAKE_CXX_STANDARD 14)
 
 set(sources
-	main
-  #config
-	#raw_storage
-
-	daemon
-	buffer_pool
-	thread_pool
-	raw_disk_io
-)
-
-set(grpc_sources
-	service
+	main.cpp
+	daemon.cpp
+	buffer_pool.cpp
+	raw_disk_io.cpp
+	service.cpp
 )
 
 set(protos
@@ -35,29 +28,38 @@ set(Boost_USE_MULTITHREADED ON)
 #set(Boost_USE_STATIC_RUNTIME OFF)
 
 # depends
-find_package(LibtorrentRasterbar 2.0 REQUIRED)
-find_package(Boost 1.56 REQUIRED COMPONENTS system)
-find_package(Protobuf 3 REQUIRED)
-find_package(GRPC REQUIRED)
+find_package(LibtorrentRasterbar 2.0 REQUIRED CONFIG)
+find_package(boost_system REQUIRED CONFIG)
+#find_package(Protobuf 3 REQUIRED)
+find_package(gRPC REQUIRED CONFIG)
+find_package(spdlog REQUIRED CONFIG)
 
 # gen proto
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${protos})
-PROTOBUF_GENERATE_GRPC_CPP(GRPC_SRCS GRPC_HDRS ${protos})
+#protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${protos})
+#get_target_property(grpc_cpp_plugin_location gRPC::grpc_cpp_plugin LOCATION)
+#protobuf_generate_cpp(GRPC_SRCS GRPC_HDRS ${protos} PLUGIN protoc-gen-grpc=${grpc_cpp_plugin_location})
 
-list(APPEND sources ${PROTO_SRCS})
-list(APPEND sources ${GRPC_SRCS})
-list(APPEND sources ${grpc_sources})
+#list(APPEND sources ${PROTO_SRCS})
+#list(APPEND sources ${GRPC_SRCS})
+#list(APPEND sources ${grpc_sources})
 
 
 # start compile part
 add_executable(${EZIO}
 	${sources}
+	${protos}
 )
+
+get_target_property(grpc_cpp_plugin_location gRPC::grpc_cpp_plugin LOCATION)
+protobuf_generate(TARGET ${EZIO}  LANGUAGE cpp)
+protobuf_generate(TARGET ${EZIO} LANGUAGE grpc GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}")
 
 target_compile_definitions(${EZIO} PUBLIC
 	${GRPC_DEFINE}
 	_LARGEFILE64_SOURCE
 	_FILE_OFFSET_BITS=64
+
+	TORRENT_USE_LIBCRYPTO
 )
 
 target_include_directories(${EZIO} PUBLIC
@@ -70,13 +72,14 @@ target_include_directories(${EZIO} PUBLIC
 )
 
 target_link_libraries(${EZIO} PRIVATE
-	${LibtorrentRasterbar_LIBRARIES}
-	torrent-rasterbar
 	spdlog fmt
 	${Boost_LIBRARIES}
+	torrent-rasterbar
+	${LibtorrentRasterbar_LIBRARIES}
 
-	${PROTOBUF_LIBRARIES}
-	${GRPC_LIBRARIES}
+	protobuf::libprotobuf
+        gRPC::grpc
+        gRPC::grpc++
 )
 
 install(TARGETS ${EZIO}

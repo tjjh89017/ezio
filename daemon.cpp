@@ -82,9 +82,11 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 		status.active_time = 1;
 		status.is_finished = t_stat.is_finished;
 		status.num_peers = t_stat.num_peers;
-		status.active_time = std::chrono::duration_cast<std::chrono::seconds>(
-			t_stat.active_duration)
-								 .count();
+		status.active_time = std::chrono::duration_cast<std::chrono::seconds>(t_stat.active_duration).count();
+		status.state = t_stat.state;
+		status.total_done = t_stat.total_done;
+		status.total = t_stat.total;
+		status.num_pieces = t_stat.num_pieces;
 
 		result.emplace(hash, status);
 	}

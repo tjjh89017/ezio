@@ -5,7 +5,6 @@
 #include <memory>
 #include <libtorrent/libtorrent.hpp>
 #include "buffer_pool.hpp"
-#include "thread_pool.hpp"
 
 namespace ezio
 {
@@ -20,7 +19,6 @@ class raw_disk_io final : public libtorrent::disk_interface
 {
 private:
 	buffer_pool read_buffer_pool_;
-	thread_pool thread_pool_;
 
 	// callbacks are posted on this
 	libtorrent::io_context &ioc_;

@@ -98,8 +98,12 @@ class UIView(urwid.WidgetWrap):
                 "U: {:.2f}GB/min, {:.2f}MB/s".format(To_GBmin(upload), To_MBsec(upload))
             )
             self.torrents[h]['active_time'].set_text("T: {} secs".format(torrent.active_time))
-            self.torrents[h]['is_finished'].set_text(str(torrent.is_finished))
+            self.torrents[h]['is_finished'].set_text("Finished: {}".format(str(torrent.is_finished)))
             self.torrents[h]['num_peers'].set_text("peers: {}".format(torrent.num_peers))
+            self.torrents[h]['state'].set_text("state: {}".format(torrent.state))
+            self.torrents[h]['total_done'].set_text("total_done: {}".format(torrent.total_done))
+            self.torrents[h]['total'].set_text("total: {}".format(torrent.total))
+            self.torrents[h]['num_pieces'].set_text("num_pieces: {}".format(torrent.num_pieces))
 
         self.graph.set_data(l, 100)
 
@@ -159,6 +163,10 @@ class UIView(urwid.WidgetWrap):
             torrent_active_time = urwid.Text('', align="right")
             torrent_is_finished = urwid.Text('', align="right")
             torrent_num_peers = urwid.Text('', align="right")
+            torrent_state = urwid.Text('', align="right")
+            torrent_total_done = urwid.Text('', align="right")
+            torrent_total = urwid.Text('', align="right")
+            torrent_num_pieces = urwid.Text('', align="right")
             self.torrents[h] = {
                 'name': torrent_name,
                 'progress': torrent_progress,
@@ -167,6 +175,10 @@ class UIView(urwid.WidgetWrap):
                 'active_time': torrent_active_time,
                 'is_finished': torrent_is_finished,
                 'num_peers': torrent_num_peers,
+                'state': torrent_state,
+                'total_done': torrent_total_done,
+                'total': torrent_total,
+                'num_pieces': torrent_num_pieces,
             }
 
             l.append(torrent_name)
@@ -176,6 +188,10 @@ class UIView(urwid.WidgetWrap):
             l.append(torrent_active_time)
             l.append(torrent_is_finished)
             l.append(torrent_num_peers)
+            l.append(torrent_state)
+            l.append(torrent_total_done)
+            l.append(torrent_total)
+            l.append(torrent_num_pieces)
             l.append(urwid.Divider('-'))
 
         w = urwid.ListBox(urwid.SimpleListWalker(l))

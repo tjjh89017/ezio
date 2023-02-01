@@ -24,7 +24,7 @@ if __name__ == '__main__':
     stub = ezio_pb2_grpc.EZIOStub(channel)
 
     request = ezio_pb2.AddRequest()
-    request.save_path = "."
+    request.save_path = "a.img"
     with open(sys.argv[1], 'rb') as f:
         request.torrent = f.read()
 

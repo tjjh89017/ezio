@@ -22,6 +22,14 @@ message Torrent {
 	bool is_finished = 7;
 	// num_peers connected to
 	int64 num_peers = 8;
+	// state
+	int64 state = 9;
+	// total done byte
+	int64 total_done = 10;
+	// total byte
+	int64 total = 11;
+	// finished piece num
+	int64 num_pieces = 12;
 }
 
 message AddRequest {
