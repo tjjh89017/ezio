@@ -42,5 +42,7 @@ int main(int argc, char **argv)
 	daemon.wait(10);
 	std::cout << "shutdown in main" << std::endl;
 
+	service.stop();
+
 	return 0;
 }

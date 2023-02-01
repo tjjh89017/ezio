@@ -19,7 +19,7 @@ void gRPCService::start(std::string listen_address)
 
 void gRPCService::stop()
 {
-	server_->Shutdown();
+	server_->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(10));
 }
 
 void gRPCService::wait()
@@ -33,9 +33,6 @@ Status gRPCService::Shutdown(ServerContext *context, const Empty *e1,
 	SPDLOG_DEBUG("shutdown");
 
 	daemon_.stop();
-	SPDLOG_DEBUG("shutdown2");
-	stop();
-	SPDLOG_DEBUG("shutdown3");
 	return Status::OK;
 }
 
