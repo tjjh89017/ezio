@@ -57,6 +57,13 @@ make
 sudo make install
 ```
 
+We also provide a Dockerfile for the ease of installation and CI testing.
+To build the image type this:
+
+```shell
+docker build . -t ezio-latest-img
+```
+
 ## Usage
 
 ### Partclone
