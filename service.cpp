@@ -30,7 +30,7 @@ void gRPCService::wait()
 Status gRPCService::Shutdown(ServerContext *context, const Empty *e1,
 	Empty *e2)
 {
-	SPDLOG_DEBUG("shutdown");
+	SPDLOG_INFO("shutdown");
 
 	daemon_.stop();
 	return Status::OK;

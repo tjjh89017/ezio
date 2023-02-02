@@ -3,6 +3,7 @@
 
 import urwid
 
+import sys
 import math
 import time
 from functools import reduce
@@ -152,8 +153,8 @@ class UIView(urwid.WidgetWrap):
         l = [
             urwid.Text("EZIO", align="center"),
             urwid.Divider('-'),
-            self.button("Quit", self.exit_program),
-            urwid.Divider('-'),
+            #self.button("Quit", self.exit_program),
+            #urwid.Divider('-'),
             urwid.Text("Total Progress", align="center"),
             self.progress_wrap,
             self.download,
@@ -263,7 +264,7 @@ class UIController:
         try:
             data = self.model.get_data()
             stub = self.model.stub
-            if not data:
+            if not data or len(data.hashes) <= 0:
                 raise ValueError("No Data")
 
             for info_hash in data.hashes:
@@ -273,15 +274,15 @@ class UIController:
                 if not t_stat.is_finished:
                     continue
 
-                if t_stat.total_payload_upload > 3 * t_stat.total or t_stat.seeding_time > 60:
+                if t_stat.total_payload_upload > 3 * t_stat.total_done or t_stat.seeding_time > 60:
                     # stop torrent
                     request = ezio_pb2.PauseTorrentRequest()
                     request.hash = info_hash
                     stub.PauseTorrent(request)
 
             all_stop = True
-            for k, t in data.torrents:
-                if not t.is_finished and not t.is_paused:
+            for k, t in data.torrents.items():
+                if not t.is_finished or not t.is_paused:
                     all_stop = False
                     break
 
@@ -291,7 +292,8 @@ class UIController:
                 stub.Shutdown(request)
 
                 # shutdown
-                raise urwid.ExitMainLoop()
+                time.sleep(15)
+                sys.exit(0)
 
                 
         except ValueError:
