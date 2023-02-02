@@ -5,6 +5,7 @@ message Empty {
 
 }
 
+// Same as libtorrent torrent_status
 message Torrent {
 	// hex sha1 hash lowercase
 	string hash = 1;
@@ -30,6 +31,16 @@ message Torrent {
 	int64 total = 11;
 	// finished piece num
 	int64 num_pieces = 12;
+	// finished time
+	int64 finished_time = 13;
+	// seeding time
+	int64 seeding_time = 14;
+	// total download
+	int64 total_payload_download = 15;
+	// total upload
+	int64 total_payload_upload = 16;
+	// is paused
+	bool is_paused = 17;
 }
 
 message AddRequest {
@@ -37,6 +48,12 @@ message AddRequest {
 	bytes torrent = 1;
 	// save path, here is disk or partition path
 	string save_path = 2;
+	// force seed mode
+	bool seeding_mode = 3;
+	// max upload connection
+	int32 max_uploads = 4;
+	// max total connection
+	int32 max_connections = 5;
 }
 
 message AddResponse {
@@ -55,8 +72,28 @@ message UpdateStatus {
 	map<string, Torrent> torrents = 2;
 }
 
+message PauseTorrentRequest {
+	// lowercase hex sha1 hash
+	string hash = 1;
+}
+
+message PauseTorrentResponse {
+
+}
+
+message ResumeTorrentRequest {
+	// lowercase hex sha1 hash
+	string hash = 1;
+}
+
+message ResumeTorrentResponse {
+
+}
+
 service EZIO {
 	rpc Shutdown(Empty) returns (Empty) {}
 	rpc GetTorrentStatus(UpdateRequest) returns (UpdateStatus) {}
 	rpc AddTorrent(AddRequest) returns (AddResponse) {}
+	rpc PauseTorrent(PauseTorrentRequest) returns (PauseTorrentResponse) {}
+	rpc ResumeTorrent(ResumeTorrentRequest) returns (ResumeTorrentResponse) {}
 }

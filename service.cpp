@@ -63,6 +63,11 @@ Status gRPCService::GetTorrentStatus(ServerContext *context,
 		t.set_total_done(t_stat.total_done);
 		t.set_total(t_stat.total);
 		t.set_num_pieces(t_stat.num_pieces);
+		t.set_finished_time(t_stat.finished_time);
+		t.set_seeding_time(t_stat.seeding_time);
+		t.set_total_payload_download(t_stat.total_payload_download);
+		t.set_total_payload_upload(t_stat.total_payload_upload);
+		t.set_is_paused(t_stat.is_paused);
 		response->mutable_torrents()->insert({hash, t});
 	}
 
@@ -76,7 +81,33 @@ Status gRPCService::AddTorrent(ServerContext *context,
 	SPDLOG_INFO("AddTorrent");
 
 	try {
-		daemon_.add_torrent(request->torrent(), request->save_path());
+		daemon_.add_torrent(request->torrent(), request->save_path(), request->seeding_mode(), request->max_uploads(), request->max_connections());
+	} catch (const std::exception &e) {
+		return Status(grpc::StatusCode::UNAVAILABLE, e.what());
+	}
+
+	return Status::OK;
+}
+
+Status gRPCService::PauseTorrent(ServerContext *context, const PauseTorrentRequest *request, PauseTorrentResponse *response)
+{
+	SPDLOG_INFO("PauseTorrent");
+
+	try {
+		daemon_.pause_torrent(request->hash());
+	} catch (const std::exception &e) {
+		return Status(grpc::StatusCode::UNAVAILABLE, e.what());
+	}
+
+	return Status::OK;
+}
+
+Status gRPCService::ResumeTorrent(ServerContext *context, const ResumeTorrentRequest *request, ResumeTorrentResponse *response)
+{
+	SPDLOG_INFO("ResumeTorrent");
+
+	try {
+		daemon_.resume_torrent(request->hash());
 	} catch (const std::exception &e) {
 		return Status(grpc::StatusCode::UNAVAILABLE, e.what());
 	}

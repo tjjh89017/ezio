@@ -18,6 +18,10 @@ using ezio::AddRequest;
 using ezio::AddResponse;
 using ezio::UpdateRequest;
 using ezio::UpdateStatus;
+using ezio::PauseTorrentRequest;
+using ezio::PauseTorrentResponse;
+using ezio::ResumeTorrentRequest;
+using ezio::ResumeTorrentResponse;
 using ezio::EZIO;
 
 namespace ezio
@@ -37,6 +41,8 @@ public:
 	virtual Status Shutdown(ServerContext *context, const Empty *e1, Empty *e2) override;
 	virtual Status GetTorrentStatus(ServerContext *context, const UpdateRequest *request, UpdateStatus *response) override;
 	virtual Status AddTorrent(ServerContext *context, const AddRequest *request, AddResponse *response) override;
+	virtual Status PauseTorrent(ServerContext *context, const PauseTorrentRequest *request, PauseTorrentResponse *response) override;
+	virtual Status ResumeTorrent(ServerContext *context, const ResumeTorrentRequest *request, ResumeTorrentResponse *response) override;
 
 private:
 	ezio &daemon_;

@@ -13,11 +13,12 @@
 #include "config.hpp"
 #include "raw_disk_io.hpp"
 
-std::string server_address = "0.0.0.0:50051";
-
 int main(int argc, char **argv)
 {
 	spdlog::cfg::load_env_levels();
+
+	ezio::config current_config;
+	current_config.parse_from_argv(argc, argv);
 
 	lt::settings_pack p;
 	// setup alert mask
@@ -29,16 +30,18 @@ int main(int argc, char **argv)
 	p.set_int(lt::settings_pack::in_enc_policy, lt::settings_pack::pe_disabled);
 
 	lt::session_params ses_params(p);
-	ses_params.disk_io_constructor = ezio::raw_disk_io_constructor;
+	if (!current_config.file_flag) {
+		ses_params.disk_io_constructor = ezio::raw_disk_io_constructor;
+	}
 
 	// create session and inject to daemon.
 	lt::session session(ses_params);
 	ezio::ezio daemon(session);
 
 	ezio::gRPCService service(daemon);
-	service.start(server_address);
+	service.start(current_config.listen_address);
 
-	std::cout << "Server listening on " << server_address << std::endl;
+	std::cout << "Server listening on " << current_config.listen_address << std::endl;
 	daemon.wait(10);
 	std::cout << "shutdown in main" << std::endl;
 

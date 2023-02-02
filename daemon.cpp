@@ -1,3 +1,4 @@
+#include <sstream>
 #include <thread>
 #include <chrono>
 #include <stdexcept>
@@ -7,7 +8,7 @@
 namespace ezio
 {
 ezio::ezio(lt::session &session) :
-	session_(session)
+	session_(session), shutdown_(false)
 {
 }
 
@@ -23,7 +24,7 @@ void ezio::wait(int interval_second)
 	}
 }
 
-void ezio::add_torrent(std::string torrent_body, std::string save_path)
+void ezio::add_torrent(std::string torrent_body, std::string save_path, bool seeding_mode = false, int max_uploads = 3, int max_connections = 5)
 {
 	lt::span<const char> torrent_byte(torrent_body);
 
@@ -40,16 +41,20 @@ void ezio::add_torrent(std::string torrent_body, std::string save_path)
 
 	atp.ti = std::make_shared<lt::torrent_info>(node, std::ref(ec));
 	atp.save_path = save_path;
+	atp.max_uploads = max_uploads > 0 ? max_uploads : 3;
+	atp.max_connections = max_connections > 0 ? max_connections : 5;
+	//atp.flags = libtorrent::torrent_flags::default_flags & ~libtorrent::torrent_flags::auto_managed & ~libtorrent::torrent_flags::paused;
+	atp.flags = {};
+
+	if (seeding_mode) {
+		atp.flags |= libtorrent::torrent_flags::seed_mode;
+	}
 
 	if (ec) {
 		throw std::invalid_argument("failed to save path");
 	}
 
 	lt::torrent_handle handle = session_.add_torrent(std::move(atp));
-
-	// TODO need to setup this via gRPC
-	handle.set_max_uploads(3);
-	handle.set_max_connections(5);
 
 	SPDLOG_INFO("torrent added. save_path({})", save_path);
 }
@@ -87,11 +92,38 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 		status.total_done = t_stat.total_done;
 		status.total = t_stat.total;
 		status.num_pieces = t_stat.num_pieces;
+		status.finished_time = std::chrono::duration_cast<std::chrono::seconds>(t_stat.finished_duration).count();
+		status.seeding_time = std::chrono::duration_cast<std::chrono::seconds>(t_stat.seeding_duration).count();
+		status.total_payload_download = t_stat.total_payload_download;
+		status.total_payload_upload = t_stat.total_payload_upload;
+		status.is_paused = (t_stat.flags & libtorrent::torrent_flags::paused) != 0; 
 
 		result.emplace(hash, status);
 	}
 
 	return result;
+}
+
+void ezio::pause_torrent(std::string hash) {
+	SPDLOG_INFO("pause {}", hash);
+	std::stringstream ss(hash);
+	libtorrent::sha1_hash info_hash;
+	ss >> info_hash;
+	auto h = session_.find_torrent(info_hash);
+	if (h.is_valid()) {
+		h.pause();
+	}
+}
+
+void ezio::resume_torrent(std::string hash) {
+	SPDLOG_INFO("resume {}", hash);
+	std::stringstream ss(hash);
+	libtorrent::sha1_hash info_hash;
+	ss >> info_hash;
+	auto h = session_.find_torrent(info_hash);
+	if (h.is_valid()) {
+		h.resume();
+	}
 }
 
 }  // namespace ezio

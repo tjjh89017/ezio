@@ -13,6 +13,20 @@ import ezio_pb2_grpc
 
 UPDATE_INTERVAL = 1
 
+def to_state(state):
+    s = [
+        '',
+        'checking_files',
+        'downloading_metadata',
+        'downloading',
+        'finished',
+        'seeding',
+        'unused_enum_for_backwards_compatibility_allocating',
+        'checking_resume_data',
+    ]
+
+    return s[state]
+
 def To_GBmin(speed):
     return (float(speed) * 60 / 1024 / 1024 / 1024)
 
@@ -82,13 +96,12 @@ class UIView(urwid.WidgetWrap):
             torrent = torrents[h]
             download = float(torrent.download_rate)
             upload = float(torrent.upload_rate)
-            # TODO dymanic bound
-            # in MB/s
-            l.append([To_MBsec(download), 0])
-            l.append([0, To_MBsec(upload) / 1024 / 1024])
             sum_progress += torrents[h].progress
             sum_download += download
             sum_upload += upload
+
+            if h not in self.torrents:
+                self.controller.loop.widget = self.main_window()
 
             self.torrents[h]['progress'].set_completion(torrent.progress)
             self.torrents[h]['download'].set_text(
@@ -100,12 +113,15 @@ class UIView(urwid.WidgetWrap):
             self.torrents[h]['active_time'].set_text("T: {} secs".format(torrent.active_time))
             self.torrents[h]['is_finished'].set_text("Finished: {}".format(str(torrent.is_finished)))
             self.torrents[h]['num_peers'].set_text("peers: {}".format(torrent.num_peers))
-            self.torrents[h]['state'].set_text("state: {}".format(torrent.state))
+            self.torrents[h]['state'].set_text("state: {}".format(to_state(torrent.state)))
             self.torrents[h]['total_done'].set_text("total_done: {}".format(torrent.total_done))
             self.torrents[h]['total'].set_text("total: {}".format(torrent.total))
             self.torrents[h]['num_pieces'].set_text("num_pieces: {}".format(torrent.num_pieces))
-
-        self.graph.set_data(l, 100)
+            self.torrents[h]['finished_time'].set_text("finished_time: {}".format(torrent.finished_time))
+            self.torrents[h]['seeding_time'].set_text("seeding_time: {}".format(torrent.seeding_time))
+            self.torrents[h]['total_payload_download'].set_text("total_payload_download: {}".format(torrent.total_payload_download))
+            self.torrents[h]['total_payload_upload'].set_text("total_payload_upload: {}".format(torrent.total_payload_upload))
+            self.torrents[h]['is_paused'].set_text("paused: {}".format(str(torrent.is_paused)))
 
         # avg progress
         l = len(torrents)
@@ -119,13 +135,6 @@ class UIView(urwid.WidgetWrap):
             "U: {:.2f}GB/min, {:.2f}MB/s".format(To_GBmin(sum_upload), To_MBsec(sum_upload))
         )
 
-        #self.graph.set_data([[80, 0], [0, 30], [10, 0]], 100)
-        #self.progress.set_completion(0.3)
-
-    def bar_graph(self, smooth=False):
-        w = urwid.BarGraph(['bg background', 'bg 1', 'bg 2'])
-        return w
-
     def button(self, t, fn):
         w = urwid.Button(t, fn)
         w = urwid.AttrWrap(w, 'button normal', 'button select')
@@ -135,7 +144,6 @@ class UIView(urwid.WidgetWrap):
         return urwid.ProgressBar('pg normal', 'pg complete', 0, 1)
 
     def graph_controls(self):
-
         self.progress = self.progress_bar()
         self.progress_wrap = urwid.WidgetWrap(self.progress)
         self.download = urwid.Text('', align="right")
@@ -156,7 +164,7 @@ class UIView(urwid.WidgetWrap):
 
         data = self.controller.get_data()
         for h in data.hashes:
-            torrent_name = urwid.Text(data.torrents[h].name, align="left")
+            torrent_name = urwid.Text("{}: {}".format(data.torrents[h].name, h), align="left")
             torrent_progress = self.progress_bar()
             torrent_download = urwid.Text('', align="right")
             torrent_upload = urwid.Text('', align="right")
@@ -167,6 +175,11 @@ class UIView(urwid.WidgetWrap):
             torrent_total_done = urwid.Text('', align="right")
             torrent_total = urwid.Text('', align="right")
             torrent_num_pieces = urwid.Text('', align="right")
+            torrent_finished_time = urwid.Text('', align="right")
+            torrent_seeding_time = urwid.Text('', align="right")
+            torrent_total_payload_download = urwid.Text('', align="right")
+            torrent_total_payload_upload = urwid.Text('', align="right")
+            torrent_is_paused = urwid.Text('', align="right")
             self.torrents[h] = {
                 'name': torrent_name,
                 'progress': torrent_progress,
@@ -179,6 +192,11 @@ class UIView(urwid.WidgetWrap):
                 'total_done': torrent_total_done,
                 'total': torrent_total,
                 'num_pieces': torrent_num_pieces,
+                'finished_time': torrent_finished_time,
+                'seeding_time': torrent_seeding_time,
+                'total_payload_download': torrent_total_payload_download,
+                'total_payload_upload': torrent_total_payload_upload,
+                'is_paused': torrent_is_paused,
             }
 
             l.append(torrent_name)
@@ -192,6 +210,11 @@ class UIView(urwid.WidgetWrap):
             l.append(torrent_total_done)
             l.append(torrent_total)
             l.append(torrent_num_pieces)
+            l.append(torrent_finished_time)
+            l.append(torrent_seeding_time)
+            l.append(torrent_total_payload_download)
+            l.append(torrent_total_payload_upload)
+            l.append(torrent_is_paused)
             l.append(urwid.Divider('-'))
 
         w = urwid.ListBox(urwid.SimpleListWalker(l))
@@ -201,12 +224,7 @@ class UIView(urwid.WidgetWrap):
         return w
 
     def main_window(self):
-        self.graph = self.bar_graph()
-        self.graph_wrap = urwid.WidgetWrap(self.graph)
-        vline = urwid.AttrWrap(urwid.SolidFill(u'\u2502'), 'line')
         controls = self.graph_controls()
-
-        #w = urwid.Columns([('weight', 3, self.graph_wrap), ('fixed', 1, vline), ('fixed', 30, controls)])
         w = urwid.Columns([('weight', 3, controls)])
         w = urwid.Padding(w, ('fixed left', 1), ('fixed right', 0))
         w = urwid.AttrWrap(w, 'body')
@@ -227,6 +245,7 @@ class UIController:
 
         self.update_data()
         self.animate_graph()
+        self.detect_all_finished()
 
     def main(self):
         self.loop.run()
@@ -238,6 +257,47 @@ class UIController:
     def update_data(self, loop=None, user_data=None):
         self.model.update_data()
         self.update_alarm = self.loop.set_alarm_in(UPDATE_INTERVAL, self.update_data)
+
+    def detect_all_finished(self, loop=None, user_data=None):
+        # detect upload ratio and seeding time
+        try:
+            data = self.model.get_data()
+            stub = self.model.stub
+            if not data:
+                raise ValueError("No Data")
+
+            for info_hash in data.hashes:
+                t_stat = data.torrents[info_hash]
+                if t_stat.is_paused:
+                    continue
+                if not t_stat.is_finished:
+                    continue
+
+                if t_stat.total_payload_upload > 3 * t_stat.total or t_stat.seeding_time > 60:
+                    # stop torrent
+                    request = ezio_pb2.PauseTorrentRequest()
+                    request.hash = info_hash
+                    stub.PauseTorrent(request)
+
+            all_stop = True
+            for k, t in data.torrents:
+                if not t.is_finished and not t.is_paused:
+                    all_stop = False
+                    break
+
+            if all_stop:
+                # call shutdown
+                request = ezio_pb2.Empty()
+                stub.Shutdown(request)
+
+                # shutdown
+                raise urwid.ExitMainLoop()
+
+                
+        except ValueError:
+            pass
+
+        self.detect_alarm = self.loop.set_alarm_in(15, self.detect_all_finished)
 
     def get_data(self):
         return self.model.get_data()

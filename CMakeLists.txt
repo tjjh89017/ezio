@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD 14)
 
 set(sources
 	main.cpp
+	config.cpp
 	daemon.cpp
 	buffer_pool.cpp
 	raw_disk_io.cpp
