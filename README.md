@@ -44,11 +44,7 @@ EZIO is inspired by Clonezilla and BTsync (Resilio) for its idea to transfer dat
 - spdlog
 - gRPC
 ```shell
-sudo apt-get install -y libtorrent-rasterbar-dev \
-                        libgrpc-dev \
-                        libgrpc++-dev \
-                        libprotobuf-dev \
-                        protobuf-compiler-grpc
+sudo apt install build-essential cmake libboost-all-dev libtorrent-rasterbar-dev libgrpc-dev libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc libspdlog-dev
 ```
 
 ### Build and Install
