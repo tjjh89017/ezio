@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     request = ezio_pb2.AddRequest()
     request.save_path = sys.argv[2]
-    request.seeding_modde = True
+    request.seeding_mode = True
     with open(sys.argv[1], 'rb') as f:
         request.torrent = f.read()
 
