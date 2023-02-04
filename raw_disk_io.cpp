@@ -152,12 +152,17 @@ std::unique_ptr<libtorrent::disk_interface> raw_disk_io_constructor(libtorrent::
 }
 
 raw_disk_io::raw_disk_io(libtorrent::io_context &ioc) :
-	ioc_(ioc)
+	ioc_(ioc),
+	read_buffer_pool_(ioc),
+	write_buffer_pool_(ioc),
+	thread_pool_(8),
+	hash_thread_pool_(8)
 {
 }
 
 raw_disk_io::~raw_disk_io()
 {
+	thread_pool_.join();
 }
 
 libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params const &p,
@@ -199,13 +204,19 @@ void raw_disk_io::async_read(
 		});
 		return;
 	}
+	
+	boost::asio::post(thread_pool_,
+		[=, this, handler = std::move(handler)]()
+		{
+			libtorrent::storage_error error;
+			storages_[idx]->read(buf, r.piece, r.start, r.length, error);
+			auto buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, buf, r.length);
 
-	storages_[idx]->read(buf, r.piece, r.start, r.length, error);
-	auto buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, buf, r.length);
-
-	post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
-		h(std::move(b), error);
-	});
+			post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
+				h(std::move(b), error);
+			});
+		}
+	);
 }
 
 bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::peer_request const &r,
@@ -213,13 +224,37 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	std::function<void(libtorrent::storage_error const &)> handler,
 	libtorrent::disk_job_flags_t flags)
 {
+	BOOST_ASSERT(DEFAULT_BLOCK_SIZE >= r.length);
+
+	bool exceeded = false;
+	char *buffer = write_buffer_pool_.allocate_buffer(exceeded, o);
+
+	if (buffer) {
+		// async
+		libtorrent::disk_buffer_holder buffer_holder(write_buffer_pool_, buffer, DEFAULT_BLOCK_SIZE);
+		memcpy(buffer_holder.data(), buf, r.length);
+		boost::asio::post(thread_pool_,
+			[=, this, handler = std::move(handler), buffer_holder = std::move(buffer_holder)]()
+			{
+				libtorrent::storage_error error;
+				storages_[storage]->write(buffer_holder.data(), r.piece, r.start, r.length, error);
+
+				post(ioc_, [=, h = std::move(handler)] {
+					h(error);
+				});
+			}	
+		);
+		return exceeded;
+	}
+
+	// sync
 	libtorrent::storage_error error;
 	storages_[storage]->write(const_cast<char *>(buf), r.piece, r.start, r.length, error);
 
 	post(ioc_, [=, h = std::move(handler)] {
 		h(error);
 	});
-	return false;
+	return exceeded;
 }
 
 void raw_disk_io::async_hash(
@@ -240,29 +275,36 @@ void raw_disk_io::async_hash(
 		return;
 	}
 	
-	libtorrent::hasher ph;
 	auto buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, buf, DEFAULT_BLOCK_SIZE);
-	
-	partition_storage *st = storages_[storage].get(); 
 
-	int const piece_size = st->piece_size(piece);
-	int const blocks_in_piece = (piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
+	boost::asio::post(hash_thread_pool_,
+		[=, this, handler = std::move(handler), buffer = std::move(buffer)]()
+		{
+			libtorrent::storage_error error;
+			libtorrent::hasher ph;
+			partition_storage *st = storages_[storage].get(); 
 
-	int offset = 0;
-	int const blocks_to_read = blocks_in_piece;
-	for (int i = 0; i < blocks_to_read; i++) {
-		auto const len = std::min(DEFAULT_BLOCK_SIZE, piece_size - offset);
-		int const ret = st->read(buf, piece, offset, len, error);
-		if (ret <= 0) {
-			break;
+			int const piece_size = st->piece_size(piece);
+			int const blocks_in_piece = (piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
+
+			int offset = 0;
+			int const blocks_to_read = blocks_in_piece;
+			for (int i = 0; i < blocks_to_read; i++) {
+				auto const len = std::min(DEFAULT_BLOCK_SIZE, piece_size - offset);
+				int const ret = st->read(buf, piece, offset, len, error);
+				if (ret <= 0) {
+					break;
+				}
+				offset += DEFAULT_BLOCK_SIZE;
+				ph.update(buf, ret);
+			}
+
+			libtorrent::sha1_hash const hash = ph.final();
+
+			post(ioc_, [=, h = std::move(handler)]{ h(piece, hash, error); });
 		}
-		offset += DEFAULT_BLOCK_SIZE;
-		ph.update(buf, ret);
-	}
-
-	libtorrent::sha1_hash const hash = ph.final();
-
-	post(ioc_, [=, h = std::move(handler)]{ h(piece, hash, error); });
+	);
+	
 }
 
 void raw_disk_io::async_hash2(
