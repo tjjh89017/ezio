@@ -202,7 +202,8 @@ More details about EZIO design and benchmark are in [A Novel Massive Deployment 
 - We need more speed
 - gRPC to control
 - Integrate in OpenStack Ironic Project, improve Mirantis' works
-    - https://www.mirantis.com/blog/cut-ironic-provisioning-time-using-torrents/
+    - http://web.archive.org/web/20211124125644/https://www.mirantis.com/blog/cut-ironic-provisioning-time-using-torrents/
+    - https://review.opendev.org/c/openstack/ironic-specs/+/311091
 
 ## Contribute
 
