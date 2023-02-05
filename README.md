@@ -95,43 +95,40 @@ When you have a `sda1.torrent` you can deploy or clone your disk via Network.
 ```
 Allowed Options:
   -h [ --help ]          some help
-  -e [ --ratio ] arg     assign seeding ratio limit
-  -t [ --timeout ] arg   assign timeout as N min(s).
-  -k [ --contact ] arg   assign maxminum failure number to contact tracker
-  -m [ --maxu ] arg      assign maxminum upload number
-  -c [ --maxc ] arg      assign maxminum connection number
-  -s [ --sequential ]    enable sequential download
-  -f [ --file ]          read data from file rather than raw disk
-  -U [ --upload ]        seed mode
+  -F [ --file ]          read data from file rather than raw disk
   --listen arg           gRPC service listen address and port, default is 
-                         127.0.0.1:50051
-  -T [ --torrent ] arg   multiple torrent support --torrent a.torrent --torrent
-                         b.torrent
-  -L [ --save_path ] arg multiple torrent support --save_path a/ --save_path b/
 ```
 
 #### Seeding
 
 - Seeding from BT image
 ```shell
-./ezio -U -f -T sda1.torrent -L <path to image>
+./ezio -F
+./utils/create_proto_py.sh
+./utils/add_torrent_seed.py sda1.torrent /some/path/to/sda1
 ```
 
 - Seeding from Disk
 ```shell
-./ezio -U -T sda1.torrent -L /dev/sda1
+./ezio
+./utils/create_proto_py.sh
+./utils/add_torrent_seed.py sda1.torrent /dev/sda1
 ```
 
 #### Downloading
 
 - Downloading to Disk
 ```shell
-./ezio -T sda1.torrent -L /dev/sda1
+./ezio
+./utils/create_proto_py.sh
+./utils/add_torrent.py sda1.torrent /dev/sda1
 ```
 
 - Proxy or save the image
 ```shell
-./ezio -f -T sda1.torrent -L <path to image>
+./ezio -F
+./utils/create_proto_py.sh
+./utils/add_torrent.py sda1.torrent /some/path/to/save/sda1
 ```
 
 #### Proxy
