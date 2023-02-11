@@ -1,0 +1,21 @@
+name: GitHub Actions
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+    tags: '*'
+
+jobs:
+  build_test:
+    name: Run build test
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v3.2.0
+      - name: build test with container
+        run:
+          docker build . -t ezio_ci_test
