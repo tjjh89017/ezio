@@ -80,7 +80,7 @@ void buffer_pool::free_disk_buffer(char *buf)
 
 void buffer_pool::check_buffer_level(std::unique_lock<std::mutex> &l)
 {
-	if (!m_exceeded_max_size || m_deque.size() > LOW_WATERMARK) {
+	if (!m_exceeded_max_size || BUFFER_COUNT - m_deque.size() > LOW_WATERMARK) {
 		// still high usgae
 		return;
 	}
