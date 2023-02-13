@@ -1,5 +1,7 @@
 # EZIO Developer and User Guide
 
+![build test](https://github.com/tjjh89017/ezio/actions/workflows/github_actions.yml/badge.svg)
+
 ## Introduction
 
 EZIO is a tool for rapid server disk image cloning/deployment within local area network. We utilize BitTorrent protocol to speed up the data distribution. Also, we use `partclone` to dump used filesystem blocks, and EZIO receiver can directly write received blocks to raw disk, which greatly improves performance. 
