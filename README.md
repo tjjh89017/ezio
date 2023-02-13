@@ -215,6 +215,10 @@ More details about EZIO design and benchmark are in [A Novel Massive Deployment 
 If you are having issues, please let us know.
 EZIO main developer email is located at: tjjh89017@hotmail.com
 
+## Special Thanks
+
+- National Center for High-performance Computing, NCHC, Taiwan
+    - Provide many devices to test stability and knowledge support.
 
 ## License
 
