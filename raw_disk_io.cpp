@@ -155,14 +155,17 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc) :
 	ioc_(ioc),
 	read_buffer_pool_(ioc),
 	write_buffer_pool_(ioc),
-	thread_pool_(8),
+	read_thread_pool_(8),
+	write_thread_pool_(8),
 	hash_thread_pool_(8)
 {
 }
 
 raw_disk_io::~raw_disk_io()
 {
-	thread_pool_.join();
+	read_thread_pool_.join();
+	write_thread_pool_.join();
+	hash_thread_pool_.join();
 }
 
 libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params const &p,
@@ -205,7 +208,7 @@ void raw_disk_io::async_read(
 		return;
 	}
 	
-	boost::asio::post(thread_pool_,
+	boost::asio::post(read_thread_pool_,
 		[=, this, handler = std::move(handler)]()
 		{
 			libtorrent::storage_error error;
@@ -231,20 +234,21 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 	if (buffer) {
 		// async
+		libtorrent::peer_request r2(r);
 		libtorrent::disk_buffer_holder buffer_holder(write_buffer_pool_, buffer, DEFAULT_BLOCK_SIZE);
 		memcpy(buffer_holder.data(), buf, r.length);
-		boost::asio::post(thread_pool_,
-			[=, this, handler = std::move(handler), buffer_holder = std::move(buffer_holder)]()
+		boost::asio::post(write_thread_pool_,
+			[r2, storage, this, handler = std::move(handler), buffer_holder = std::move(buffer_holder)]()
 			{
 				libtorrent::storage_error error;
-				storages_[storage]->write(buffer_holder.data(), r.piece, r.start, r.length, error);
+				storages_[storage]->write(buffer_holder.data(), r2.piece, r2.start, r2.length, error);
 
 				post(ioc_, [=, h = std::move(handler)] {
 					h(error);
 				});
 			}	
 		);
-		return exceeded;
+		return false;
 	}
 
 	// sync
@@ -254,7 +258,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	post(ioc_, [=, h = std::move(handler)] {
 		h(error);
 	});
-	return exceeded;
+	return false;
 }
 
 void raw_disk_io::async_hash(
