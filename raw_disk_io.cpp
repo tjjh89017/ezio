@@ -229,6 +229,8 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 {
 	BOOST_ASSERT(DEFAULT_BLOCK_SIZE >= r.length);
 
+	// TODO implement store_buffer
+	/*
 	bool exceeded = false;
 	char *buffer = write_buffer_pool_.allocate_buffer(exceeded, o);
 
@@ -238,10 +240,10 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		libtorrent::disk_buffer_holder buffer_holder(write_buffer_pool_, buffer, DEFAULT_BLOCK_SIZE);
 		memcpy(buffer_holder.data(), buf, r.length);
 		boost::asio::post(write_thread_pool_,
-			[r2, storage, this, handler = std::move(handler), buffer_holder = std::move(buffer_holder)]()
+			[=, this, handler = std::move(handler), buffer_holder = std::move(buffer_holder)]()
 			{
 				libtorrent::storage_error error;
-				storages_[storage]->write(buffer_holder.data(), r2.piece, r2.start, r2.length, error);
+				storages_[storage]->write(buffer_holder.data(), r.piece, r.start, r.length, error);
 
 				post(ioc_, [=, h = std::move(handler)] {
 					h(error);
@@ -250,6 +252,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		);
 		return false;
 	}
+	*/
 
 	// sync
 	libtorrent::storage_error error;
@@ -299,7 +302,7 @@ void raw_disk_io::async_hash(
 				if (ret <= 0) {
 					break;
 				}
-				offset += DEFAULT_BLOCK_SIZE;
+				offset += ret;
 				ph.update(buf, ret);
 			}
 

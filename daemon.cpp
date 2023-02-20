@@ -3,6 +3,7 @@
 #include <chrono>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
+#include <vector>
 #include "daemon.hpp"
 
 namespace ezio
@@ -21,6 +22,14 @@ void ezio::wait(int interval_second)
 {
 	while (!shutdown_) {
 		std::this_thread::sleep_for(std::chrono::seconds(interval_second));
+
+		/*
+		std::vector<libtorrent::alert*> alerts;
+		session_.pop_alerts(&alerts);
+		for (auto a : alerts) {
+			SPDLOG_INFO("alert: {} {}", a->what(), a->message());
+		}
+		*/
 	}
 }
 

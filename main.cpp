@@ -34,6 +34,8 @@ int main(int argc, char **argv)
 	p.set_bool(lt::settings_pack::enable_incoming_utp, false);
 	p.set_int(lt::settings_pack::mixed_mode_algorithm, lt::settings_pack::prefer_tcp);
 
+	//p.set_int(lt::settings_pack::alert_mask, lt::alert_category::peer | lt::alert_category::status);
+
 	lt::session_params ses_params(p);
 	if (!current_config.file_flag) {
 		ses_params.disk_io_constructor = ezio::raw_disk_io_constructor;
