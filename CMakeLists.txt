@@ -66,17 +66,15 @@ target_compile_definitions(${EZIO} PUBLIC
 target_include_directories(${EZIO} PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}
 	${CMAKE_CURRENT_BINARY_DIR}
-	${Boost_INCLUDE_DIRS}
-	${LibtorrentRasterbar_INCLUDE_DIRS}
-
-	${PROTOBUF_INCLUDE_DIRS}
 )
 
 target_link_libraries(${EZIO} PRIVATE
-	spdlog fmt
-	${Boost_LIBRARIES}
-	torrent-rasterbar
-	${LibtorrentRasterbar_LIBRARIES}
+	spdlog
+	fmt
+	Boost::boost
+	Boost::system
+	Boost::program_options
+	LibtorrentRasterbar::torrent-rasterbar
 
 	protobuf::libprotobuf
         gRPC::grpc
