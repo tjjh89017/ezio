@@ -31,9 +31,13 @@ set(Boost_USE_MULTITHREADED ON)
 # depends
 find_package(LibtorrentRasterbar 2.0 REQUIRED CONFIG)
 find_package(Boost 1.74 REQUIRED COMPONENTS system program_options)
-#find_package(Protobuf 3 REQUIRED)
-find_package(gRPC REQUIRED CONFIG)
+find_package(Protobuf 3 REQUIRED)
 find_package(spdlog REQUIRED CONFIG)
+
+find_package(PkgConfig REQUIRED)
+pkg_search_module(GRPC REQUIRED grpc)
+pkg_search_module(GRPCPP REQUIRED grpc++)
+
 
 # gen proto
 #protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${protos})
@@ -51,7 +55,7 @@ add_executable(${EZIO}
 	${protos}
 )
 
-get_target_property(grpc_cpp_plugin_location gRPC::grpc_cpp_plugin LOCATION)
+find_program(grpc_cpp_plugin_location grpc_cpp_plugin)
 protobuf_generate(TARGET ${EZIO} LANGUAGE cpp)
 protobuf_generate(TARGET ${EZIO} LANGUAGE grpc GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}")
 
@@ -77,8 +81,8 @@ target_link_libraries(${EZIO} PRIVATE
 	LibtorrentRasterbar::torrent-rasterbar
 
 	protobuf::libprotobuf
-        gRPC::grpc
-        gRPC::grpc++
+	${GRPCPP_LDFLAGS}
+	${GRPC_LDFLAGS}
 )
 
 install(TARGETS ${EZIO}
