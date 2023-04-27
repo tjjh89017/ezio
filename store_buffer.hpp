@@ -12,18 +12,42 @@ namespace ezio
 class torrent_location
 {
 public:
-	torrent_location(storage_index_t const t, piece_index_t const p, int o)
+	libtorrent::storage_index_t torrent;
+	libtorrent::piece_index_t piece;
+	int offset;
+
+	torrent_location(libtorrent::storage_index_t const t, libtorrent::piece_index_t const p, int o)
 		: torrent(t), piece(p), offset(o) {}
 	bool operator==(torrent_location const &rhs) const
 	{
 		return std::tie(torrent, piece, offset)
-			== std::tie(rhs.torrent, rhs.piece, rhs.offset)
+			== std::tie(rhs.torrent, rhs.piece, rhs.offset);
 	}
-
-	storage_index_t torrent;
-	piece_index_t piece;
-	int offset;
 };
+} // namespace ezio
+
+namespace std
+{
+template <>
+struct hash<ezio::torrent_location>
+{
+	using argument_type = ezio::torrent_location;
+	using result_type = std::size_t;
+	std::size_t operator()(argument_type const &l) const
+	{
+		std::size_t ret = 0;
+		boost::hash_combine(ret, std::hash<libtorrent::storage_index_t>{}(l.torrent));
+		boost::hash_combine(ret, std::hash<libtorrent::piece_index_t>{}(l.piece));
+		boost::hash_combine(ret, std::hash<int>{}(l.offset));
+		return ret;
+	}
+};
+
+} // namespace std
+
+
+namespace ezio
+{
 
 class store_buffer
 {
@@ -50,7 +74,7 @@ public:
 		char const *buf2 = (it2 == m_store_buffer.end()) ? nullptr : it2->second;
 
 		if (buf1 == nullptr && buf2 == nullptr) {
-			reutnr 0;
+			return 0;
 		}
 
 		return f(buf1, buf2);
@@ -81,4 +105,5 @@ private:
 	std::unordered_map<torrent_location, char const*> m_store_buffer;
 };
 } // namespace ezio
+
 #endif

@@ -6,6 +6,7 @@
 #include <libtorrent/libtorrent.hpp>
 #include <boost/asio.hpp>
 #include "buffer_pool.hpp"
+#include "store_buffer.hpp"
 
 namespace ezio
 {
@@ -21,6 +22,8 @@ class raw_disk_io final : public libtorrent::disk_interface
 private:
 	buffer_pool read_buffer_pool_;
 	buffer_pool write_buffer_pool_;
+
+	store_buffer store_buffer_;
 
 	boost::asio::thread_pool read_thread_pool_;
 	boost::asio::thread_pool write_thread_pool_;

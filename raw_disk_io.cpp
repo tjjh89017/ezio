@@ -7,6 +7,7 @@
 
 #include "raw_disk_io.hpp"
 #include "buffer_pool.hpp"
+#include "store_buffer.hpp"
 
 namespace ezio
 {
@@ -197,23 +198,103 @@ void raw_disk_io::async_read(
 	BOOST_ASSERT(DEFAULT_BLOCK_SIZE >= r.length);
 
 	libtorrent::storage_error error;
-	char *buf = read_buffer_pool_.allocate_buffer();
+	if (r.length <= 0 || r.start < 0) {
+		error.ec = libtorrent::errors::invalid_request;
+		error.operation = libtorrent::operation_t::file_read;
+		handler(libtorrent::disk_buffer_holder{}, error);
+		return;
+	}
 
+	libtorrent::disk_buffer_holder buffer;
+	int const block_offset = r.start - (r.start % DEFAULT_BLOCK_SIZE);
+	int const read_offset = r.start - block_offset;
+	// it might be unaligned request, refer libtorrent async_read
+
+	if (read_offset + r.length > DEFAULT_BLOCK_SIZE) {
+		// unaligned
+		torrent_location const loc1{idx, r.piece, block_offset};
+		torrent_location const loc2{idx, r.piece, block_offset + DEFAULT_BLOCK_SIZE};
+		std::ptrdiff_t const len1 = DEFAULT_BLOCK_SIZE - read_offset;
+
+		BOOST_ASSERT(r.length > len1);
+
+		int const ret = store_buffer_.get2(loc1, loc2, [&](char const *buf1, char const *buf2)
+		{
+			buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, read_buffer_pool_.allocate_buffer(), r.length);
+			if (!buffer) {
+				error.ec = libtorrent::errors::no_memory;
+				error.operation = libtorrent::operation_t::alloc_cache_piece;
+				return 3;
+			}
+
+			if (buf1) {
+				std::memcpy(buffer.data(), buf1 + read_offset, std::size_t(len1));
+			}
+			if (buf2) {
+				std::memcpy(buffer.data() + len1, buf2, std::size_t(r.length - len1));
+			}
+			return (buf1 ? 2 : 0) | (buf2 ? 1 : 0);
+		});
+
+		if (ret == 3) {
+			// success get whole piece
+			// or failed
+			// return immediately
+			handler(std::move(buffer), error);
+			return;
+		}
+
+		if (ret != 0) {
+			// partial
+			boost::asio::post(read_thread_pool_,
+				[&, this, handler = std::move(handler)]()
+				{
+					libtorrent::storage_error error;
+					auto offset = (ret == 1) ? r.start : block_offset + DEFAULT_BLOCK_SIZE;
+					auto len = (ret == 1) ? len1 : r.length - len1;
+					auto buf_offset = (ret == 1) ? 0 : len1;
+					storages_[idx]->read(buffer.data() + buf_offset, r.piece, offset, len, error);
+
+					post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
+						h(std::move(b), error);
+					});
+				}
+			);
+			return;
+		}
+
+		// if we cannot find any block, post it as normal job
+	} else {
+		// aligned block
+		if (store_buffer_.get({ idx, r.piece, block_offset }, [&](char const *buf1){
+			buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, read_buffer_pool_.allocate_buffer(), r.length);
+			if (!buffer) {
+				error.ec = libtorrent::errors::no_memory;
+				error.operation = libtorrent::operation_t::alloc_cache_piece;
+				return;
+			}
+			std::memcpy(buffer.data(), buf1 + read_offset, std::size_t(r.length));
+		}))
+		{
+			handler(std::move(buffer), error);
+			return;
+		}
+	}
+
+	char *buf = read_buffer_pool_.allocate_buffer();
 	if (!buf) {
 		error.ec = libtorrent::errors::no_memory;
 		error.operation = libtorrent::operation_t::alloc_cache_piece;
-		post(ioc_, [=, h = std::move(handler)] {
-			h(libtorrent::disk_buffer_holder(read_buffer_pool_, nullptr, 0), error);
-		});
+		handler(libtorrent::disk_buffer_holder{}, error);
 		return;
 	}
-	
+
 	boost::asio::post(read_thread_pool_,
-		[=, this, handler = std::move(handler)]()
+		[&, this, handler = std::move(handler)]()
 		{
 			libtorrent::storage_error error;
 			storages_[idx]->read(buf, r.piece, r.start, r.length, error);
-			auto buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, buf, r.length);
+			buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, buf, r.length);
 
 			post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 				h(std::move(b), error);
@@ -229,21 +310,22 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 {
 	BOOST_ASSERT(DEFAULT_BLOCK_SIZE >= r.length);
 
-	// TODO implement store_buffer
-	/*
 	bool exceeded = false;
-	char *buffer = write_buffer_pool_.allocate_buffer(exceeded, o);
+	libtorrent::disk_buffer_holder buffer(write_buffer_pool_, write_buffer_pool_.allocate_buffer(exceeded, o), DEFAULT_BLOCK_SIZE);
 
 	if (buffer) {
 		// async
+		memcpy(buffer.data(), buf, r.length);
+		store_buffer_.insert({storage, r.piece, r.start}, buffer.data());
+
 		libtorrent::peer_request r2(r);
-		libtorrent::disk_buffer_holder buffer_holder(write_buffer_pool_, buffer, DEFAULT_BLOCK_SIZE);
-		memcpy(buffer_holder.data(), buf, r.length);
 		boost::asio::post(write_thread_pool_,
-			[=, this, handler = std::move(handler), buffer_holder = std::move(buffer_holder)]()
+			[=, this, handler = std::move(handler), buffer = std::move(buffer)]()
 			{
 				libtorrent::storage_error error;
-				storages_[storage]->write(buffer_holder.data(), r.piece, r.start, r.length, error);
+				storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
+
+				store_buffer_.erase({storage, r.piece, r.start});
 
 				post(ioc_, [=, h = std::move(handler)] {
 					h(error);
@@ -252,7 +334,6 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		);
 		return false;
 	}
-	*/
 
 	// sync
 	libtorrent::storage_error error;
@@ -296,14 +377,25 @@ void raw_disk_io::async_hash(
 
 			int offset = 0;
 			int const blocks_to_read = blocks_in_piece;
+			int len = 0;
+			int ret = 0;
 			for (int i = 0; i < blocks_to_read; i++) {
-				auto const len = std::min(DEFAULT_BLOCK_SIZE, piece_size - offset);
-				int const ret = st->read(buf, piece, offset, len, error);
+				len = std::min(DEFAULT_BLOCK_SIZE, piece_size - offset);
+				bool hit = store_buffer_.get({storage, piece, offset}, [&](char const *buf1)
+				{
+					ph.update(buf1, len);
+					ret = len;
+				});
+				if (!hit) {
+					ret = st->read(buf, piece, offset, len, error);
+					if (ret > 0) {
+						ph.update(buf, ret);
+					}
+				}
 				if (ret <= 0) {
 					break;
 				}
 				offset += ret;
-				ph.update(buf, ret);
 			}
 
 			libtorrent::sha1_hash const hash = ph.final();
