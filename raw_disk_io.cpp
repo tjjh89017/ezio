@@ -27,7 +27,7 @@ public:
 	{
 		fd_ = open(path.c_str(), O_RDWR);
 		if (fd_ < 0) {
-			SPDLOG_CRITICAL("failed to open ({}) = {}", path, strerror(fd_));
+			spdlog::critical("failed to open ({}) = {}", path, strerror(fd_));
 			exit(1);
 		}
 
@@ -44,7 +44,7 @@ public:
 					length = end;
 				}
 			} catch (const std::exception &e) {
-				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
+				spdlog::critical("failed to parse file_name({}) at ({}): {}",
 					file_name, file_index, e.what());
 				exit(1);
 			}
@@ -54,7 +54,7 @@ public:
 		mapping_addr_ = mmap(nullptr, length, PROT_READ | PROT_WRITE,
 			MAP_SHARED, fd_, 0);
 		if (mapping_addr_ == MAP_FAILED) {
-			SPDLOG_CRITICAL("failed to mmap: {}", strerror(errno));
+			spdlog::critical("failed to mmap: {}", strerror(errno));
 			exit(1);
 		}
 	}
@@ -63,12 +63,12 @@ public:
 	{
 		int ec = munmap(mapping_addr_, mapping_len_);
 		if (ec) {
-			SPDLOG_ERROR("munmap: {}", strerror(ec));
+			spdlog::error("munmap: {}", strerror(ec));
 		}
 
 		ec = close(fd_);
 		if (ec) {
-			SPDLOG_ERROR("close: {}", strerror(ec));
+			spdlog::error("close: {}", strerror(ec));
 		}
 	}
 
@@ -97,7 +97,7 @@ public:
 				partition_offset = std::stoll(file_name, 0, 16);
 				partition_offset += file_slice.offset;
 			} catch (const std::exception &e) {
-				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
+				spdlog::critical("failed to parse file_name({}) at ({}): {}",
 					file_name, file_index, e.what());
 				error.file(file_index);
 				error.ec = libtorrent::errors::parse_failed;
@@ -131,7 +131,7 @@ public:
 				partition_offset = std::stoll(file_name, 0, 16);
 				partition_offset += file_slice.offset;
 			} catch (const std::exception &e) {
-				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
+				spdlog::critical("failed to parse file_name({}) at ({}): {}",
 					file_name, file_index, e.what());
 				error.file(file_index);
 				error.ec = libtorrent::errors::parse_failed;
@@ -179,7 +179,7 @@ libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params c
 	storages_.emplace(idx, std::move(storage));
 
 	if (idx > 0) {
-		SPDLOG_WARN("new_torrent current idx => {}, should be 0", idx);
+		spdlog::warn("new_torrent current idx => {}, should be 0", idx);
 	}
 
 	return libtorrent::storage_holder(idx, *this);
@@ -187,7 +187,7 @@ libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params c
 
 void raw_disk_io::remove_torrent(libtorrent::storage_index_t idx)
 {
-	SPDLOG_WARN("unsupported operation: remove_torrent({})", idx);
+	spdlog::warn("unsupported operation: remove_torrent({})", idx);
 }
 
 void raw_disk_io::async_read(

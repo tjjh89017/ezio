@@ -30,7 +30,7 @@ void gRPCService::wait()
 Status gRPCService::Shutdown(ServerContext *context, const Empty *e1,
 	Empty *e2)
 {
-	SPDLOG_INFO("shutdown");
+	spdlog::info("shutdown");
 
 	daemon_.stop();
 	return Status::OK;
@@ -40,7 +40,7 @@ Status gRPCService::GetTorrentStatus(ServerContext *context,
 	const UpdateRequest *request,
 	UpdateStatus *response)
 {
-	SPDLOG_DEBUG("GetTorrentStatus request: {}", request->DebugString());
+	spdlog::debug("GetTorrentStatus request: {}", request->DebugString());
 
 	std::vector<std::string> hashes(request->hashes().begin(), request->hashes().end());
 	auto result = daemon_.get_torrent_status(hashes);
@@ -78,7 +78,7 @@ Status gRPCService::AddTorrent(ServerContext *context,
 	const AddRequest *request,
 	AddResponse *response)
 {
-	SPDLOG_INFO("AddTorrent");
+	spdlog::info("AddTorrent");
 
 	try {
 		daemon_.add_torrent(request->torrent(), request->save_path(), request->seeding_mode(), request->max_uploads(), request->max_connections());
@@ -91,7 +91,7 @@ Status gRPCService::AddTorrent(ServerContext *context,
 
 Status gRPCService::PauseTorrent(ServerContext *context, const PauseTorrentRequest *request, PauseTorrentResponse *response)
 {
-	SPDLOG_INFO("PauseTorrent");
+	spdlog::info("PauseTorrent");
 
 	try {
 		daemon_.pause_torrent(request->hash());
@@ -104,7 +104,7 @@ Status gRPCService::PauseTorrent(ServerContext *context, const PauseTorrentReque
 
 Status gRPCService::ResumeTorrent(ServerContext *context, const ResumeTorrentRequest *request, ResumeTorrentResponse *response)
 {
-	SPDLOG_INFO("ResumeTorrent");
+	spdlog::info("ResumeTorrent");
 
 	try {
 		daemon_.resume_torrent(request->hash());
