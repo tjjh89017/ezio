@@ -7,14 +7,16 @@
 #include <boost/core/noncopyable.hpp>
 #include <libtorrent/libtorrent.hpp>
 
-// 256 MB
-#define MAX_BUFFER_POOL_SIZE (256ULL * 1024 * 1024)
+// 16 MB
+#define MAX_BUFFER_POOL_SIZE (16ULL * 1024 * 1024)
 // 16 KB
 #define DEFAULT_BLOCK_SIZE (16 * 1024)
 
 // watermark for write buffer
 #define BUFFER_COUNT (MAX_BUFFER_POOL_SIZE / DEFAULT_BLOCK_SIZE)
-#define LOW_WATERMARK (MAX_BUFFER_POOL_SIZE / DEFAULT_BLOCK_SIZE / 8 * 1)
+// 50%
+#define LOW_WATERMARK (MAX_BUFFER_POOL_SIZE / DEFAULT_BLOCK_SIZE / 2)
+// 87.5%
 #define HIGH_WATERMARK (MAX_BUFFER_POOL_SIZE / DEFAULT_BLOCK_SIZE / 8 * 7)
 
 namespace ezio
