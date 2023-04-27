@@ -15,6 +15,7 @@
 
 int main(int argc, char **argv)
 {
+	std::cout << "ezio " << GIT_VERSION << std::endl;
 	spdlog::cfg::load_env_levels();
 
 	ezio::config current_config;

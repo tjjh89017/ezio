@@ -44,6 +44,12 @@ find_package(spdlog REQUIRED CONFIG)
 #list(APPEND sources ${GRPC_SRCS})
 #list(APPEND sources ${grpc_sources})
 
+# generate git version
+execute_process(COMMAND git describe --tags
+	TIMEOUT 5
+	OUTPUT_VARIABLE GIT_VERSION
+	OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
 # start compile part
 add_executable(${EZIO}
@@ -56,6 +62,8 @@ protobuf_generate(TARGET ${EZIO} LANGUAGE cpp)
 protobuf_generate(TARGET ${EZIO} LANGUAGE grpc GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}")
 
 target_compile_definitions(${EZIO} PUBLIC
+	GIT_VERSION="${GIT_VERSION}"
+
 	${GRPC_DEFINE}
 	_LARGEFILE64_SOURCE
 	_FILE_OFFSET_BITS=64
