@@ -332,7 +332,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 				});
 			}	
 		);
-		return false;
+		return exceeded;
 	}
 
 	// sync
@@ -342,7 +342,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	post(ioc_, [=, h = std::move(handler)] {
 		h(error);
 	});
-	return true;
+	return exceeded;
 }
 
 void raw_disk_io::async_hash(
