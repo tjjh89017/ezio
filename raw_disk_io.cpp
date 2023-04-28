@@ -205,7 +205,15 @@ void raw_disk_io::async_read(
 		return;
 	}
 
-	libtorrent::disk_buffer_holder buffer;
+	char *buf = read_buffer_pool_.allocate_buffer();
+	libtorrent::disk_buffer_holder buffer(read_buffer_pool_, buf, DEFAULT_BLOCK_SIZE);
+	if (!buf) {
+		error.ec = libtorrent::errors::no_memory;
+		error.operation = libtorrent::operation_t::alloc_cache_piece;
+		handler(libtorrent::disk_buffer_holder{}, error);
+		return;
+	}
+
 	int const block_offset = r.start - (r.start % DEFAULT_BLOCK_SIZE);
 	int const read_offset = r.start - block_offset;
 	// it might be unaligned request, refer libtorrent async_read
@@ -220,25 +228,17 @@ void raw_disk_io::async_read(
 
 		int const ret = store_buffer_.get2(loc1, loc2, [&](char const *buf1, char const *buf2)
 		{
-			buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, read_buffer_pool_.allocate_buffer(), r.length);
-			if (!buffer) {
-				error.ec = libtorrent::errors::no_memory;
-				error.operation = libtorrent::operation_t::alloc_cache_piece;
-				return 3;
-			}
-
 			if (buf1) {
-				std::memcpy(buffer.data(), buf1 + read_offset, std::size_t(len1));
+				std::memcpy(buf, buf1 + read_offset, std::size_t(len1));
 			}
 			if (buf2) {
-				std::memcpy(buffer.data() + len1, buf2, std::size_t(r.length - len1));
+				std::memcpy(buf + len1, buf2, std::size_t(r.length - len1));
 			}
 			return (buf1 ? 2 : 0) | (buf2 ? 1 : 0);
 		});
 
 		if (ret == 3) {
 			// success get whole piece
-			// or failed
 			// return immediately
 			handler(std::move(buffer), error);
 			return;
@@ -247,13 +247,13 @@ void raw_disk_io::async_read(
 		if (ret != 0) {
 			// partial
 			boost::asio::post(read_thread_pool_,
-				[&, this, handler = std::move(handler)]()
+				[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable
 				{
 					libtorrent::storage_error error;
 					auto offset = (ret == 1) ? r.start : block_offset + DEFAULT_BLOCK_SIZE;
 					auto len = (ret == 1) ? len1 : r.length - len1;
 					auto buf_offset = (ret == 1) ? 0 : len1;
-					storages_[idx]->read(buffer.data() + buf_offset, r.piece, offset, len, error);
+					storages_[idx]->read(buf + buf_offset, r.piece, offset, len, error);
 
 					post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 						h(std::move(b), error);
@@ -267,13 +267,7 @@ void raw_disk_io::async_read(
 	} else {
 		// aligned block
 		if (store_buffer_.get({ idx, r.piece, block_offset }, [&](char const *buf1){
-			buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, read_buffer_pool_.allocate_buffer(), r.length);
-			if (!buffer) {
-				error.ec = libtorrent::errors::no_memory;
-				error.operation = libtorrent::operation_t::alloc_cache_piece;
-				return;
-			}
-			std::memcpy(buffer.data(), buf1 + read_offset, std::size_t(r.length));
+			std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
 		}))
 		{
 			handler(std::move(buffer), error);
@@ -281,20 +275,11 @@ void raw_disk_io::async_read(
 		}
 	}
 
-	char *buf = read_buffer_pool_.allocate_buffer();
-	if (!buf) {
-		error.ec = libtorrent::errors::no_memory;
-		error.operation = libtorrent::operation_t::alloc_cache_piece;
-		handler(libtorrent::disk_buffer_holder{}, error);
-		return;
-	}
-
 	boost::asio::post(read_thread_pool_,
-		[&, this, handler = std::move(handler)]()
+		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable
 		{
 			libtorrent::storage_error error;
 			storages_[idx]->read(buf, r.piece, r.start, r.length, error);
-			buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, buf, r.length);
 
 			post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 				h(std::move(b), error);
