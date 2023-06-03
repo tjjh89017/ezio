@@ -51,6 +51,11 @@ execute_process(COMMAND git describe --tags
 	OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
+# if no git
+if(GIT_VERSION STREQUAL "")
+	set(GIT_VERSION 2.0.2)
+endif()
+
 # start compile part
 add_executable(${EZIO}
 	${sources}
