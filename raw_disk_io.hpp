@@ -3,6 +3,7 @@
 
 #include <map>
 #include <memory>
+#include <deque>
 #include <libtorrent/libtorrent.hpp>
 #include <boost/asio.hpp>
 #include "buffer_pool.hpp"
@@ -33,6 +34,7 @@ private:
 	libtorrent::io_context &ioc_;
 
 	std::map<libtorrent::storage_index_t, std::unique_ptr<partition_storage>> storages_;
+	std::deque<libtorrent::storage_index_t> free_slots_;
 
 public:
 	raw_disk_io(libtorrent::io_context &);

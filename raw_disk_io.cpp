@@ -175,6 +175,12 @@ libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params c
 	const std::string &target_partition = p.path;
 
 	int idx = storages_.size();
+	if (!free_slots_.empty()) {
+		// TODO need a lock
+		idx = free_slots_.front();
+		free_slots_.pop_front();
+	}
+
 	auto storage = std::make_unique<partition_storage>(target_partition, p.files);
 	storages_.emplace(idx, std::move(storage));
 
@@ -187,7 +193,9 @@ libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params c
 
 void raw_disk_io::remove_torrent(libtorrent::storage_index_t idx)
 {
-	SPDLOG_WARN("unsupported operation: remove_torrent({})", idx);
+	// TODO need a lock
+	storages_.erase(idx);
+	free_slots_.push_back(idx);
 }
 
 void raw_disk_io::async_read(
