@@ -41,6 +41,8 @@ message Torrent {
 	int64 total_payload_upload = 16;
 	// is paused
 	bool is_paused = 17;
+	// save_path
+	string save_path = 18;
 }
 
 message AddRequest {

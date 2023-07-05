@@ -123,6 +123,7 @@ class UIView(urwid.WidgetWrap):
             self.torrents[h]['total_payload_download'].set_text("total_payload_download: {}".format(torrent.total_payload_download))
             self.torrents[h]['total_payload_upload'].set_text("total_payload_upload: {}".format(torrent.total_payload_upload))
             self.torrents[h]['is_paused'].set_text("paused: {}".format(str(torrent.is_paused)))
+            self.torrents[h]['save_path'].set_text("save_path: {}".format(torrent.save_path))
 
         # avg progress
         l = len(torrents)
@@ -165,7 +166,9 @@ class UIView(urwid.WidgetWrap):
 
         data = self.controller.get_data()
         for h in data.hashes:
-            torrent_name = urwid.Text("{}: {}".format(data.torrents[h].name, h), align="left")
+            #torrent_name = urwid.Text("{}: {}".format(data.torrents[h].name, h), align="left")
+            # set name as save path for better UI
+            torrent_name = urwid.Text("{}: {}".format(data.torrents[h].save_path, h), align="left")
             torrent_progress = self.progress_bar()
             torrent_download = urwid.Text('', align="right")
             torrent_upload = urwid.Text('', align="right")
@@ -181,6 +184,7 @@ class UIView(urwid.WidgetWrap):
             torrent_total_payload_download = urwid.Text('', align="right")
             torrent_total_payload_upload = urwid.Text('', align="right")
             torrent_is_paused = urwid.Text('', align="right")
+            torrent_save_path = urwid.Text('', align="right")
             self.torrents[h] = {
                 'name': torrent_name,
                 'progress': torrent_progress,
@@ -198,6 +202,7 @@ class UIView(urwid.WidgetWrap):
                 'total_payload_download': torrent_total_payload_download,
                 'total_payload_upload': torrent_total_payload_upload,
                 'is_paused': torrent_is_paused,
+                'save_path': torrent_save_path,
             }
 
             l.append(torrent_name)

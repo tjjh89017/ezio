@@ -28,6 +28,7 @@ struct torrent_status {
 	int64_t total_payload_download;
 	int64_t total_payload_upload;
 	bool is_paused;
+	std::string save_path;
 };
 
 class ezio : boost::noncopyable

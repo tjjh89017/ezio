@@ -106,6 +106,7 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 		status.total_payload_download = t_stat.total_payload_download;
 		status.total_payload_upload = t_stat.total_payload_upload;
 		status.is_paused = (t_stat.flags & libtorrent::torrent_flags::paused) != 0; 
+		status.save_path = t_stat.save_path;
 
 		result.emplace(hash, status);
 	}
