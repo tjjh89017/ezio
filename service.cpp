@@ -13,6 +13,8 @@ void gRPCService::start(std::string listen_address)
 {
 	ServerBuilder builder;
 	builder.AddListeningPort(listen_address, grpc::InsecureServerCredentials());
+	// set recv unlimit
+	builder.SetMaxReceiveMessageSize(-1);
 	builder.RegisterService(this);
 	server_ = builder.BuildAndStart();
 }
