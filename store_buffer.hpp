@@ -16,21 +16,21 @@ public:
 	libtorrent::piece_index_t piece;
 	int offset;
 
-	torrent_location(libtorrent::storage_index_t const t, libtorrent::piece_index_t const p, int o)
-		: torrent(t), piece(p), offset(o) {}
+	torrent_location(libtorrent::storage_index_t const t, libtorrent::piece_index_t const p, int o) :
+		torrent(t), piece(p), offset(o)
+	{
+	}
 	bool operator==(torrent_location const &rhs) const
 	{
-		return std::tie(torrent, piece, offset)
-			== std::tie(rhs.torrent, rhs.piece, rhs.offset);
+		return std::tie(torrent, piece, offset) == std::tie(rhs.torrent, rhs.piece, rhs.offset);
 	}
 };
-} // namespace ezio
+}  // namespace ezio
 
 namespace std
 {
-template <>
-struct hash<ezio::torrent_location>
-{
+template<>
+struct hash<ezio::torrent_location> {
 	using argument_type = ezio::torrent_location;
 	using result_type = std::size_t;
 	std::size_t operator()(argument_type const &l) const
@@ -43,7 +43,7 @@ struct hash<ezio::torrent_location>
 	}
 };
 
-} // namespace std
+}  // namespace std
 
 
 namespace ezio
@@ -52,7 +52,7 @@ namespace ezio
 class store_buffer
 {
 public:
-	template <typename Fun>
+	template<typename Fun>
 	bool get(torrent_location const loc, Fun f)
 	{
 		std::unique_lock<std::mutex> l(m_mutex);
@@ -64,7 +64,7 @@ public:
 		return false;
 	}
 
-	template <typename Fun>
+	template<typename Fun>
 	int get2(torrent_location const loc1, torrent_location const loc2, Fun f)
 	{
 		std::unique_lock<std::mutex> l(m_mutex);
@@ -102,8 +102,8 @@ public:
 
 private:
 	std::mutex m_mutex;
-	std::unordered_map<torrent_location, char const*> m_store_buffer;
+	std::unordered_map<torrent_location, char const *> m_store_buffer;
 };
-} // namespace ezio
+}  // namespace ezio
 
 #endif

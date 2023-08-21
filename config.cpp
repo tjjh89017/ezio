@@ -35,4 +35,4 @@ void config::parse_from_argv(int argc, char **argv)
 	}
 }
 
-} // namepsace ezio
+}  // namespace ezio

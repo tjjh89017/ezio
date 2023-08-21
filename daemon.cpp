@@ -105,7 +105,7 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 		status.seeding_time = std::chrono::duration_cast<std::chrono::seconds>(t_stat.seeding_duration).count();
 		status.total_payload_download = t_stat.total_payload_download;
 		status.total_payload_upload = t_stat.total_payload_upload;
-		status.is_paused = (t_stat.flags & libtorrent::torrent_flags::paused) != 0; 
+		status.is_paused = (t_stat.flags & libtorrent::torrent_flags::paused) != 0;
 		status.save_path = t_stat.save_path;
 
 		result.emplace(hash, status);
@@ -114,7 +114,8 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 	return result;
 }
 
-void ezio::pause_torrent(std::string hash) {
+void ezio::pause_torrent(std::string hash)
+{
 	SPDLOG_INFO("pause {}", hash);
 	std::stringstream ss(hash);
 	libtorrent::sha1_hash info_hash;
@@ -125,7 +126,8 @@ void ezio::pause_torrent(std::string hash) {
 	}
 }
 
-void ezio::resume_torrent(std::string hash) {
+void ezio::resume_torrent(std::string hash)
+{
 	SPDLOG_INFO("resume {}", hash);
 	std::stringstream ss(hash);
 	libtorrent::sha1_hash info_hash;

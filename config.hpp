@@ -23,6 +23,6 @@ public:
 	std::string listen_address = "127.0.0.1:50051";
 };
 
-} // namespace ezio
+}  // namespace ezio
 
 #endif

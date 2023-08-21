@@ -5,8 +5,7 @@ namespace ezio
 
 void watermark_callback(std::vector<std::weak_ptr<libtorrent::disk_observer>> const &cbs)
 {
-	for (auto const& i : cbs)
-	{
+	for (auto const &i : cbs) {
 		std::shared_ptr<libtorrent::disk_observer> o = i.lock();
 		if (o) {
 			o->on_disk();
@@ -56,7 +55,7 @@ char *buffer_pool::allocate_buffer()
 	return allocate_buffer_impl(l);
 }
 
-char *buffer_pool::allocate_buffer(bool& exceeded, std::shared_ptr<libtorrent::disk_observer> o)
+char *buffer_pool::allocate_buffer(bool &exceeded, std::shared_ptr<libtorrent::disk_observer> o)
 {
 	std::unique_lock<std::mutex> l(m_pool_mutex);
 	char *buf = allocate_buffer_impl(l);

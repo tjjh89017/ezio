@@ -29,7 +29,7 @@ public:
 
 	char *allocate_buffer_impl(std::unique_lock<std::mutex> &l);
 	char *allocate_buffer();
-	char *allocate_buffer(bool& exceeded, std::shared_ptr<libtorrent::disk_observer> o);
+	char *allocate_buffer(bool &exceeded, std::shared_ptr<libtorrent::disk_observer> o);
 	void free_disk_buffer(char *) override;
 	void check_buffer_level(std::unique_lock<std::mutex> &l);
 

@@ -234,8 +234,7 @@ void raw_disk_io::async_read(
 
 		BOOST_ASSERT(r.length > len1);
 
-		int const ret = store_buffer_.get2(loc1, loc2, [&](char const *buf1, char const *buf2)
-		{
+		int const ret = store_buffer_.get2(loc1, loc2, [&](char const *buf1, char const *buf2) {
 			if (buf1) {
 				std::memcpy(buf, buf1 + read_offset, std::size_t(len1));
 			}
@@ -255,8 +254,7 @@ void raw_disk_io::async_read(
 		if (ret != 0) {
 			// partial
 			boost::asio::post(read_thread_pool_,
-				[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable
-				{
+				[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 					libtorrent::storage_error error;
 					auto offset = (ret == 1) ? r.start : block_offset + DEFAULT_BLOCK_SIZE;
 					auto len = (ret == 1) ? len1 : r.length - len1;
@@ -266,34 +264,30 @@ void raw_disk_io::async_read(
 					post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 						h(std::move(b), error);
 					});
-				}
-			);
+				});
 			return;
 		}
 
 		// if we cannot find any block, post it as normal job
 	} else {
 		// aligned block
-		if (store_buffer_.get({ idx, r.piece, block_offset }, [&](char const *buf1){
-			std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
-		}))
-		{
+		if (store_buffer_.get({idx, r.piece, block_offset}, [&](char const *buf1) {
+				std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
+			})) {
 			handler(std::move(buffer), error);
 			return;
 		}
 	}
 
 	boost::asio::post(read_thread_pool_,
-		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable
-		{
+		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
 			storages_[idx]->read(buf, r.piece, r.start, r.length, error);
 
 			post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 				h(std::move(b), error);
 			});
-		}
-	);
+		});
 }
 
 bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::peer_request const &r,
@@ -313,8 +307,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 		libtorrent::peer_request r2(r);
 		boost::asio::post(write_thread_pool_,
-			[=, this, handler = std::move(handler), buffer = std::move(buffer)]()
-			{
+			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
 				libtorrent::storage_error error;
 				storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
 
@@ -323,8 +316,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 				post(ioc_, [=, h = std::move(handler)] {
 					h(error);
 				});
-			}	
-		);
+			});
 		return exceeded;
 	}
 
@@ -355,15 +347,14 @@ void raw_disk_io::async_hash(
 		});
 		return;
 	}
-	
+
 	auto buffer = libtorrent::disk_buffer_holder(read_buffer_pool_, buf, DEFAULT_BLOCK_SIZE);
 
 	boost::asio::post(hash_thread_pool_,
-		[=, this, handler = std::move(handler), buffer = std::move(buffer)]()
-		{
+		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
 			libtorrent::storage_error error;
 			libtorrent::hasher ph;
-			partition_storage *st = storages_[storage].get(); 
+			partition_storage *st = storages_[storage].get();
 
 			int const piece_size = st->piece_size(piece);
 			int const blocks_in_piece = (piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
@@ -374,8 +365,7 @@ void raw_disk_io::async_hash(
 			int ret = 0;
 			for (int i = 0; i < blocks_to_read; i++) {
 				len = std::min(DEFAULT_BLOCK_SIZE, piece_size - offset);
-				bool hit = store_buffer_.get({storage, piece, offset}, [&](char const *buf1)
-				{
+				bool hit = store_buffer_.get({storage, piece, offset}, [&](char const *buf1) {
 					ph.update(buf1, len);
 					ret = len;
 				});
@@ -393,10 +383,10 @@ void raw_disk_io::async_hash(
 
 			libtorrent::sha1_hash const hash = ph.final();
 
-			post(ioc_, [=, h = std::move(handler)]{ h(piece, hash, error); });
-		}
-	);
-	
+			post(ioc_, [=, h = std::move(handler)] {
+				h(piece, hash, error);
+			});
+		});
 }
 
 void raw_disk_io::async_hash2(
