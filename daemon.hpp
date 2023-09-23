@@ -44,7 +44,7 @@ public:
 	void pause_torrent(std::string hash);
 	void resume_torrent(std::string hash);
 	bool get_shutdown();
-	void pop_alerts(std::vector<lt::alert*>*);
+	void pop_alerts(std::vector<lt::alert *> *);
 
 private:
 	lt::session &session_;

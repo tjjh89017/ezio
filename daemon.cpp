@@ -143,7 +143,7 @@ bool ezio::get_shutdown()
 	return shutdown_;
 }
 
-void ezio::pop_alerts(std::vector<lt::alert*> *alerts)
+void ezio::pop_alerts(std::vector<lt::alert *> *alerts)
 {
 	session_.pop_alerts(alerts);
 }

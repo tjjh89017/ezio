@@ -45,8 +45,7 @@ void log::report_speed()
 				t_stat.is_finished ? "F" : " ",
 				t_stat.active_time,
 				t_stat.finished_time,
-				t_stat.seeding_time
-			);
+				t_stat.seeding_time);
 		}
 	}
 }
@@ -57,7 +56,7 @@ void log::report_alert()
 	while (!m_daemon.get_shutdown()) {
 		std::this_thread::sleep_for(std::chrono::seconds(5));
 
-		std::vector<libtorrent::alert*> alerts;
+		std::vector<libtorrent::alert *> alerts;
 		m_daemon.pop_alerts(&alerts);
 		for (auto a : alerts) {
 			SPDLOG_INFO("lt alert: {} {}", a->what(), a->message());
