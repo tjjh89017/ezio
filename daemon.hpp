@@ -43,6 +43,8 @@ public:
 	std::map<std::string, torrent_status> get_torrent_status(std::vector<std::string> hashes);
 	void pause_torrent(std::string hash);
 	void resume_torrent(std::string hash);
+	bool get_shutdown();
+	void pop_alerts(std::vector<lt::alert*>*);
 
 private:
 	lt::session &session_;

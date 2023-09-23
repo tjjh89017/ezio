@@ -13,6 +13,7 @@ set(sources
 	buffer_pool.cpp
 	raw_disk_io.cpp
 	service.cpp
+	log.cpp
 )
 
 set(protos
