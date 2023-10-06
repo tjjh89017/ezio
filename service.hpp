@@ -43,6 +43,7 @@ public:
 	virtual Status AddTorrent(ServerContext *context, const AddRequest *request, AddResponse *response) override;
 	virtual Status PauseTorrent(ServerContext *context, const PauseTorrentRequest *request, PauseTorrentResponse *response) override;
 	virtual Status ResumeTorrent(ServerContext *context, const ResumeTorrentRequest *request, ResumeTorrentResponse *response) override;
+	virtual Status GetVersion(ServerContext *context, const Empty *e, VersionResponse *response) override;
 
 private:
 	ezio &daemon_;

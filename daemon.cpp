@@ -148,4 +148,9 @@ void ezio::pop_alerts(std::vector<lt::alert *> *alerts)
 	session_.pop_alerts(alerts);
 }
 
+std::string ezio::get_version()
+{
+	return GIT_VERSION;
+}
+
 }  // namespace ezio

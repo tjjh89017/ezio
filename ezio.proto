@@ -92,10 +92,16 @@ message ResumeTorrentResponse {
 
 }
 
+message VersionResponse {
+	// version
+	string version = 1;
+}
+
 service EZIO {
 	rpc Shutdown(Empty) returns (Empty) {}
 	rpc GetTorrentStatus(UpdateRequest) returns (UpdateStatus) {}
 	rpc AddTorrent(AddRequest) returns (AddResponse) {}
 	rpc PauseTorrent(PauseTorrentRequest) returns (PauseTorrentResponse) {}
 	rpc ResumeTorrent(ResumeTorrentRequest) returns (ResumeTorrentResponse) {}
+	rpc GetVersion(Empty) returns (VersionResponse) {}
 }

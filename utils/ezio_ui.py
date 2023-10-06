@@ -50,6 +50,11 @@ class UIModel:
     def get_data(self):
         return self.data
 
+    def get_version(self):
+        request = ezio_pb2.Empty()
+        result = self.stub.GetVersion(request)
+        return result.version
+
 class UIView(urwid.WidgetWrap):
     """
     A class responsible for providing the application's interface and
@@ -150,9 +155,11 @@ class UIView(urwid.WidgetWrap):
         self.progress_wrap = urwid.WidgetWrap(self.progress)
         self.download = urwid.Text('', align="right")
         self.upload = urwid.Text('', align="right")
+
+        version = self.controller.get_version()
         
         l = [
-            urwid.Text("EZIO", align="center"),
+            urwid.Text("EZIO " + version, align="center"),
             urwid.Divider('-'),
             #self.button("Quit", self.exit_program),
             #urwid.Divider('-'),
@@ -308,6 +315,9 @@ class UIController:
 
     def get_data(self):
         return self.model.get_data()
+
+    def get_version(self):
+        return self.model.get_version()
 
 def main():
     UIController().main()

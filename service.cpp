@@ -118,4 +118,12 @@ Status gRPCService::ResumeTorrent(ServerContext *context, const ResumeTorrentReq
 	return Status::OK;
 }
 
+Status gRPCService::GetVersion(ServerContext *context, const Empty *e, VersionResponse *response)
+{
+	SPDLOG_INFO("GetVersion");
+
+	response->set_version(GIT_VERSION);
+	return Status::OK;
+}
+
 }  // namespace ezio
