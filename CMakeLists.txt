@@ -54,7 +54,7 @@ execute_process(COMMAND git describe --tags
 
 # if no git
 if(GIT_VERSION STREQUAL "")
-	set(GIT_VERSION 2.0.5)
+	set(GIT_VERSION 2.0.6)
 endif()
 
 # start compile part
