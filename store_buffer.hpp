@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <mutex>
 
+#include <boost/functional/hash.hpp>
 #include <libtorrent/libtorrent.hpp>
 
 namespace ezio
