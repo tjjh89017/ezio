@@ -29,8 +29,7 @@ RUN apt-get -y update && \
     libgrpc29 \
     libgrpc++1.51 \
     libprotobuf32 \
-    libtorrent-rasterbar2.0 \
-    libspdlog1.10
+    libtorrent-rasterbar2.0
 
 copy --from=builder /usr/local/sbin/ezio .
 
