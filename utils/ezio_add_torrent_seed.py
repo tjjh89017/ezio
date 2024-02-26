@@ -26,8 +26,6 @@ if __name__ == '__main__':
     request = ezio_pb2.AddRequest()
     request.save_path = sys.argv[2]
     request.seeding_mode = True
-    request.max_uploads = 2
-    request.max_connections = 2
     with open(sys.argv[1], 'rb') as f:
         request.torrent = f.read()
 
