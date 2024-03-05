@@ -6,8 +6,7 @@ You need to install `python3-libtorrent` in ubnutu or debian like
 `apt install python-libtorrent`
 It will install `libtorrent-rasterbar` for depend
 
-cat torrent.info | ./partclone_create_torrent.py \ 
--p sda1 -c CloneZilla -f ./btzone/image/sda1/sda1.torrent
+cat torrent.info | ./partclone_create_torrent.py -p sda1 -c CloneZilla -f ./btzone/image/sda1/sda1.torrent
 
 When torrent is created, you should use `transmission-edit`
 to edit the info such as `tracker` or `private`
@@ -23,8 +22,7 @@ from argparse import RawTextHelpFormatter
 # parse args
 parser = ArgumentParser(
         description='''input torrent.info from stdin
-example: cat torrent.info | ./partclone_create_torrent.py \ 
--p sda1 -c CloneZilla -o ./btzone/image/sda1/sda1.torrent''',
+example: cat torrent.info | ./partclone_create_torrent.py -p sda1 -c CloneZilla -o ./btzone/image/sda1/sda1.torrent''',
         formatter_class=RawTextHelpFormatter)
 parser.add_argument("-p", "--partition-name", help="Partition name of this torrent", dest="partition_name", required=True)
 parser.add_argument("-o", "--output-file", help="Output torrent path and filename", dest="filename", required=True)
