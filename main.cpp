@@ -38,6 +38,10 @@ int main(int argc, char **argv)
 	p.set_int(lt::settings_pack::mixed_mode_algorithm, lt::settings_pack::prefer_tcp);
 
 	//p.set_int(lt::settings_pack::alert_mask, lt::alert_category::peer | lt::alert_category::status);
+	
+	// tune
+	//p.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::suggest_read_cache);
+	//p.set_int(lt::settings_pack::max_queued_disk_bytes, 128 * 1024 * 1024);
 
 	lt::session_params ses_params(p);
 	if (!current_config.file_flag) {
