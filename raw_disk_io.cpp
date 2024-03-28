@@ -30,43 +30,11 @@ public:
 			SPDLOG_CRITICAL("failed to open ({}) = {}", path, strerror(fd_));
 			exit(1);
 		}
-
-		// calc total size for calling mmap() later.
-		size_t length = 0;
-		for (const auto &file_index : fs.file_range()) {
-			std::string file_name(fs.file_name(file_index));
-			int64_t file_size = fs.file_size(file_index);
-
-			try {
-				int64_t file_offset = std::stoll(file_name, 0, 16);
-				int64_t end = file_offset + file_size;
-				if (length < end) {
-					length = end;
-				}
-			} catch (const std::exception &e) {
-				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
-					file_name, file_index, e.what());
-				exit(1);
-			}
-		}
-
-		mapping_len_ = length;
-		mapping_addr_ = mmap(nullptr, length, PROT_READ | PROT_WRITE,
-			MAP_SHARED, fd_, 0);
-		if (mapping_addr_ == MAP_FAILED) {
-			SPDLOG_CRITICAL("failed to mmap: {}", strerror(errno));
-			exit(1);
-		}
 	}
 
 	~partition_storage()
 	{
-		int ec = munmap(mapping_addr_, mapping_len_);
-		if (ec) {
-			SPDLOG_ERROR("munmap: {}", strerror(ec));
-		}
-
-		ec = close(fd_);
+		int ec = close(fd_);
 		if (ec) {
 			SPDLOG_ERROR("close: {}", strerror(ec));
 		}
@@ -81,7 +49,6 @@ public:
 		int const length, libtorrent::storage_error &error)
 	{
 		BOOST_ASSERT(buffer != nullptr);
-		BOOST_ASSERT(mapping_addr_ != nullptr);
 
 		auto file_slices = fs_.map_block(piece, offset, length);
 		int ret = 0;
@@ -105,7 +72,7 @@ public:
 				return ret;
 			}
 
-			memcpy(buffer, mapping_addr_ + partition_offset, file_slice.size);
+			pread(fd_, buffer, file_slice.size, partition_offset);
 			ret += file_slice.size;
 			buffer += file_slice.size;
 		}
@@ -116,7 +83,6 @@ public:
 		int const length, libtorrent::storage_error &error)
 	{
 		BOOST_ASSERT(buffer != nullptr);
-		BOOST_ASSERT(mapping_addr_ != nullptr);
 
 		auto file_slices = fs_.map_block(piece, offset, length);
 
@@ -139,7 +105,7 @@ public:
 				return;
 			}
 
-			memcpy(mapping_addr_ + partition_offset, buffer, file_slice.size);
+			pwrite(fd_, buffer, file_slice.size, partition_offset);
 			buffer += file_slice.size;
 		}
 	}
