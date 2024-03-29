@@ -24,6 +24,8 @@ if __name__ == '__main__':
     stub = ezio_pb2_grpc.EZIOStub(channel)
 
     request = ezio_pb2.AddRequest()
+    request.max_uploads = 2
+    request.max_connections = 3
     request.save_path = sys.argv[2]
     with open(sys.argv[1], 'rb') as f:
         request.torrent = f.read()

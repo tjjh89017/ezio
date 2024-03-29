@@ -24,6 +24,8 @@ if __name__ == '__main__':
     stub = ezio_pb2_grpc.EZIOStub(channel)
 
     request = ezio_pb2.AddRequest()
+    request.max_uploads = 1
+    request.max_connections = 2
     request.save_path = sys.argv[2]
     request.seeding_mode = True
     with open(sys.argv[1], 'rb') as f:
