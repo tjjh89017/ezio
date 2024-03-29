@@ -54,7 +54,7 @@ execute_process(COMMAND git describe --tags --dirty
 
 # if no git
 if(GIT_VERSION STREQUAL "")
-	set(GIT_VERSION 2.0.10)
+	set(GIT_VERSION 2.0.11-RC1)
 endif()
 
 # start compile part
