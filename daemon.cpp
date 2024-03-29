@@ -78,6 +78,8 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 		// do some filter for below
 	}
 
+	auto now = std::chrono::high_resolution_clock::now();
+
 	std::vector<lt::torrent_handle> torrents = session_.get_torrents();
 	for (lt::torrent_handle const &h : torrents) {
 		std::stringstream ss;
@@ -107,6 +109,16 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 		status.total_payload_upload = t_stat.total_payload_upload;
 		status.is_paused = (t_stat.flags & libtorrent::torrent_flags::paused) != 0;
 		status.save_path = t_stat.save_path;
+
+		status.last_upload = -1;
+		if (t_stat.last_upload.time_since_epoch().count() != 0) {
+			status.last_upload = std::chrono::duration_cast<std::chrono::seconds>(now - t_stat.last_upload).count();
+		}
+
+		status.last_download = -1;
+		if (t_stat.last_download.time_since_epoch().count() != 0) {
+			status.last_download = std::chrono::duration_cast<std::chrono::seconds>(now - t_stat.last_download).count();
+		}
 
 		result.emplace(hash, status);
 	}

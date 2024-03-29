@@ -43,6 +43,10 @@ message Torrent {
 	bool is_paused = 17;
 	// save_path
 	string save_path = 18;
+	// last_upload
+	int64 last_upload = 19;
+	// last_download
+	int64 last_download = 20;
 }
 
 message AddRequest {

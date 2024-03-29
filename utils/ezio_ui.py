@@ -129,6 +129,7 @@ class UIView(urwid.WidgetWrap):
             self.torrents[h]['total_payload_upload'].set_text("total_payload_upload: {}".format(torrent.total_payload_upload))
             self.torrents[h]['is_paused'].set_text("paused: {}".format(str(torrent.is_paused)))
             self.torrents[h]['save_path'].set_text("save_path: {}".format(torrent.save_path))
+            self.torrents[h]['last_upload'].set_text("last_upload: {}".format(torrent.last_upload))
 
         # avg progress
         l = len(torrents)
@@ -192,6 +193,7 @@ class UIView(urwid.WidgetWrap):
             torrent_total_payload_upload = urwid.Text('', align="right")
             torrent_is_paused = urwid.Text('', align="right")
             torrent_save_path = urwid.Text('', align="right")
+            torrent_last_upload = urwid.Text('', align="right")
             self.torrents[h] = {
                 'name': torrent_name,
                 'progress': torrent_progress,
@@ -210,6 +212,7 @@ class UIView(urwid.WidgetWrap):
                 'total_payload_upload': torrent_total_payload_upload,
                 'is_paused': torrent_is_paused,
                 'save_path': torrent_save_path,
+                'last_upload': torrent_last_upload,
             }
 
             l.append(torrent_name)
@@ -228,6 +231,7 @@ class UIView(urwid.WidgetWrap):
             l.append(torrent_total_payload_download)
             l.append(torrent_total_payload_upload)
             l.append(torrent_is_paused)
+            l.append(torrent_last_upload)
             l.append(urwid.Divider('-'))
 
         w = urwid.ListBox(urwid.SimpleListWalker(l))
@@ -286,7 +290,7 @@ class UIController:
                 if not t_stat.is_finished:
                     continue
 
-                if t_stat.total_payload_upload > 3 * t_stat.total_done or t_stat.seeding_time > 60:
+                if t_stat.total_payload_upload > 3 * t_stat.total_done or t_stat.last_upload > 15 or t_stat.last_upload == -1:
                     # stop torrent
                     request = ezio_pb2.PauseTorrentRequest()
                     request.hash = info_hash

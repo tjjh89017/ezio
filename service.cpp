@@ -71,6 +71,9 @@ Status gRPCService::GetTorrentStatus(ServerContext *context,
 		t.set_total_payload_upload(t_stat.total_payload_upload);
 		t.set_is_paused(t_stat.is_paused);
 		t.set_save_path(t_stat.save_path);
+		t.set_last_upload(t_stat.last_upload);
+		t.set_last_download(t_stat.last_download);
+
 		response->mutable_torrents()->insert({hash, t});
 	}
 
