@@ -41,7 +41,7 @@ public:
 
 	void stop();
 	void wait(int interval_second);
-	void add_torrent(std::string torrent_body, std::string save_path, bool seeding_mode, int max_uploads, int max_connections);
+	void add_torrent(std::string torrent_body, std::string save_path, bool seeding_mode, int max_uploads, int max_connections, bool sequential_download);
 	std::map<std::string, torrent_status> get_torrent_status(std::vector<std::string> hashes);
 	void pause_torrent(std::string hash);
 	void resume_torrent(std::string hash);

@@ -26,6 +26,7 @@ if __name__ == '__main__':
     request = ezio_pb2.AddRequest()
     request.max_uploads = 2
     request.max_connections = 3
+    request.sequential_download = True
     request.save_path = sys.argv[2]
     with open(sys.argv[1], 'rb') as f:
         request.torrent = f.read()

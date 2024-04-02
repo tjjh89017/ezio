@@ -87,7 +87,7 @@ Status gRPCService::AddTorrent(ServerContext *context,
 	SPDLOG_INFO("AddTorrent");
 
 	try {
-		daemon_.add_torrent(request->torrent(), request->save_path(), request->seeding_mode(), request->max_uploads(), request->max_connections());
+		daemon_.add_torrent(request->torrent(), request->save_path(), request->seeding_mode(), request->max_uploads(), request->max_connections(), request->sequential_download());
 	} catch (const std::exception &e) {
 		return Status(grpc::StatusCode::UNAVAILABLE, e.what());
 	}

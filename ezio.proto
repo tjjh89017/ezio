@@ -60,6 +60,8 @@ message AddRequest {
 	int32 max_uploads = 4;
 	// max total connection
 	int32 max_connections = 5;
+	// force sequential download
+	bool sequential_download = 6;
 }
 
 message AddResponse {

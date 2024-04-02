@@ -33,7 +33,7 @@ void ezio::wait(int interval_second)
 	}
 }
 
-void ezio::add_torrent(std::string torrent_body, std::string save_path, bool seeding_mode = false, int max_uploads = 3, int max_connections = 5)
+void ezio::add_torrent(std::string torrent_body, std::string save_path, bool seeding_mode = false, int max_uploads = 3, int max_connections = 5, bool sequential_download = false)
 {
 	lt::span<const char> torrent_byte(torrent_body);
 
@@ -57,6 +57,10 @@ void ezio::add_torrent(std::string torrent_body, std::string save_path, bool see
 
 	if (seeding_mode) {
 		atp.flags |= libtorrent::torrent_flags::seed_mode;
+	}
+
+	if (sequential_download) {
+		atp.flags |= libtorrent::torrent_flags::sequential_download;
 	}
 
 	if (ec) {
