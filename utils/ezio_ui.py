@@ -6,6 +6,7 @@ import urwid
 import sys
 import math
 import time
+import datetime
 from functools import reduce
 
 import grpc
@@ -15,6 +16,7 @@ import ezio_pb2_grpc
 UPDATE_INTERVAL = 1
 
 def to_state(state):
+    '''
     s = [
         '',
         'checking_files',
@@ -25,6 +27,17 @@ def to_state(state):
         'unused_enum_for_backwards_compatibility_allocating',
         'checking_resume_data',
     ]
+    '''
+    s = [
+        '',
+        'C',
+        'M',
+        'D',
+        'F',
+        'S',
+        'U',
+        'R',
+    ]
 
     return s[state]
 
@@ -33,6 +46,16 @@ def To_GBmin(speed):
 
 def To_MBsec(speed):
     return (float(speed) / 1024 / 1024)
+
+def to_size(size_bytes):
+    if size_bytes == 0:
+        return f"{0:7.2f}B"
+
+    size_name = ("B", "KB", "MB", "GB", "TB")
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    power = math.pow(1024, i)
+    s = round(size_bytes / power, 2)
+    return f"{s:7.2f}{size_name[i]}"
 
 class UIModel:
     def __init__(self, address='localhost:50051'):
@@ -91,62 +114,52 @@ class UIView(urwid.WidgetWrap):
         data = self.controller.get_data()
         if not data:
             return
+
         hashes = data.hashes
         torrents = data.torrents
 
-        sum_progress = 0.0
+        sum_total = 0
+        sum_total_done = 0
         sum_download = 0
         sum_upload = 0
-        l = []
+
         for h in hashes:
             torrent = torrents[h]
             download = float(torrent.download_rate)
             upload = float(torrent.upload_rate)
-            sum_progress += torrents[h].progress
+
             sum_download += download
             sum_upload += upload
+
+            if torrent.total == 0:
+                torrent.total = torrent.total_done
+            sum_total += torrent.total
+            sum_total_done += torrent.total_done
 
             if h not in self.torrents:
                 self.controller.loop.widget = self.main_window()
 
             self.torrents[h]['progress'].set_completion(torrent.progress)
             self.torrents[h]['download'].set_text(
-                "D: {:.2f}GB/min, {:.2f}MB/s".format(To_GBmin(download), To_MBsec(download))
+                "D: {: 6.2f}GB/min, {: 7.2f}MB/s".format(To_GBmin(download), To_MBsec(download))
             )
             self.torrents[h]['upload'].set_text(
-                "U: {:.2f}GB/min, {:.2f}MB/s".format(To_GBmin(upload), To_MBsec(upload))
+                "U: {: 6.2f}GB/min, {: 7.2f}MB/s".format(To_GBmin(upload), To_MBsec(upload))
             )
-            self.torrents[h]['active_time'].set_text("T: {} secs".format(torrent.active_time))
-            self.torrents[h]['is_finished'].set_text("Finished: {}".format(str(torrent.is_finished)))
-            self.torrents[h]['num_peers'].set_text("peers: {}".format(torrent.num_peers))
-            self.torrents[h]['state'].set_text("state: {}".format(to_state(torrent.state)))
-            self.torrents[h]['total_done'].set_text("total_done: {}".format(torrent.total_done))
-            self.torrents[h]['total'].set_text("total: {}".format(torrent.total))
-            self.torrents[h]['num_pieces'].set_text("num_pieces: {}".format(torrent.num_pieces))
-            self.torrents[h]['finished_time'].set_text("finished_time: {}".format(torrent.finished_time))
-            self.torrents[h]['seeding_time'].set_text("seeding_time: {}".format(torrent.seeding_time))
-            self.torrents[h]['total_payload_download'].set_text("total_payload_download: {}".format(torrent.total_payload_download))
-            self.torrents[h]['total_payload_upload'].set_text("total_payload_upload: {}".format(torrent.total_payload_upload))
-            self.torrents[h]['is_paused'].set_text("paused: {}".format(str(torrent.is_paused)))
-            self.torrents[h]['save_path'].set_text("save_path: {}".format(torrent.save_path))
-            self.torrents[h]['last_upload'].set_text("last_upload: {}".format(torrent.last_upload))
+            self.torrents[h]['active_time'].set_text("[T: {}]".format(datetime.timedelta(seconds=torrent.active_time)))
+            self.torrents[h]['num_peers'].set_text("[P: {:3d}]".format(torrent.num_peers))
+            self.torrents[h]['state'].set_text("[S: {}]".format(to_state(torrent.state)))
+            self.torrents[h]['total_done'].set_text("[F: {}]".format(to_size(torrent.total_done)))
+            self.torrents[h]['total'].set_text(to_size(torrent.total))
+            if torrent.last_upload != -1:
+                self.torrents[h]['last_upload'].set_text("[L: {}]".format(datetime.timedelta(seconds=torrent.last_upload)))
+            else:
+                self.torrents[h]['last_upload'].set_text("[L:-00:00:01]".format(datetime.timedelta(seconds=torrent.last_upload)))
 
-        # avg progress
-        l = len(torrents)
-        if l == 0:
-            l = 1
-        self.progress.set_completion(sum_progress / l)
-        self.download.set_text(
-            "D: {:.2f}GB/min, {:.2f}MB/s".format(To_GBmin(sum_download), To_MBsec(sum_download))
+        self.progress.set_completion(sum_total_done / sum_total)
+        self.download_upload.set_text(
+            "D: {: 6.2f}GB/min, {: 7.2f}MB/s | U: {: 6.2f}GB/min, {: 7.2f}MB/s".format(To_GBmin(sum_download), To_MBsec(sum_download), To_GBmin(sum_upload), To_MBsec(sum_upload))
         )
-        self.upload.set_text(
-            "U: {:.2f}GB/min, {:.2f}MB/s".format(To_GBmin(sum_upload), To_MBsec(sum_upload))
-        )
-
-    def button(self, t, fn):
-        w = urwid.Button(t, fn)
-        w = urwid.AttrWrap(w, 'button normal', 'button select')
-        return w
 
     def progress_bar(self):
         return urwid.ProgressBar('pg normal', 'pg complete', 0, 1)
@@ -154,100 +167,90 @@ class UIView(urwid.WidgetWrap):
     def graph_controls(self):
         self.progress = self.progress_bar()
         self.progress_wrap = urwid.WidgetWrap(self.progress)
-        self.download = urwid.Text('', align="right")
-        self.upload = urwid.Text('', align="right")
+        self.download_upload = urwid.Text('D:    0MB/s,   0GB/min | U:    0MB/s,   0GB/min', align="right")
 
         version = self.controller.get_version()
         
         l = [
             urwid.Text("EZIO " + version, align="center"),
             urwid.Divider('-'),
-            #self.button("Quit", self.exit_program),
-            #urwid.Divider('-'),
-            urwid.Text("Total Progress", align="center"),
             self.progress_wrap,
-            self.download,
-            self.upload,
+            self.download_upload,
             urwid.Divider('-'),
             # each progess and speed rate append
         ]
 
         data = self.controller.get_data()
         for h in data.hashes:
-            #torrent_name = urwid.Text("{}: {}".format(data.torrents[h].name, h), align="left")
-            # set name as save path for better UI
             torrent_name = urwid.Text("{}: {}".format(data.torrents[h].save_path, h), align="left")
             torrent_progress = self.progress_bar()
-            torrent_download = urwid.Text('', align="right")
-            torrent_upload = urwid.Text('', align="right")
-            torrent_active_time = urwid.Text('', align="right")
-            torrent_is_finished = urwid.Text('', align="right")
-            torrent_num_peers = urwid.Text('', align="right")
-            torrent_state = urwid.Text('', align="right")
-            torrent_total_done = urwid.Text('', align="right")
-            torrent_total = urwid.Text('', align="right")
-            torrent_num_pieces = urwid.Text('', align="right")
-            torrent_finished_time = urwid.Text('', align="right")
-            torrent_seeding_time = urwid.Text('', align="right")
-            torrent_total_payload_download = urwid.Text('', align="right")
-            torrent_total_payload_upload = urwid.Text('', align="right")
+            torrent_download = urwid.Text('D:    0MB/s,   0GB/min', align="right")
+            torrent_upload = urwid.Text('U:    0MB/s,   0GB/min', align="right")
+            torrent_active_time = urwid.Text('[T: 00:00:00]', align="right")
+            torrent_num_peers = urwid.Text('[P:   0]', align="right")
+            torrent_state = urwid.Text('[S:  ]', align="right")
+            torrent_total_done = urwid.Text('[F:    0MB]', align="right")
+            torrent_total = urwid.Text('0GB', align="right")
             torrent_is_paused = urwid.Text('', align="right")
             torrent_save_path = urwid.Text('', align="right")
-            torrent_last_upload = urwid.Text('', align="right")
+            torrent_last_upload = urwid.Text('[L: 00:00:00]', align="right")
+
             self.torrents[h] = {
                 'name': torrent_name,
                 'progress': torrent_progress,
                 'download': torrent_download,
                 'upload': torrent_upload,
                 'active_time': torrent_active_time,
-                'is_finished': torrent_is_finished,
                 'num_peers': torrent_num_peers,
                 'state': torrent_state,
                 'total_done': torrent_total_done,
                 'total': torrent_total,
-                'num_pieces': torrent_num_pieces,
-                'finished_time': torrent_finished_time,
-                'seeding_time': torrent_seeding_time,
-                'total_payload_download': torrent_total_payload_download,
-                'total_payload_upload': torrent_total_payload_upload,
-                'is_paused': torrent_is_paused,
                 'save_path': torrent_save_path,
                 'last_upload': torrent_last_upload,
             }
 
-            l.append(torrent_name)
-            l.append(torrent_progress)
-            l.append(torrent_download)
-            l.append(torrent_upload)
-            l.append(torrent_active_time)
-            l.append(torrent_is_finished)
-            l.append(torrent_num_peers)
-            l.append(torrent_state)
-            l.append(torrent_total_done)
-            l.append(torrent_total)
-            l.append(torrent_num_pieces)
-            l.append(torrent_finished_time)
-            l.append(torrent_seeding_time)
-            l.append(torrent_total_payload_download)
-            l.append(torrent_total_payload_upload)
-            l.append(torrent_is_paused)
-            l.append(torrent_last_upload)
-            l.append(urwid.Divider('-'))
+            c1 = urwid.Columns([
+                ('pack', torrent_name),
+                ('pack', urwid.Text(' ')),
+                ('pack', torrent_total),
+            ])
 
-        w = urwid.ListBox(urwid.SimpleListWalker(l))
-        return w
+            c2 = urwid.Columns([
+                ('weight', 1, urwid.Text('')),
+                ('pack', torrent_download),
+                ('pack', urwid.Text(" | ")),
+                ('pack', torrent_upload),
+            ])
 
-    def main_shadow(self, w):
-        return w
+            c3 = urwid.Columns([
+                ('weight', 1, urwid.Text('')),
+                ('pack', torrent_total_done),
+                ('pack', torrent_state),
+                ('pack', torrent_num_peers),
+                ('pack', torrent_active_time),
+                ('pack', torrent_last_upload),
+            ])
+
+            p = urwid.Pile([
+                ('pack', c1),
+                ('pack', torrent_progress),
+                ('pack', c2),
+                ('pack', c3),
+                ('pack', urwid.Divider('-')),
+            ]) 
+
+            l.append(p)
+
+        self.torrent_list = urwid.ListBox(urwid.SimpleListWalker(l))
+        return self.torrent_list
 
     def main_window(self):
         controls = self.graph_controls()
         w = urwid.Columns([('weight', 3, controls)])
-        w = urwid.Padding(w, ('fixed left', 1), ('fixed right', 0))
+        w = urwid.Padding(w, ('fixed left', 0), ('fixed right', 0))
         w = urwid.AttrWrap(w, 'body')
         w = urwid.LineBox(w)
         w = urwid.AttrWrap(w, 'line')
-        w = self.main_shadow(w)
         return w
 
 class UIController:
