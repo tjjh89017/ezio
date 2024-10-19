@@ -157,9 +157,18 @@ class UIView(urwid.WidgetWrap):
                 self.torrents[h]['last_upload'].set_text("[L:-00:00:01]".format(datetime.timedelta(seconds=torrent.last_upload)))
 
         self.progress.set_completion(sum_total_done / sum_total)
-        self.download_upload.set_text(
-            "D: {: 6.2f}GB/min, {: 7.2f}MB/s | U: {: 6.2f}GB/min, {: 7.2f}MB/s".format(To_GBmin(sum_download), To_MBsec(sum_download), To_GBmin(sum_upload), To_MBsec(sum_upload))
+        self.download.set_text(
+            "D: {: 6.2f}GB/min, {: 7.2f}MB/s".format(To_GBmin(sum_download), To_MBsec(sum_download))
         )
+        self.upload.set_text(
+            "U: {: 6.2f}GB/min, {: 7.2f}MB/s".format(To_GBmin(sum_upload), To_MBsec(sum_upload))
+        )
+
+        if sum_download != 0:
+            eta = (sum_total - sum_total_done) / sum_download
+            self.eta.set_text('ETA: {}'.format(datetime.timedelta(seconds=int(eta))))
+        else:
+            self.eta.set_text('ETA:      inf')
 
     def progress_bar(self):
         return urwid.ProgressBar('pg normal', 'pg complete', 0, 1)
@@ -167,21 +176,17 @@ class UIView(urwid.WidgetWrap):
     def graph_controls(self):
         self.progress = self.progress_bar()
         self.progress_wrap = urwid.WidgetWrap(self.progress)
-        self.download_upload = urwid.Text('D:    0MB/s,   0GB/min | U:    0MB/s,   0GB/min', align="right")
+        self.download = urwid.Text('D:    0MB/s,   0GB/min', align="right")
+        self.upload = urwid.Text('U:    0MB/s,   0GB/min', align="right")
+        self.eta = urwid.Text('ETA: 00:00:00', align="right")
 
         version = self.controller.get_version()
-        
-        l = [
-            urwid.Text("EZIO " + version, align="center"),
-            urwid.Divider('-'),
-            self.progress_wrap,
-            self.download_upload,
-            urwid.Divider('-'),
-            # each progess and speed rate append
-        ]
+
+        l = []
 
         data = self.controller.get_data()
-        for h in data.hashes:
+        torrents = sorted(data.torrents.items(), key=lambda x:x[1].save_path)
+        for h, _ in torrents:
             torrent_name = urwid.Text("{}: {}".format(data.torrents[h].save_path, h), align="left")
             torrent_progress = self.progress_bar()
             torrent_download = urwid.Text('D:    0MB/s,   0GB/min', align="right")
@@ -242,7 +247,26 @@ class UIView(urwid.WidgetWrap):
             l.append(p)
 
         self.torrent_list = urwid.ListBox(urwid.SimpleListWalker(l))
-        return self.torrent_list
+        w = urwid.Padding(self.torrent_list, ('fixed left', 0), ('fixed right', 0))
+        w = urwid.LineBox(w)
+
+        c = urwid.Columns([
+            ('weight', 1, urwid.Text('')),
+            ('pack', self.download),
+            ('pack', urwid.Text(' | ')),
+            ('pack', self.upload),
+            ('pack', urwid.Text(' | ')),
+            ('pack', self.eta),
+        ])
+        self.whole_view = urwid.Pile([
+            ('pack', urwid.Text("EZIO " + version, align="center")),
+            ('pack', urwid.Text("Use Arrow or PgUp/PgDown to scroll", align="right")),
+            ('pack', urwid.Divider('-')),
+            ('pack', self.progress_wrap),
+            ('pack', c),
+            ('weight', 1, w),
+        ])
+        return self.whole_view
 
     def main_window(self):
         controls = self.graph_controls()
