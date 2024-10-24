@@ -27,7 +27,8 @@ private:
 
 	store_buffer store_buffer_;
 
-	lru_cache<torrent_location, char *> cache_;
+	//lru_cache<torrent_location, char *> cache_;
+	lru_cache<torrent_location, std::shared_ptr<char[]>> cache_;
 
 	boost::asio::thread_pool read_thread_pool_;
 	boost::asio::thread_pool write_thread_pool_;

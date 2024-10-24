@@ -2,6 +2,7 @@
 #define __CACHE_HPP__
 
 #include <mutex>
+#include <shared_mutex>
 #include <spdlog/spdlog.h>
 #include "store_buffer.hpp"
 #include "buffer_pool.hpp"
@@ -115,7 +116,8 @@ public:
 
 	void set_capacity(size_t max_capacity)
 	{
-		std::lock_guard<std::mutex> lock(m_cache_mutex);
+		//std::lock_guard<std::mutex> lock(m_cache_mutex);
+		std::unique_lock write_lock(m_rw_cache_mutex);
 		m_capacity = max_capacity;
 		while (size() > m_capacity) {
 			evict();
@@ -134,7 +136,8 @@ public:
 
 	void insert(torrent_location const loc, char const *buf1)
 	{
-		std::lock_guard<std::mutex> lock(m_cache_mutex);
+		//std::lock_guard<std::mutex> lock(m_cache_mutex);
+		std::unique_lock write_lock(m_rw_cache_mutex);
 		typename map_type::iterator i = m_map.find(loc);
 		if (i == m_map.end()) {
 			// insert item into the cache, but first check if it is full
@@ -143,8 +146,9 @@ public:
 				evict();
 			}
 
-			char *buf = (char *)malloc(DEFAULT_BLOCK_SIZE);
-			memcpy(buf, buf1, DEFAULT_BLOCK_SIZE);
+			//char *buf = (char *)malloc(DEFAULT_BLOCK_SIZE);
+			std::shared_ptr<char[]> buf = std::make_unique<char[]>(DEFAULT_BLOCK_SIZE);
+			std::memcpy(buf.get(), buf1, DEFAULT_BLOCK_SIZE);
 
 			// insert the new item
 			m_list.push_front(loc);
@@ -155,7 +159,8 @@ public:
 	template<typename Fun>
 	bool get(torrent_location const loc, Fun f)
 	{
-		std::lock_guard<std::mutex> lock(m_cache_mutex);
+		//std::lock_guard<std::mutex> lock(m_cache_mutex);
+		std::shared_lock read_lock(m_rw_cache_mutex);
 
 		auto it = m_map.find(loc);
 		if (it != m_map.end()) {
@@ -164,22 +169,33 @@ public:
 		}
 
 		return false;
-	}
 
-	template<typename Fun>
-	int get2(torrent_location const loc1, torrent_location const loc2, Fun f)
-	{
-		std::lock_guard<std::mutex> lock(m_cache_mutex);
-		auto const it1 = m_map.find(loc1);
-		auto const it2 = m_map.find(loc2);
-		char const *buf1 = (it1 == m_map.end()) ? nullptr : it1->second.first;
-		char const *buf2 = (it2 == m_map.end()) ? nullptr : it2->second.first;
-
-		if (buf1 == nullptr && buf2 == nullptr) {
-			return 0;
+		/*
+		std::shared_lock read_lock(m_rw_cache_mutex);
+		auto it = m_map.find(loc);
+		if (it == m_map.end()) {
+			// value not in cache
+			return false;
 		}
 
-		return f(buf1, buf2);
+		f(it->second.first);
+		if (it->second.second == m_list.begin()) {
+			return true;
+		}
+		read_lock.unlock();
+
+		std::unique_lock write_lock(m_rw_cache_mutex);
+
+		typename list_type::iterator j = it->second.second;
+		m_list.erase(j);
+		m_list.push_front(loc);
+
+		j = m_list.begin();
+		const value_type &value = it->second.first;
+		m_map[loc] = std::make_pair(value, j);
+
+		return true;
+		*/
 	}
 
 private:
@@ -187,8 +203,8 @@ private:
 	{
 		// evict item from the end of most recently used list
 		typename list_type::iterator i = --m_list.end();
-		auto it = m_map.find(*i);
-		free(it->second.first);
+		//auto it = m_map.find(*i);
+		//free(it->second.first);
 		m_map.erase(*i);
 		m_list.erase(i);
 	}
@@ -199,6 +215,7 @@ private:
 	size_t m_capacity;
 
 	std::mutex m_cache_mutex;
+	std::shared_mutex m_rw_cache_mutex;
 };
 
 }  // namespace ezio

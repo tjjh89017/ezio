@@ -212,16 +212,17 @@ void raw_disk_io::async_read(
 		});
 
 		if ((ret & 2) == 0) {
-			bool r1 = cache_.get(loc1, [&](char const *buf1) {
-				std::memcpy(buf, buf1 + read_offset, std::size_t(len1));
+			bool r1 = cache_.get(loc1, [&](std::shared_ptr<char[]> buf1) {
+				std::memcpy(buf, buf1.get() + read_offset, std::size_t(len1));
 			});
-			ret |= 2;
+			ret |= (r1 ? 2 : 0);
 		}
 
 		if ((ret & 1) == 0) {
-			bool r2 = cache_.get(loc2, [&](char const *buf1) {
-				std::memcpy(buf + len1, buf1, std::size_t(r.length - len1));
+			bool r2 = cache_.get(loc2, [&](std::shared_ptr<char[]> buf1) {
+				std::memcpy(buf + len1, buf1.get(), std::size_t(r.length - len1));
 			});
+			ret |= (r2 ? 1 : 0);
 		}
 
 		if (ret == 3) {
@@ -235,16 +236,43 @@ void raw_disk_io::async_read(
 			// partial
 			boost::asio::post(read_thread_pool_,
 				[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
+
+					/*
+					if ((ret & 2) == 0) {
+						bool r1 = cache_.get(loc1, [&](std::shared_ptr<char[]> buf1) {
+							std::memcpy(buf, buf1.get() + read_offset, std::size_t(len1));
+						});
+						ret |= (r1 ? 2 : 0);
+					}
+
+					if ((ret & 1) == 0) {
+						bool r2 = cache_.get(loc2, [&](std::shared_ptr<char[]> buf1) {
+							std::memcpy(buf + len1, buf1.get(), std::size_t(r.length - len1));
+						});
+						ret |= (r2 ? 1 : 0);
+					}
+
+					if (ret == 3) {
+						// success get whole piece
+						// return immediately
+						handler(std::move(buffer), error);
+						return;
+					}
+					*/
+
 					libtorrent::storage_error error;
 					auto offset = (ret == 1) ? r.start : block_offset + DEFAULT_BLOCK_SIZE;
 					auto len = (ret == 1) ? len1 : r.length - len1;
 					auto buf_offset = (ret == 1) ? 0 : len1;
+					storages_[idx]->read(buf + buf_offset, r.piece, offset, len, error);
+					/*
 					char *tmp = (char *)malloc(DEFAULT_BLOCK_SIZE);
 					storages_[idx]->read(tmp, r.piece, offset, DEFAULT_BLOCK_SIZE, error);
 					cache_.insert({idx, r.piece, offset}, tmp);
 					SPDLOG_INFO("Put Cache {} {}", r.piece, offset);
 					std::memcpy(buf + buf_offset, tmp + offset, len);
 					free(tmp);
+					*/
 
 					post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 						h(std::move(b), error);
@@ -263,8 +291,8 @@ void raw_disk_io::async_read(
 			return;
 		}
 
-		if (cache_.get({idx, r.piece, block_offset}, [&](char const *buf1) {
-				std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
+		if (cache_.get({idx, r.piece, block_offset}, [&](std::shared_ptr<char[]> buf1) {
+				std::memcpy(buf, buf1.get() + read_offset, std::size_t(r.length));
 			})) {
 			handler(std::move(buffer), error);
 			return;
@@ -294,7 +322,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	bool exceeded = false;
 	libtorrent::disk_buffer_holder buffer(write_buffer_pool_, write_buffer_pool_.allocate_buffer(exceeded, o), DEFAULT_BLOCK_SIZE);
 
-	cache_.insert({storage, r.piece, r.start}, buf);
+	//cache_.insert({storage, r.piece, r.start}, buf);
 	if (buffer) {
 		// async
 		memcpy(buffer.data(), buf, r.length);
