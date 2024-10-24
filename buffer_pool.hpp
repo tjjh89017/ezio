@@ -7,7 +7,7 @@
 #include <boost/core/noncopyable.hpp>
 #include <libtorrent/libtorrent.hpp>
 
-// 16 MB
+// 256 MB
 #define MAX_BUFFER_POOL_SIZE (16ULL * 1024 * 1024)
 // 16 KB
 #define DEFAULT_BLOCK_SIZE (16 * 1024)
@@ -36,8 +36,7 @@ public:
 private:
 	libtorrent::io_context &m_ios;
 	std::mutex m_pool_mutex;
-	char *m_buffer;
-	std::deque<char *> m_deque;
+	int m_size;
 	bool m_exceeded_max_size;
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> m_observers;
 };
