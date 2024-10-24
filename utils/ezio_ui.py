@@ -260,7 +260,7 @@ class UIView(urwid.WidgetWrap):
         ])
         self.whole_view = urwid.Pile([
             ('pack', urwid.Text("EZIO " + version, align="center")),
-            ('pack', urwid.Text("Use Arrow or PgUp/PgDown to scroll", align="right")),
+            ('pack', urwid.Text("Use Arrow or PgUp/PgDn to scroll", align="right")),
             ('pack', urwid.Divider('-')),
             ('pack', self.progress_wrap),
             ('pack', c),
