@@ -10,6 +10,7 @@ void config::parse_from_argv(int argc, char **argv)
 	desc.add_options()
 		("help,h", "some help")
 		("file,F", bpo::bool_switch(&file_flag)->default_value(false), "read data from file rather than raw disk")
+		("cache,C", bpo::value<int>(&cache_size)->default_value(16), "cache size (in MB)")
 		("listen,l", bpo::value<std::string>(&listen_address), "gRPC service listen address and port, default is 127.0.0.1:50051")
 		("version,v", "show version")
 	;

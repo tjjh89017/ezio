@@ -8,6 +8,7 @@
 #include <boost/asio.hpp>
 #include "buffer_pool.hpp"
 #include "store_buffer.hpp"
+#include "cache.hpp"
 
 namespace ezio
 {
@@ -26,6 +27,8 @@ private:
 
 	store_buffer store_buffer_;
 
+	lru_cache<torrent_location, char *> cache_;
+
 	boost::asio::thread_pool read_thread_pool_;
 	boost::asio::thread_pool write_thread_pool_;
 	boost::asio::thread_pool hash_thread_pool_;
@@ -37,7 +40,7 @@ private:
 	std::deque<libtorrent::storage_index_t> free_slots_;
 
 public:
-	raw_disk_io(libtorrent::io_context &);
+	raw_disk_io(libtorrent::io_context &, int);
 	~raw_disk_io();
 
 	// this is called when a new torrent is added. The shared_ptr can be
