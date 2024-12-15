@@ -65,7 +65,7 @@ public:
 				partition_offset += file_slice.offset;
 			} catch (const std::exception &e) {
 				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
-					file_name, file_index, e.what());
+					file_name, static_cast<std::int32_t>(file_index), e.what());
 				error.file(file_index);
 				error.ec = libtorrent::errors::parse_failed;
 				error.operation = libtorrent::operation_t::file_read;
@@ -98,7 +98,7 @@ public:
 				partition_offset += file_slice.offset;
 			} catch (const std::exception &e) {
 				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
-					file_name, file_index, e.what());
+					file_name, static_cast<std::int32_t>(file_index), e.what());
 				error.file(file_index);
 				error.ec = libtorrent::errors::parse_failed;
 				error.operation = libtorrent::operation_t::file_write;
