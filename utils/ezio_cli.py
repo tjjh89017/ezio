@@ -13,6 +13,10 @@ import ezio_pb2_grpc
 
 # in second
 UPDATE_INTERVAL = 2
+# in second
+MIN_LAST_UPLOAD = 15
+# in second
+MIN_FINISHED_TIME = 15
 
 # create grpc channel
 # TODO use OO way
@@ -115,7 +119,12 @@ def check_stop(data):
             if not t_stat.is_finished:
                 continue
 
-            if t_stat.total_payload_upload > 3 * t_stat.total_done or t_stat.seeding_time > 60:
+            if t_stat.total_payload_upload > 3 * t_stat.total_done:
+                need_stop = True
+            if t_stat.finished_time > MIN_FINISHED_TIME and (t_stat.last_upload > MIN_LAST_UPLOAD or t_stat.last_upload == -1):
+                need_stop = True
+
+            if need_stop:
                 # stop torrent
                 request = ezio_pb2.PauseTorrentRequest()
                 request.hash = info_hash
@@ -165,4 +174,11 @@ def main():
             break
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-w", "--wait", default=15, type=int, help="The interval wait for other peer to keep upload (sec)")
+    args = parser.parse_args()
+
+    MIN_FINISHED_TIME = args.wait
+
     main()

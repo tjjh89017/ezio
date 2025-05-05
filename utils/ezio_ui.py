@@ -13,7 +13,12 @@ import grpc
 import ezio_pb2
 import ezio_pb2_grpc
 
+# in second
 UPDATE_INTERVAL = 1
+# in second
+MIN_LAST_UPLOAD = 15
+# in second
+MIN_FINISHED_TIME = 15
 
 def to_state(state):
     '''
@@ -156,7 +161,11 @@ class UIView(urwid.WidgetWrap):
             else:
                 self.torrents[h]['last_upload'].set_text("[L:-00:00:01]".format(datetime.timedelta(seconds=torrent.last_upload)))
 
-        self.progress.set_completion(sum_total_done / sum_total)
+        if sum_total != 0:
+            self.progress.set_completion(sum_total_done / sum_total)
+        else:
+            self.progress.set_completion(0)
+
         self.download.set_text(
             "D: {: 6.2f}GB/min, {: 7.2f}MB/s".format(To_GBmin(sum_download), To_MBsec(sum_download))
         )
@@ -311,13 +320,19 @@ class UIController:
                 raise ValueError("No Data")
 
             for info_hash in data.hashes:
+                need_stop = False
                 t_stat = data.torrents[info_hash]
                 if t_stat.is_paused:
                     continue
                 if not t_stat.is_finished:
                     continue
 
-                if t_stat.total_payload_upload > 3 * t_stat.total_done or t_stat.last_upload > 15 or t_stat.last_upload == -1:
+                if t_stat.total_payload_upload > 3 * t_stat.total_done:
+                    need_stop = True
+                if t_stat.finished_time > MIN_FINISHED_TIME and (t_stat.last_upload > MIN_LAST_UPLOAD or t_stat.last_upload == -1):
+                    need_stop = True
+
+                if need_stop:
                     # stop torrent
                     request = ezio_pb2.PauseTorrentRequest()
                     request.hash = info_hash
@@ -342,7 +357,7 @@ class UIController:
         except ValueError:
             pass
 
-        self.detect_alarm = self.loop.set_alarm_in(15, self.detect_all_finished)
+        self.detect_alarm = self.loop.set_alarm_in(10, self.detect_all_finished)
 
     def get_data(self):
         return self.model.get_data()
@@ -354,4 +369,11 @@ def main():
     UIController().main()
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-w", "--wait", default=15, type=int, help="The interval wait for other peer to keep upload (sec)")
+    args = parser.parse_args()
+
+    MIN_FINISHED_TIME = args.wait
+
     main()
