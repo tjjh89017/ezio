@@ -34,8 +34,14 @@ public:
 	void free_disk_buffer(char *) override;
 	void check_buffer_level(std::unique_lock<std::mutex> &l);
 
-	void push_disk_buffer_holders(std::function<void()> f);
 	void pop_disk_buffer_holders(int size);
+
+	template<typename Fun>
+	void push_disk_buffer_holders(Fun f)
+	{
+		std::unique_lock<std::mutex> l(m_disk_buffer_holders_mutex);
+		m_disk_buffer_holders.push_back(f);
+	}
 
 private:
 	libtorrent::io_context &m_ios;
@@ -45,7 +51,8 @@ private:
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> m_observers;
 
 	std::mutex m_disk_buffer_holders_mutex;
-	std::deque<std::function<void()>> m_disk_buffer_holders;
+	template<typename Fun>
+	std::deque<Fun> m_disk_buffer_holders;
 
 	boost::asio::thread_pool m_erase_thread_pool;
 };
