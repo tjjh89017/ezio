@@ -29,6 +29,7 @@ private:
 	boost::asio::thread_pool read_thread_pool_;
 	boost::asio::thread_pool write_thread_pool_;
 	boost::asio::thread_pool hash_thread_pool_;
+	boost::asio::thread_pool erase_thread_pool_;
 
 	// callbacks are posted on this
 	libtorrent::io_context &ioc_;

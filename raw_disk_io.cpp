@@ -124,7 +124,8 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc) :
 	write_buffer_pool_(ioc),
 	read_thread_pool_(8),
 	write_thread_pool_(8),
-	hash_thread_pool_(8)
+	hash_thread_pool_(8),
+	erase_thread_pool_(2)
 {
 }
 
@@ -133,6 +134,7 @@ raw_disk_io::~raw_disk_io()
 	read_thread_pool_.join();
 	write_thread_pool_.join();
 	hash_thread_pool_.join();
+	erase_thread_pool_.join();
 }
 
 libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params const &p,
@@ -279,12 +281,13 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 				//store_buffer_.erase({storage, r.piece, r.start});
 				// delay free the disk_buffer
-				write_buffer_pool_.push_disk_buffer_holders(
-					[=, this, buffer = std::move(buffer)]() mutable {
-						store_buffer_.erase({storage, r.piece, r.start});
-						SPDLOG_INFO("erase disk buffer from store_buffer");
-					}
-				);
+				boost::asio::post(erase_thread_pool_,
+					[this, r, storage, buffer = std::move(buffer)]() mutable {
+						write_buffer_pool_.push_disk_buffer_holder(std::move(buffer),
+							[this, r, storage]() mutable {
+								store_buffer_.erase({storage, r.piece, r.start});
+							});
+				});
 
 				post(ioc_, [=, h = std::move(handler)] {
 					h(error);

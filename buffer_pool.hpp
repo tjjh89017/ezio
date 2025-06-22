@@ -22,7 +22,6 @@
 
 namespace ezio
 {
-template<typename Fun>
 class buffer_pool : public libtorrent::buffer_allocator_interface, boost::noncopyable
 {
 public:
@@ -35,14 +34,8 @@ public:
 	void free_disk_buffer(char *) override;
 	void check_buffer_level(std::unique_lock<std::mutex> &l);
 
-	void pop_disk_buffer_holders(int size);
-
-	template<typename Fun>
-	void push_disk_buffer_holders(Fun f)
-	{
-		std::unique_lock<std::mutex> l(m_disk_buffer_holders_mutex);
-		m_disk_buffer_holders.push_back(f);
-	}
+	void pop_disk_buffer_holder(int size);
+	void push_disk_buffer_holder(lt::disk_buffer_holder buffer, std::function<void()> f);
 
 private:
 	libtorrent::io_context &m_ios;
@@ -52,7 +45,8 @@ private:
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> m_observers;
 
 	std::mutex m_disk_buffer_holders_mutex;
-	std::deque<Fun> m_disk_buffer_holders;
+	std::deque<lt::disk_buffer_holder> m_disk_buffer_holders;
+	std::deque<std::function<void()>> m_erase_functions;
 
 	boost::asio::thread_pool m_erase_thread_pool;
 };

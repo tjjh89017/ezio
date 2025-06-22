@@ -19,13 +19,13 @@ buffer_pool::buffer_pool(libtorrent::io_context &ioc) :
 	m_ios(ioc),
 	m_size(0),
 	m_exceeded_max_size(false),
-	m_erase_thread_pool(1)
+	m_erase_thread_pool(2)
 {
 }
 
 buffer_pool::~buffer_pool()
 {
-	pop_disk_buffer_holders(BUFFER_COUNT);
+	pop_disk_buffer_holder(BUFFER_COUNT);
 	m_erase_thread_pool.join();
 }
 
@@ -69,7 +69,7 @@ char *buffer_pool::allocate_buffer(bool &exceeded, std::shared_ptr<libtorrent::d
 		exceeded = true;
 		boost::asio::post(m_erase_thread_pool,
 			[=, this]() mutable {
-				pop_disk_buffer_holders(m_size);
+				pop_disk_buffer_holder(m_size);
 			});
 
 		if (o) {
@@ -106,21 +106,24 @@ void buffer_pool::check_buffer_level(std::unique_lock<std::mutex> &l)
 	post(m_ios, std::bind(&watermark_callback, std::move(cbs)));
 }
 
-void buffer_pool::push_disk_buffer_holders(std::function<void()> f)
+void buffer_pool::push_disk_buffer_holder(lt::disk_buffer_holder buffer, std::function<void()> f)
 {
 	std::unique_lock<std::mutex> l(m_disk_buffer_holders_mutex);
-	m_disk_buffer_holders.push_back(f);
+	m_disk_buffer_holders.push_back(std::move(buffer));
+	m_erase_functions.push_back(std::move(f));
 }
 
-void buffer_pool::pop_disk_buffer_holders(int size)
+void buffer_pool::pop_disk_buffer_holder(int size)
 {
 	std::unique_lock<std::mutex> l(m_disk_buffer_holders_mutex);
 	SPDLOG_INFO("prepare to free disk buffer");
 	while (!m_disk_buffer_holders.empty() && size > LOW_WATERMARK) {
-		auto f = std::move(m_disk_buffer_holders.front());
-		m_disk_buffer_holders.pop_front();
+		auto buffer = std::move(m_disk_buffer_holders.front());
+		auto f = std::move(m_erase_functions.front());
 		f();
 		size--;
+		m_disk_buffer_holders.pop_front();
+		m_erase_functions.pop_front();
 	}
 }
 
