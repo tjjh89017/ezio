@@ -115,6 +115,7 @@ void buffer_pool::push_disk_buffer_holders(std::function<void()> f)
 void buffer_pool::pop_disk_buffer_holders(int size)
 {
 	std::unique_lock<std::mutex> l(m_disk_buffer_holders_mutex);
+	SPDLOG_INFO("prepare to free disk buffer");
 	while (!m_disk_buffer_holders.empty() && size > LOW_WATERMARK) {
 		auto f = std::move(m_disk_buffer_holders.front());
 		m_disk_buffer_holders.pop_front();

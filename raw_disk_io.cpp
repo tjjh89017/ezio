@@ -282,6 +282,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 				write_buffer_pool_.push_disk_buffer_holders(
 					[=, this, buffer = std::move(buffer)]() {
 						store_buffer_.erase({storage, r.piece, r.start});
+						SPDLOG_INFO("erase disk buffer from store_buffer");
 					}
 				);
 
