@@ -34,7 +34,7 @@ public:
 	void free_disk_buffer(char *) override;
 	void check_buffer_level(std::unique_lock<std::mutex> &l);
 
-	void push_disk_buffer_holders(std::function f<void()>);
+	void push_disk_buffer_holders(std::function<void()> f);
 	void pop_disk_buffer_holders(int size);
 
 private:
