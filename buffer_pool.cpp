@@ -18,12 +18,15 @@ void watermark_callback(std::vector<std::weak_ptr<libtorrent::disk_observer>> co
 buffer_pool::buffer_pool(libtorrent::io_context &ioc) :
 	m_ios(ioc),
 	m_size(0),
-	m_exceeded_max_size(false)
+	m_exceeded_max_size(false),
+	m_erase_thread_pool(1)
 {
 }
 
 buffer_pool::~buffer_pool()
 {
+	pop_disk_buffer_holders(BUFFER_COUNT);
+	m_erase_thread_pool.join();
 }
 
 char *buffer_pool::allocate_buffer_impl(std::unique_lock<std::mutex> &l)
@@ -64,6 +67,11 @@ char *buffer_pool::allocate_buffer(bool &exceeded, std::shared_ptr<libtorrent::d
 
 	if (m_exceeded_max_size) {
 		exceeded = true;
+		boost::asio::post(m_erase_thread_pool,
+			[=, this]() mutable {
+				pop_disk_buffer_holders(m_size);
+			});
+
 		if (o) {
 			m_observers.push_back(o);
 		}
@@ -96,6 +104,24 @@ void buffer_pool::check_buffer_level(std::unique_lock<std::mutex> &l)
 	// we could unlock mutex to let others allocate buffer
 	l.unlock();
 	post(m_ios, std::bind(&watermark_callback, std::move(cbs)));
+}
+
+template<typename Fun>
+void buffer_pool::push_disk_buffer_holders(Fun f)
+{
+	std::unique_lock<std::mutex> l(m_disk_buffer_holders_mutex);
+	m_disk_buffer_holders.push_back(f);
+}
+
+void buffer_pool::pop_disk_buffer_holders(int size)
+{
+	std::unique_lock<std::mutex> l(m_disk_buffer_holders_mutex);
+	while (!m_disk_buffer_holders.empty() && size > LOW_WATERMARK) {
+		auto f = std::move(m_disk_buffer_holders.front());
+		m_disk_buffer_holders.pop_front();
+		f();
+		size--;
+	}
 }
 
 }  // namespace ezio

@@ -1,8 +1,10 @@
 #ifndef __BUFFER_POOL_HPP__
 #define __BUFFER_POOL_HPP__
 
+#include <deque>
 #include <vector>
 #include <mutex>
+#include <boost/asio.hpp>
 #include <boost/core/noncopyable.hpp>
 #include <libtorrent/libtorrent.hpp>
 
@@ -32,12 +34,22 @@ public:
 	void free_disk_buffer(char *) override;
 	void check_buffer_level(std::unique_lock<std::mutex> &l);
 
+	template<typename Fun>
+	void push_disk_buffer_holders(Fun f);
+	void pop_disk_buffer_holders(int size);
+
 private:
 	libtorrent::io_context &m_ios;
 	std::mutex m_pool_mutex;
 	int m_size;
 	bool m_exceeded_max_size;
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> m_observers;
+
+	std::mutex m_disk_buffer_holders_mutex;
+	template<typename Fun>
+	std::deque<Fun> m_disk_buffer_holders;
+
+	boost::asio::thread_pool m_erase_thread_pool;
 };
 
 }  // namespace ezio
