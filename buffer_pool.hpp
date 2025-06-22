@@ -1,14 +1,13 @@
 #ifndef __BUFFER_POOL_HPP__
 #define __BUFFER_POOL_HPP__
 
-#include <deque>
 #include <vector>
 #include <mutex>
 #include <boost/core/noncopyable.hpp>
 #include <libtorrent/libtorrent.hpp>
 
-// 256 MB
-#define MAX_BUFFER_POOL_SIZE (16ULL * 1024 * 1024)
+// 128 MB
+#define MAX_BUFFER_POOL_SIZE (128ULL * 1024 * 1024)
 // 16 KB
 #define DEFAULT_BLOCK_SIZE (16 * 1024)
 

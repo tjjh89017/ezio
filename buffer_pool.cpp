@@ -1,3 +1,5 @@
+#include <spdlog/spdlog.h>
+
 #include "buffer_pool.hpp"
 
 namespace ezio
@@ -29,16 +31,19 @@ char *buffer_pool::allocate_buffer_impl(std::unique_lock<std::mutex> &l)
 	// no memory
 	if (m_size >= BUFFER_COUNT) {
 		m_exceeded_max_size = true;
+		SPDLOG_WARN("buffer pool reach max buffer count");
 		return nullptr;
 	}
 
-	// reach high watermak, but still has some buffer to use
+	// reach high watermark, but still has some buffer to use
 	if (m_size > HIGH_WATERMARK) {
+		SPDLOG_WARN("buffer pool reach high watermark, mem usage: {}", m_size);
 		m_exceeded_max_size = true;
 	}
 
 	char *buf = (char*)malloc(DEFAULT_BLOCK_SIZE);
 	if (!buf) {
+		SPDLOG_WARN("buffer pool malloc failed");
 		m_exceeded_max_size = true;
 		return nullptr;
 	}
@@ -83,6 +88,7 @@ void buffer_pool::check_buffer_level(std::unique_lock<std::mutex> &l)
 	}
 
 	// lower than LOW_WATERMARK, reopen
+	SPDLOG_INFO("buffer pool lower than low watermark, reopen");
 	m_exceeded_max_size = false;
 
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> cbs;
