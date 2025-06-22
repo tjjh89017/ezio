@@ -82,7 +82,7 @@ void buffer_pool::check_buffer_level(std::unique_lock<std::mutex> &l)
 		return;
 	}
 
-	// lower than LOW_WATERMARKi, reopen
+	// lower than LOW_WATERMARK, reopen
 	m_exceeded_max_size = false;
 
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> cbs;
