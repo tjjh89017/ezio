@@ -22,6 +22,7 @@
 
 namespace ezio
 {
+template<typename Fun>
 class buffer_pool : public libtorrent::buffer_allocator_interface, boost::noncopyable
 {
 public:
@@ -51,7 +52,6 @@ private:
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> m_observers;
 
 	std::mutex m_disk_buffer_holders_mutex;
-	template<typename Fun>
 	std::deque<Fun> m_disk_buffer_holders;
 
 	boost::asio::thread_pool m_erase_thread_pool;
