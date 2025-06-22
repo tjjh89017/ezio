@@ -273,11 +273,17 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 		libtorrent::peer_request r2(r);
 		boost::asio::post(write_thread_pool_,
-			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
+			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 				libtorrent::storage_error error;
 				storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
 
-				store_buffer_.erase({storage, r.piece, r.start});
+				//store_buffer_.erase({storage, r.piece, r.start});
+				// delay free the disk_buffer
+				write_buffer_pool_.push_disk_buffer_holders(
+					[=, this, buffer = std::move(buffer)]() {
+						store_buffer_.erase({storage, r.piece, r.start});
+					}
+				);
 
 				post(ioc_, [=, h = std::move(handler)] {
 					h(error);
