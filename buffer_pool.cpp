@@ -106,7 +106,7 @@ void buffer_pool::check_buffer_level(std::unique_lock<std::mutex> &l)
 	post(m_ios, std::bind(&watermark_callback, std::move(cbs)));
 }
 
-void buffer_pool::push_disk_buffer_holders(std::function f)
+void buffer_pool::push_disk_buffer_holders(std::function<void()> f)
 {
 	std::unique_lock<std::mutex> l(m_disk_buffer_holders_mutex);
 	m_disk_buffer_holders.push_back(f);
