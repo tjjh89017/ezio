@@ -40,8 +40,11 @@ int main(int argc, char **argv)
 	//p.set_int(lt::settings_pack::alert_mask, lt::alert_category::peer | lt::alert_category::status);
 	
 	// tune
-	//p.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::suggest_read_cache);
-	//p.set_int(lt::settings_pack::max_queued_disk_bytes, 128 * 1024 * 1024);
+	p.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::suggest_read_cache);
+	p.set_int(lt::settings_pack::max_queued_disk_bytes, 128 * 1024 * 1024);
+	p.set_int(lt::settings_pack::send_not_sent_low_watermark, 524288);
+	p.set_int(lt::settings_pack::send_buffer_watermark, 128 * 1024 * 1024);
+	p.set_int(lt::settings_pack::send_buffer_low_watermark, 32 * 1024 * 1024);
 
 	lt::session_params ses_params(p);
 	if (!current_config.file_flag) {
