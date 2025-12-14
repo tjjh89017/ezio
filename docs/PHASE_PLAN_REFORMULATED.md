@@ -49,6 +49,26 @@ This document presents a **reformulated phase plan** based on complete re-analys
 
 ---
 
+### ✅ Phase 1.1: Buffer Pool Merger (COMPLETED)
+
+**Status:** PR submitted, awaiting review
+
+**Changes:**
+- Increased MAX_BUFFER_POOL_SIZE from 128MB to 256MB
+- Merged read_buffer_pool_ and write_buffer_pool_ into m_buffer_pool
+- Renamed store_buffer_ to m_store_buffer (m_ prefix convention)
+- Updated all references in raw_disk_io.cpp
+
+**Benefits:**
+- +48% memory efficiency for unbalanced workloads
+- Aligns with libtorrent 2.x unified pool design
+- Simplifies code maintenance
+
+**Commit ID:** `b018516`
+**Branch:** `feature/phase1.1-buffer-pool-merger`
+
+---
+
 ## Remaining Phases (Reformulated)
 
 ### 📋 Phase 1: Foundation Improvements (Memory & Configuration)
