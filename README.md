@@ -4,31 +4,54 @@
 
 ## Introduction
 
-EZIO is a tool for rapid server disk image cloning/deployment within local area network. We utilize BitTorrent protocol to speed up the data distribution. Also, we use `partclone` to dump used filesystem blocks, and EZIO receiver can directly write received blocks to raw disk, which greatly improves performance. 
+EZIO is a high-performance disk imaging tool designed for rapid deployment of dozens to hundreds of machines in local area networks. By leveraging the BitTorrent protocol for peer-to-peer data distribution and direct raw disk I/O, EZIO achieves significantly faster deployment speeds compared to traditional multicast-based solutions. Using `partclone` to capture only used filesystem blocks, EZIO minimizes transfer size while maintaining full system fidelity.
+
+**Note:** Clonezilla has integrated EZIO as its **Lite Server Mode** (available since version 2.6.0-31), making BitTorrent-based deployment accessible through Clonezilla's familiar interface. 
 
 ## Motivation
 
-EZIO is inspired by Clonezilla and BTsync (Resilio) for its idea to transfer data and massive deployment. The issue of Clonezilla is that, it is too slow in real world due to multicast feature. In real world, all clients must register to Clonezilla server before starting deployment, which cost too much time. In addition, whenever there is a client that doesn't get data or gets incorrect one and need to be re-transferred, it causes server a lot of effort. Most importantly, in most case, the clients which cannot get data correctly may be broken, it will make server to re-transfer data again and again until it reaches its re-transfer limit and quit. Due to above issues of Clonezilla, EZIO make a difference by changing transfer mechanism. EZIO implement transfer function on top of BitTorrent, and make a lot of progress on deployment speed. 
+EZIO was inspired by Clonezilla for disk imaging and Resilio Sync (formerly BTsync) for peer-to-peer data distribution. While Clonezilla is widely used, its traditional multicast mode faced significant limitations in real-world deployments:
 
-## Feature
+**Traditional Multicast Mode Limitations:**
+- **Synchronization overhead**: All clients must register before deployment begins, causing long wait times
+- **Failure amplification**: When a client fails to receive data correctly, the server must retransmit, consuming significant resources
+- **Broken client problem**: Faulty machines repeatedly request retransmission until retry limits are exceeded, blocking deployment progress
+- **No peer assistance**: Clients cannot help each other; all data flows from the server
 
+**EZIO's BitTorrent Approach:**
 
-- Faster than Clonezilla by implementing data transfer on top of the BitTorrent protocol. Clonezilla uses multicast for transfer,for which in practice are extremely slow due to limitation of multicast and clients'  status. Limitation of multicast, for example, they will cost too much time waiting all the clients to register to the server. As for Computer status, for example, when there are a small amount of computers which don't have enough disk storage or might be broken, in this case, they won't get data from server successfully and need to re-transfer data, which  cost lots of time.
+By implementing the transfer layer on top of BitTorrent, EZIO transforms these weaknesses into strengths. Clients become seeders as they download, distributing load across the network. Failed transfers affect only individual pieces, not the entire deployment. The result is dramatically faster deployment times, especially as client count increases (see Benchmark section). This approach proved so successful that Clonezilla integrated EZIO as its Lite Server Mode. 
 
+## Features
 
+### Core Features
 
-- Plenty of File systems are supported: 
-    (1) ext2, ext3, ext4, reiserfs, reiser4, xfs, jfs, btrfs, f2fs and nilfs2 of GNU/Linux
-    (2) FAT12, FAT16, FAT32, NTFS of MS Windows
-    (3) HFS+ of Mac OS
-    (4) UFS of FreeBSD, NetBSD, and OpenBSD
-    (5) minix of Minix
-    (6) VMFS3 and VMFS5 of VMWare ESX. 
-    Therefore you can clone GNU/Linux, MS windows, Intel-based Mac OS, FreeBSD, NetBSD, OpenBSD, Minix, VMWare ESX and Chrome OS/Chromium OS, no matter it's 32-bit (x86) or 64-bit (x86-64) OS. For these file systems, only used blocks in partition are saved and restored. For unsupported file system, sector-to-sector copy is done by dd in EZIO.
+- **BitTorrent-powered distribution**: Peer-to-peer architecture scales efficiently with client count. Unlike multicast where adding clients increases load on the server, BitTorrent distributes load across all peers as they seed while downloading.
 
-- Different from BTsync file level transfer, EZIO is block level transfer. Whenever a client gets wrong data, in file level transfer, it will take a lot of time re-transfer whole file. However, in block level transfer, all we need to do is to re-transfer the specific piece of data.
+- **Block-level transfer**: Unlike file-level sync tools (e.g., Resilio Sync), EZIO transfers data in small blocks (16KB). When corruption occurs, only the affected block needs retransmission, not the entire file.
 
-- Saves data in the hard disk by using partclone. 
+- **Direct raw disk I/O**: Custom libtorrent storage backend writes directly to `/dev/sdX` partitions without filesystem overhead, maximizing write performance.
+
+- **No RAM or temporary storage constraints**: Unlike other BitTorrent-based imaging solutions, EZIO streams data directly to the target disk without intermediate buffering. Competing solutions typically require either (1) loading the entire image into RAM before writing, limiting image size to available memory, or (2) downloading to temporary storage first (e.g., qcow2 format) then converting to raw disk with tools like `qemu-img convert`, requiring 2× disk space. EZIO eliminates both constraints by calculating block offsets on-the-fly and can deploy images of any size without temporary storage.
+
+- **Smart block capture**: Uses `partclone` to capture only used filesystem blocks, dramatically reducing image size and transfer time.
+
+- **Broad filesystem support**:
+  - **Linux**: ext2, ext3, ext4, reiserfs, reiser4, xfs, jfs, btrfs, f2fs, nilfs2
+  - **Windows**: FAT12, FAT16, FAT32, NTFS
+  - **macOS**: HFS+
+  - **BSD**: UFS (FreeBSD, NetBSD, OpenBSD)
+  - **Other**: Minix, VMFS3/VMFS5 (VMware ESX), Chrome OS/Chromium OS
+  - Supports both 32-bit (x86) and 64-bit (x86-64) systems
+  - For unsupported filesystems, falls back to sector-by-sector copy via dd
+
+### Operational Features
+
+- **gRPC control interface**: Programmatic control for automation and integration
+- **Runtime log level control**: Adjust logging verbosity without recompilation via `SPDLOG_LEVEL` environment variable
+- **Event-driven alerts**: Instant notification of errors and state changes using libtorrent's alert system
+- **Configurable thread pools**: Tune disk I/O and hashing threads for different storage types (HDD/SSD/NVMe)
+- **Unified buffer pool**: 256MB shared memory pool for efficient resource utilization 
 
 
 # Installation
@@ -104,6 +127,78 @@ SPDLOG_LEVEL=warn ./ezio
 # Troubleshooting: Debug specific component
 SPDLOG_LEVEL=info,raw_disk_io=debug ./ezio
 ```
+
+## Performance Tuning
+
+EZIO's disk I/O and hashing performance can be tuned via thread pool settings. The default values are optimized for mixed workloads but can be adjusted for specific scenarios.
+
+### Thread Pool Configuration
+
+**Default Settings:**
+- `aio_threads`: 16 (disk I/O operations: read, write)
+- `hashing_threads`: 8 (SHA-1 piece verification)
+
+These settings are configured in `main.cpp` and provide good balance for most deployments.
+
+### Memory Configuration
+
+**Buffer Pool:**
+- Fixed size: 256 MB
+- Unified pool for all I/O operations (read, write, hash)
+- Dynamic allocation with watermarks (50% low, 87.5% high)
+
+### Recommendations by Storage Type
+
+For optimal performance, consider your storage hardware:
+
+**HDD (Traditional Hard Disk):**
+- Lower thread count recommended to reduce seek overhead
+- Suggested: `aio_threads = 2-4`
+- Sequential access performs better than parallel
+
+**SATA SSD:**
+- Moderate parallelism
+- Default settings work well: `aio_threads = 16`
+
+**NVMe SSD:**
+- High parallelism for maximum throughput
+- Consider increasing: `aio_threads = 32` or higher
+- Can saturate 10Gbps network with proper configuration
+
+**Hashing Threads:**
+- CPU-bound operation
+- Default `hashing_threads = 8` matches typical server cores
+- Adjust based on available CPU cores
+
+### Modifying Settings
+
+To change thread pool settings, edit `main.cpp` before building:
+
+```cpp
+// In main.cpp, around line 43:
+p.set_int(lt::settings_pack::aio_threads, 16);      // Adjust for your storage
+p.set_int(lt::settings_pack::hashing_threads, 8);   // Adjust for your CPU
+```
+
+Then rebuild:
+```shell
+cd build
+make
+sudo make install
+```
+
+### Performance Monitoring
+
+Monitor EZIO performance with:
+- Log level: `SPDLOG_LEVEL=info` shows transfer rates
+- System tools: `iostat`, `iotop` for disk utilization
+- Network: `iftop`, `nload` for bandwidth usage
+
+### Notes
+
+- **Homogeneous deployments** (all same disk type) work best with current design
+- **Heterogeneous setups** (mixed HDD/SSD) may need per-disk tuning in future versions
+- Buffer pool size is fixed; future versions may support dynamic sizing
 
 ## Usage
 
@@ -182,10 +277,19 @@ Using CloneZilla Live (version>=testing-2.6.0-31). CloneZilla contains EZIO in i
 
 ## Design
 
-In `raw_storage.cpp` implements a `libtorrent` [custom storage](http://libtorrent.org/reference-Custom_Storage.html#overview), to allow the receiver to write received blocks directly to raw disk.
+### Custom Storage Implementation
 
-We store the "offset" in hex into torrent, the "length" into file attribute.
-so BT will know where the block is, and it can use the offset to seek in the disk
+EZIO implements a custom `libtorrent` [disk I/O interface](http://libtorrent.org/reference-Custom_Storage.html#overview) in `raw_disk_io.cpp/hpp`, allowing direct read/write to raw disk partitions without filesystem overhead.
+
+**Key features:**
+- **Direct disk access**: Writes received blocks directly to `/dev/sdX` partitions
+- **Unified buffer pool**: 256MB shared memory pool for all I/O operations
+- **Configurable thread pools**: Separate pools for disk I/O and hashing
+- **Event-driven alerts**: Instant notification via `set_alert_notify()`
+
+### Torrent Format
+
+We store the disk "offset" in hexadecimal as the file path, and "length" as the file attribute. This allows BitTorrent to locate and seek to the exact disk position
 
 ```
 {
@@ -238,13 +342,23 @@ More details about EZIO design and benchmark are in [A Novel Massive Deployment 
 - EZIO will be extremely slow when the number of clients is too small.
 - Due to partclone limitation, for unsupported filesystem, sector-to-sector copy is done by dd in EZIO.
 
-## Future
+## Future Improvements
 
-- We need more speed
-- gRPC to control
+### Performance Optimizations (In Progress)
+- **Write coalescing**: Batch multiple writes with `writev()` for better HDD performance
+- **Persistent cache**: Replace temporary store_buffer with sharded persistent cache
+
+### Integration
 - Integrate in OpenStack Ironic Project, improve Mirantis' works
     - http://web.archive.org/web/20211124125644/https://www.mirantis.com/blog/cut-ironic-provisioning-time-using-torrents/
     - https://review.opendev.org/c/openstack/ironic-specs/+/311091
+
+### Completed Recent Improvements
+- ✅ gRPC control interface
+- ✅ Runtime log level control
+- ✅ Event-driven alert handling
+- ✅ Unified buffer pool (256MB)
+- ✅ Configurable thread pools
 
 ## Contribute
 
