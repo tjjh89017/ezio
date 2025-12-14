@@ -125,7 +125,7 @@ Status gRPCService::GetVersion(ServerContext *context, const Empty *e, VersionRe
 {
 	SPDLOG_INFO("GetVersion");
 
-	response->set_version(GIT_VERSION);
+	response->set_version(EZIO_VERSION);
 	return Status::OK;
 }
 

@@ -21,7 +21,7 @@ int main(int argc, char **argv)
 	ezio::config current_config;
 	current_config.parse_from_argv(argc, argv);
 
-	std::cout << "ezio " << GIT_VERSION << std::endl;
+	std::cout << "ezio " << EZIO_VERSION << std::endl;
 
 	lt::settings_pack p;
 	// setup alert mask
