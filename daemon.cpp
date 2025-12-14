@@ -166,7 +166,7 @@ void ezio::pop_alerts(std::vector<lt::alert *> *alerts)
 
 std::string ezio::get_version()
 {
-	return GIT_VERSION;
+	return EZIO_VERSION;
 }
 
 }  // namespace ezio

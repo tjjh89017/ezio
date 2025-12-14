@@ -30,7 +30,7 @@ void config::parse_from_argv(int argc, char **argv)
 	}
 
 	if (vmap.count("version")) {
-		std::cout << "ezio " << GIT_VERSION << std::endl;
+		std::cout << "ezio " << EZIO_VERSION << std::endl;
 		exit(0);
 	}
 }

@@ -45,17 +45,14 @@ find_package(spdlog REQUIRED CONFIG)
 #list(APPEND sources ${GRPC_SRCS})
 #list(APPEND sources ${grpc_sources})
 
-# generate git version
-execute_process(COMMAND git describe --tags --dirty
-	TIMEOUT 5
-	OUTPUT_VARIABLE GIT_VERSION
-	OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+# ============================================================================
+# Version Detection
+# ============================================================================
+include(Version)
 
-# if no git
-if(GIT_VERSION STREQUAL "")
-	set(GIT_VERSION 2.0.16)
-endif()
+# ============================================================================
+# Build Configuration
+# ============================================================================
 
 # start compile part
 add_executable(${EZIO}
@@ -68,7 +65,7 @@ protobuf_generate(TARGET ${EZIO} LANGUAGE cpp)
 protobuf_generate(TARGET ${EZIO} LANGUAGE grpc GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}")
 
 target_compile_definitions(${EZIO} PUBLIC
-	GIT_VERSION="${GIT_VERSION}"
+	EZIO_VERSION="${EZIO_VERSION}"
 
 	${GRPC_DEFINE}
 	_LARGEFILE64_SOURCE
@@ -91,8 +88,8 @@ target_link_libraries(${EZIO} PRIVATE
 	LibtorrentRasterbar::torrent-rasterbar
 
 	protobuf::libprotobuf
-        gRPC::grpc
-        gRPC::grpc++
+    gRPC::grpc
+    gRPC::grpc++
 )
 
 install(TARGETS ${EZIO}
