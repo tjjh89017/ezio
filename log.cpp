@@ -10,6 +10,17 @@ log::log(ezio &daemon) :
 {
 	m_speed = std::thread(&log::report_speed, this);
 	m_alert = std::thread(&log::report_alert, this);
+
+	// Setup alert notification callback
+	m_daemon.set_alert_notify([this]() {
+		// This callback is called from libtorrent internal thread
+		// MUST be fast, MUST NOT block, MUST NOT call pop_alerts()
+		{
+			std::lock_guard<std::mutex> lock(m_alert_mutex);
+			m_alert_ready = true;
+		}
+		m_alert_cv.notify_one();
+	});
 }
 
 log::~log()
@@ -53,15 +64,36 @@ void log::report_speed()
 void log::report_alert()
 {
 	spdlog::info("start alert report thread");
-	while (!m_daemon.get_shutdown()) {
-		std::this_thread::sleep_for(std::chrono::seconds(5));
 
+	while (!m_daemon.get_shutdown()) {
+		// Wait for alert notification (with 1-second timeout for shutdown check)
+		std::unique_lock<std::mutex> lock(m_alert_mutex);
+		m_alert_cv.wait_for(lock, std::chrono::seconds(1), [this]() {
+			return m_alert_ready || m_daemon.get_shutdown();
+		});
+
+		if (m_daemon.get_shutdown()) {
+			break;
+		}
+
+		if (!m_alert_ready) {
+			// Timeout - check shutdown and continue
+			continue;
+		}
+
+		m_alert_ready = false;
+		lock.unlock();
+
+		// Now pop and process alerts (outside of lock!)
 		std::vector<libtorrent::alert *> alerts;
 		m_daemon.pop_alerts(&alerts);
+
 		for (auto a : alerts) {
 			spdlog::info("lt alert: {} {}", a->what(), a->message());
 		}
 	}
+
+	spdlog::info("alert report thread exiting");
 }
 
 }  // namespace ezio

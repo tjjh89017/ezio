@@ -164,6 +164,11 @@ void ezio::pop_alerts(std::vector<lt::alert *> *alerts)
 	session_.pop_alerts(alerts);
 }
 
+void ezio::set_alert_notify(std::function<void()> const& callback)
+{
+	session_.set_alert_notify(callback);
+}
+
 std::string ezio::get_version()
 {
 	return EZIO_VERSION;
