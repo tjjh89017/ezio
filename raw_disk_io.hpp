@@ -21,10 +21,9 @@ class partition_storage;
 class raw_disk_io final : public libtorrent::disk_interface
 {
 private:
-	buffer_pool read_buffer_pool_;
-	buffer_pool write_buffer_pool_;
+	buffer_pool m_buffer_pool;  // Unified pool
 
-	store_buffer store_buffer_;
+	store_buffer m_store_buffer;
 
 	boost::asio::thread_pool read_thread_pool_;
 	boost::asio::thread_pool write_thread_pool_;
