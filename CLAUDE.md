@@ -24,11 +24,10 @@
   - +48% memory efficiency for unbalanced workloads
   - Aligned with libtorrent 2.x design
 
-- ✅ **Phase 1.2: Configurable Cache Size** (commit: c69c69a)
-  - Settings infrastructure: constructor receives settings_interface
+- ✅ **Phase 1.2: Settings Infrastructure** (commit: c69c69a)
+  - Constructor receives settings_interface and counters
   - Thread pools configured from settings (aio_threads, hashing_threads)
-  - buffer_pool::set_settings() for dynamic configuration
-  - settings_updated() propagates runtime changes
+  - settings_updated() interface implemented (reserved for future cache)
 
 **🔥 Next: Phase 2 - Parallel Write Optimization**
 - Increase write thread pool (8 → 32) for NVMe
@@ -45,12 +44,12 @@
 2. **Unified Buffer Pool** (after Phase 1.1)
    - Single 256MB pool for all operations (read, write, hash)
    - Dynamic allocation with watermarks (50% low, 87.5% high)
-   - Configurable via settings_pack::cache_size
+   - Fixed size (temporary I/O buffers, not a cache)
 
 3. **Settings Infrastructure** (after Phase 1.2)
    - Constructor: `raw_disk_io(io_context&, settings_interface&, counters&)`
    - Thread pools read from settings in init list
-   - Runtime updates via settings_updated()
+   - settings_updated() implemented (reserved for future use)
 
 4. **Naming Convention**
    - Member variables use `m_` prefix (libtorrent style)
@@ -301,7 +300,7 @@ raw_disk_io::raw_disk_io(io_context& ioc,
 }
 
 void raw_disk_io::settings_updated() {
-    m_buffer_pool.set_settings(*m_settings);
+    // Reserved for future cache configuration
 }
 ```
 
@@ -340,9 +339,8 @@ raw_disk_io(io_context& ioc, settings_interface const& sett, counters& cnt)
       write_thread_pool_(sett.get_int(settings_pack::aio_threads)),  // From settings!
       hash_thread_pool_(sett.get_int(settings_pack::hashing_threads)) { }
 
-// Implemented settings handler
+// Implemented settings handler (reserved for future cache)
 void settings_updated() {
-    m_buffer_pool.set_settings(*m_settings);
 }
 ```
 
