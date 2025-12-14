@@ -391,10 +391,6 @@ session.apply_settings(pack);
 - Implement write coalescing with writev()
 - Expected: HDD +73%, NVMe +20-30% additional
 
-**Phase 4: io_uring** (Optional, 3-5 days)
-- Reduce syscall overhead
-- Expected: Additional +20-30%
-
 ---
 
 ## Implementation Guide
