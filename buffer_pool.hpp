@@ -6,8 +6,8 @@
 #include <boost/core/noncopyable.hpp>
 #include <libtorrent/libtorrent.hpp>
 
-// 128 MB
-#define MAX_BUFFER_POOL_SIZE (128ULL * 1024 * 1024)
+// 256 MB (unified pool for read + write)
+#define MAX_BUFFER_POOL_SIZE (256ULL * 1024 * 1024)
 // 16 KB
 #define DEFAULT_BLOCK_SIZE (16 * 1024)
 
