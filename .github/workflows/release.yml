@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (v1.0.0, v2.0.16, etc.)
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: >-
+            ${{
+              contains(steps.get_version.outputs.tag, 'RC') ||
+              contains(steps.get_version.outputs.tag, 'rc')
+            }}
