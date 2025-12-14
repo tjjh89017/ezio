@@ -27,7 +27,7 @@ void ezio::wait(int interval_second)
 		std::vector<libtorrent::alert*> alerts;
 		session_.pop_alerts(&alerts);
 		for (auto a : alerts) {
-			SPDLOG_INFO("alert: {} {}", a->what(), a->message());
+			spdlog::info("alert: {} {}", a->what(), a->message());
 		}
 		*/
 	}
@@ -69,7 +69,7 @@ void ezio::add_torrent(std::string torrent_body, std::string save_path, bool see
 
 	lt::torrent_handle handle = session_.add_torrent(std::move(atp));
 
-	SPDLOG_INFO("torrent added. save_path({})", save_path);
+	spdlog::info("torrent added. save_path({})", save_path);
 }
 
 std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::string> hashes)
@@ -77,7 +77,7 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 	std::map<std::string, torrent_status> result;
 	// TODO we ignore request hashes first, always return all
 	for (auto h : hashes) {
-		SPDLOG_DEBUG("hash: {}", h);
+		spdlog::debug("hash: {}", h);
 		//std::cout << h << std::endl;
 		// do some filter for below
 	}
@@ -132,7 +132,7 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 
 void ezio::pause_torrent(std::string hash)
 {
-	SPDLOG_INFO("pause {}", hash);
+	spdlog::info("pause {}", hash);
 	std::stringstream ss(hash);
 	libtorrent::sha1_hash info_hash;
 	ss >> info_hash;
@@ -144,7 +144,7 @@ void ezio::pause_torrent(std::string hash)
 
 void ezio::resume_torrent(std::string hash)
 {
-	SPDLOG_INFO("resume {}", hash);
+	spdlog::info("resume {}", hash);
 	std::stringstream ss(hash);
 	libtorrent::sha1_hash info_hash;
 	ss >> info_hash;

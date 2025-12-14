@@ -66,6 +66,45 @@ To build the image type this:
 docker build . -t ezio-latest-img
 ```
 
+## Runtime Configuration
+
+### Log Level Control
+
+EZIO supports runtime log level control via environment variables. You can adjust log verbosity without recompiling:
+
+```shell
+# Set global log level
+export SPDLOG_LEVEL=debug    # Show all debug messages
+export SPDLOG_LEVEL=info     # Default level
+export SPDLOG_LEVEL=warn     # Only warnings and errors
+export SPDLOG_LEVEL=error    # Only errors
+
+# Component-specific log levels
+export SPDLOG_LEVEL=info,raw_disk_io=debug    # Debug only raw_disk_io
+export SPDLOG_LEVEL=warn,buffer_pool=info     # Different levels per component
+```
+
+**Available log levels** (from most to least verbose):
+- `trace` - Very detailed debugging information
+- `debug` - Debugging information
+- `info` - Informational messages (default)
+- `warn` - Warning messages
+- `error` - Error messages
+- `critical` - Critical errors
+- `off` - Disable all logging
+
+**Example usage:**
+```shell
+# Development: Enable debug logs
+SPDLOG_LEVEL=debug ./ezio
+
+# Production: Only show warnings and errors
+SPDLOG_LEVEL=warn ./ezio
+
+# Troubleshooting: Debug specific component
+SPDLOG_LEVEL=info,raw_disk_io=debug ./ezio
+```
+
 ## Usage
 
 ### Partclone

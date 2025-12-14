@@ -25,7 +25,7 @@ void log::join()
 
 void log::report_speed()
 {
-	SPDLOG_INFO("start speed report thread");
+	spdlog::info("start speed report thread");
 	while (!m_daemon.get_shutdown()) {
 		std::this_thread::sleep_for(std::chrono::seconds(5));
 
@@ -36,7 +36,7 @@ void log::report_speed()
 			const auto &hash = iter.first;
 			const auto &t_stat = iter.second;
 
-			SPDLOG_INFO("[{}][{}%][D: {:.2f}MB/s][U: {:.2f}MB/s][{}{}][A: {}][F: {}][S: {}]",
+			spdlog::info("[{}][{}%][D: {:.2f}MB/s][U: {:.2f}MB/s][{}{}][A: {}][F: {}][S: {}]",
 				t_stat.save_path,
 				int(t_stat.progress * 100),
 				(double)t_stat.download_rate / 1024 / 1024,
@@ -52,14 +52,14 @@ void log::report_speed()
 
 void log::report_alert()
 {
-	SPDLOG_INFO("start alert report thread");
+	spdlog::info("start alert report thread");
 	while (!m_daemon.get_shutdown()) {
 		std::this_thread::sleep_for(std::chrono::seconds(5));
 
 		std::vector<libtorrent::alert *> alerts;
 		m_daemon.pop_alerts(&alerts);
 		for (auto a : alerts) {
-			SPDLOG_INFO("lt alert: {} {}", a->what(), a->message());
+			spdlog::info("lt alert: {} {}", a->what(), a->message());
 		}
 	}
 }
