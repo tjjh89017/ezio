@@ -459,7 +459,6 @@ void raw_disk_io::submit_jobs()
 
 void raw_disk_io::settings_updated()
 {
-	m_buffer_pool.set_settings(*m_settings);
 }
 
 }  // namespace ezio

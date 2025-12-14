@@ -101,36 +101,4 @@ void buffer_pool::check_buffer_level(std::unique_lock<std::mutex> &l)
 	post(m_ios, std::bind(&watermark_callback, std::move(cbs)));
 }
 
-void buffer_pool::set_settings(libtorrent::settings_interface const &sett)
-{
-	std::unique_lock<std::mutex> l(m_pool_mutex);
-
-	// Read cache_size from settings (in KiB)
-	int cache_size_kb = sett.get_int(libtorrent::settings_pack::cache_size);
-	if (cache_size_kb == 0) {
-		// Use default if not set
-		cache_size_kb = MAX_BUFFER_POOL_SIZE / 1024;
-	}
-
-	// Convert to buffer count
-	int new_max_use = (cache_size_kb * 1024) / DEFAULT_BLOCK_SIZE;
-	if (new_max_use < 16) {
-		// Minimum 16 buffers (256 KiB)
-		new_max_use = 16;
-	}
-
-	// Calculate watermarks
-	m_max_use = new_max_use;
-	m_low_watermark = new_max_use / 2;                    // 50%
-	m_high_watermark = new_max_use - new_max_use / 8;    // 87.5%
-
-	spdlog::info("buffer pool settings updated: max_use={}, low_watermark={}, high_watermark={}",
-		m_max_use, m_low_watermark, m_high_watermark);
-
-	// Check if current usage exceeds new limit
-	if (m_size >= m_max_use) {
-		m_exceeded_max_size = true;
-	}
-}
-
 }  // namespace ezio

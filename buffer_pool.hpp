@@ -31,7 +31,6 @@ public:
 	char *allocate_buffer(bool &exceeded, std::shared_ptr<libtorrent::disk_observer> o);
 	void free_disk_buffer(char *) override;
 	void check_buffer_level(std::unique_lock<std::mutex> &l);
-	void set_settings(libtorrent::settings_interface const &sett);
 
 private:
 	libtorrent::io_context &m_ios;
