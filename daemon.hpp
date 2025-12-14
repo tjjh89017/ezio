@@ -47,6 +47,7 @@ public:
 	void resume_torrent(std::string hash);
 	bool get_shutdown();
 	void pop_alerts(std::vector<lt::alert *> *);
+	void set_alert_notify(std::function<void()> const& callback);
 	std::string get_version();
 
 private:

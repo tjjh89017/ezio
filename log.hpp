@@ -2,6 +2,8 @@
 #define __LOG_HPP__
 
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 #include "daemon.hpp"
 
 namespace ezio
@@ -23,6 +25,11 @@ private:
 	std::thread m_alert;
 
 	ezio &m_daemon;
+
+	// Alert notification synchronization
+	std::mutex m_alert_mutex;
+	std::condition_variable m_alert_cv;
+	bool m_alert_ready = false;
 };
 
 }  // namespace ezio
