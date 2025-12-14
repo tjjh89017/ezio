@@ -44,7 +44,7 @@ char *buffer_pool::allocate_buffer_impl(std::unique_lock<std::mutex> &l)
 		m_exceeded_max_size = true;
 	}
 
-	char *buf = (char*)malloc(DEFAULT_BLOCK_SIZE);
+	char *buf = (char *)malloc(DEFAULT_BLOCK_SIZE);
 	if (!buf) {
 		spdlog::warn("buffer pool malloc failed");
 		m_exceeded_max_size = true;

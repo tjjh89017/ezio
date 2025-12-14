@@ -40,7 +40,7 @@ int main(int argc, char **argv)
 	//p.set_int(lt::settings_pack::alert_mask, lt::alert_category::peer | lt::alert_category::status);
 
 	// tune
-	p.set_int(lt::settings_pack::aio_threads, 16);  // Default thread count for disk I/O
+	p.set_int(lt::settings_pack::aio_threads, 16);	// Default thread count for disk I/O
 	p.set_int(lt::settings_pack::hashing_threads, 8);  // Default thread count for hashing
 	p.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::suggest_read_cache);
 	p.set_int(lt::settings_pack::max_queued_disk_bytes, 128 * 1024 * 1024);

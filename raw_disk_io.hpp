@@ -21,7 +21,7 @@ class partition_storage;
 class raw_disk_io final : public libtorrent::disk_interface
 {
 private:
-	buffer_pool m_buffer_pool;  // Unified pool
+	buffer_pool m_buffer_pool;	// Unified pool
 
 	store_buffer m_store_buffer;
 
@@ -32,8 +32,8 @@ private:
 	// callbacks are posted on this
 	libtorrent::io_context &ioc_;
 
-	libtorrent::settings_interface const* m_settings;
-	libtorrent::counters& m_stats_counters;
+	libtorrent::settings_interface const *m_settings;
+	libtorrent::counters &m_stats_counters;
 
 	std::map<libtorrent::storage_index_t, std::unique_ptr<partition_storage>> storages_;
 	std::deque<libtorrent::storage_index_t> free_slots_;
