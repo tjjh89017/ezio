@@ -84,6 +84,7 @@
 - Design documents in `docs/`, except CLAUDE.md in root
 - Use libtorrent's `m_` prefix for member variables
 - Code comments in English, no emojis
+- **Always run clang-format before committing code changes**
 
 **Ready to start implementation? Jump to [Next Steps](#next-steps) section.**
 
@@ -397,6 +398,20 @@ session.apply_settings(pack);
 ---
 
 ## Implementation Guide
+
+### Code Style
+
+**Before committing any code changes:**
+
+```bash
+# Run clang-format on all source files
+find . -maxdepth 1 -name "*.cpp" -o -name "*.hpp" | grep -v "./tmp/" | xargs clang-format -i
+```
+
+**Important:**
+- Always run clang-format before committing
+- Ensures consistent code formatting across the project
+- Prevents formatting-only commits later
 
 ### Testing Strategy
 
