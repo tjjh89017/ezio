@@ -27,7 +27,7 @@ public:
 	{
 		fd_ = open(path.c_str(), O_RDWR);
 		if (fd_ < 0) {
-			SPDLOG_CRITICAL("failed to open ({}) = {}", path, strerror(fd_));
+			spdlog::critical("failed to open ({}) = {}", path, strerror(fd_));
 			exit(1);
 		}
 	}
@@ -36,7 +36,7 @@ public:
 	{
 		int ec = close(fd_);
 		if (ec) {
-			SPDLOG_ERROR("close: {}", strerror(ec));
+			spdlog::error("close: {}", strerror(ec));
 		}
 	}
 
@@ -64,7 +64,7 @@ public:
 				partition_offset = std::stoll(file_name, 0, 16);
 				partition_offset += file_slice.offset;
 			} catch (const std::exception &e) {
-				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
+				spdlog::critical("failed to parse file_name({}) at ({}): {}",
 					file_name, static_cast<std::int32_t>(file_index), e.what());
 				error.file(file_index);
 				error.ec = libtorrent::errors::parse_failed;
@@ -97,7 +97,7 @@ public:
 				partition_offset = std::stoll(file_name, 0, 16);
 				partition_offset += file_slice.offset;
 			} catch (const std::exception &e) {
-				SPDLOG_CRITICAL("failed to parse file_name({}) at ({}): {}",
+				spdlog::critical("failed to parse file_name({}) at ({}): {}",
 					file_name, static_cast<std::int32_t>(file_index), e.what());
 				error.file(file_index);
 				error.ec = libtorrent::errors::parse_failed;
@@ -151,7 +151,7 @@ libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params c
 	storages_.emplace(idx, std::move(storage));
 
 	if (idx > 0) {
-		SPDLOG_WARN("new_torrent current idx => {}, should be 0", idx);
+		spdlog::warn("new_torrent current idx => {}, should be 0", idx);
 	}
 
 	return libtorrent::storage_holder(idx, *this);
