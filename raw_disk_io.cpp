@@ -115,15 +115,19 @@ std::unique_ptr<libtorrent::disk_interface> raw_disk_io_constructor(libtorrent::
 	libtorrent::settings_interface const &s,
 	libtorrent::counters &c)
 {
-	return std::make_unique<raw_disk_io>(ioc);
+	return std::make_unique<raw_disk_io>(ioc, s, c);
 }
 
-raw_disk_io::raw_disk_io(libtorrent::io_context &ioc) :
+raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
+	libtorrent::settings_interface const &sett,
+	libtorrent::counters &cnt) :
 	ioc_(ioc),
-	m_buffer_pool(ioc),  // Unified pool
-	read_thread_pool_(8),
-	write_thread_pool_(8),
-	hash_thread_pool_(8)
+	m_settings(&sett),
+	m_stats_counters(cnt),
+	m_buffer_pool(ioc),
+	read_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
+	write_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
+	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads))
 {
 }
 
@@ -455,6 +459,7 @@ void raw_disk_io::submit_jobs()
 
 void raw_disk_io::settings_updated()
 {
+	m_buffer_pool.set_settings(*m_settings);
 }
 
 }  // namespace ezio

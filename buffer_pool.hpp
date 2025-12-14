@@ -31,11 +31,15 @@ public:
 	char *allocate_buffer(bool &exceeded, std::shared_ptr<libtorrent::disk_observer> o);
 	void free_disk_buffer(char *) override;
 	void check_buffer_level(std::unique_lock<std::mutex> &l);
+	void set_settings(libtorrent::settings_interface const &sett);
 
 private:
 	libtorrent::io_context &m_ios;
 	std::mutex m_pool_mutex;
 	int m_size;
+	int m_max_use;
+	int m_low_watermark;
+	int m_high_watermark;
 	bool m_exceeded_max_size;
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> m_observers;
 };

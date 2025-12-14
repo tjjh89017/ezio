@@ -32,11 +32,16 @@ private:
 	// callbacks are posted on this
 	libtorrent::io_context &ioc_;
 
+	libtorrent::settings_interface const* m_settings;
+	libtorrent::counters& m_stats_counters;
+
 	std::map<libtorrent::storage_index_t, std::unique_ptr<partition_storage>> storages_;
 	std::deque<libtorrent::storage_index_t> free_slots_;
 
 public:
-	raw_disk_io(libtorrent::io_context &);
+	raw_disk_io(libtorrent::io_context &ioc,
+		libtorrent::settings_interface const &sett,
+		libtorrent::counters &cnt);
 	~raw_disk_io();
 
 	// this is called when a new torrent is added. The shared_ptr can be
