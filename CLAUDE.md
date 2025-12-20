@@ -81,30 +81,27 @@
 
 **Main Documents:**
 - `CLAUDE.md` - This file, quick reference for new AI sessions
-- `docs/SESSION_MEMORY.md` - Complete conversation history
-- `docs/PHASE_PLAN_REFORMULATED.md` - Remaining phases (Phase 2+)
+- `docs/SESSION_MEMORY.md` - Complete conversation history (completed work)
 
-**Architecture Documents:**
-- `docs/MUTEX_ANALYSIS.md` - Single mutex is NOT a bottleneck (<0.4% utilization)
-- `docs/STORE_BUFFER_WATERMARK.md` - Backpressure design (256MB recommendation)
-- `docs/WRITE_COALESCING_DESIGN.md` - Write coalescing for Phase 3 (writev only, no readv)
+**Planning Documents:** (in `docs/plan/`)
+- `docs/plan/PHASE_PLAN_REFORMULATED.md` - Main phase plan (Phase 2+ remaining)
+- `docs/plan/WRITE_COALESCING_DESIGN.md` - Phase 3.2 design (deferred)
+- `docs/plan/FUTURE_OPTIMIZATIONS.md` - 25 optimization opportunities
+- `docs/plan/HDD_OPTIMIZATION.md` - HDD-specific strategies
 
-**Completed Phase Documents:**
-- `docs/SPDLOG_ADVANCED.md` - Runtime log level control (Phase 0.1)
-- `docs/LIBTORRENT_ALERTS_LOGGING.md` - Event-driven alerts (Phase 0.2)
-- `docs/BUFFER_POOL_MERGER.md` - Buffer pool unification (Phase 1.1)
-- `docs/CACHE_SIZE_CONFIG.md` - Settings infrastructure (Phase 1.2)
-- `docs/UNIFIED_CACHE_DESIGN.md` - Unified cache design (Phase 3.1)
+**Architecture Analysis:** (in `docs/plan/`)
+- `docs/plan/MUTEX_ANALYSIS.md` - Mutex contention analysis
+- `docs/plan/STORE_BUFFER_WATERMARK.md` - Backpressure design
+- `docs/plan/APP_LEVEL_CACHE.md` - Application-level cache analysis
+- `docs/plan/CONCURRENCY_ANALYSIS.md` - Concurrency patterns
+- `docs/plan/DESIGN_REVIEW.md` - Architecture review
 
-**Future Optimization:**
-- `docs/FUTURE_OPTIMIZATIONS.md` - 25 optimization opportunities
-- `docs/HDD_OPTIMIZATION.md` - HDD-specific strategies
-- `docs/APP_LEVEL_CACHE.md` - Application-level cache analysis
+**Note:** Completed phase implementation documents have been removed after completion. Details are preserved in SESSION_MEMORY.md and git history.
 
 ### User Requirements
 
 - All documents written in English
-- Design documents in `docs/`, except CLAUDE.md in root
+- Planning documents in `docs/plan/`, completed work in `docs/SESSION_MEMORY.md`
 - Use libtorrent's `m_` prefix for member variables
 - Code comments in English, no emojis
 - **Always run clang-format before committing code changes**
