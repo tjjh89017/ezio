@@ -21,6 +21,8 @@ public:
 	bool file_flag = false;
 	// --listen address
 	std::string listen_address = "127.0.0.1:50051";
+	// cache size in MB
+	int cache_size_mb = 512;  // default 512MB
 };
 
 }  // namespace ezio

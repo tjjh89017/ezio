@@ -11,6 +11,7 @@ void config::parse_from_argv(int argc, char **argv)
 		("help,h", "some help")
 		("file,F", bpo::bool_switch(&file_flag)->default_value(false), "read data from file rather than raw disk")
 		("listen,l", bpo::value<std::string>(&listen_address), "gRPC service listen address and port, default is 127.0.0.1:50051")
+		("cache-size", bpo::value<int>(&cache_size_mb)->default_value(512), "unified cache size in MB, default is 512")
 		("version,v", "show version")
 	;
 	// clang-format on
