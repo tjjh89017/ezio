@@ -1,7 +1,7 @@
 # EZIO Architecture Analysis & Optimization Guide
 
-**Version:** 4.0 (Phase 0, 1.1, 1.2 Complete - Ready for Phase 2)
-**Last Updated:** 2025-12-15
+**Version:** 5.0 (Phase 0, 1.1, 1.2, 3.1 Complete)
+**Last Updated:** 2025-12-21
 **Reference:** libtorrent-2.0.10 source in `tmp/libtorrent-2.0.10/`
 **Complete Memory:** See `docs/SESSION_MEMORY.md` for full conversation history
 
@@ -11,7 +11,7 @@
 
 **If you are a new AI session, please read this section to quickly understand the current state:**
 
-### Current Status (2025-12-15)
+### Current Status (2025-12-21)
 
 **✅ Completed Phases:**
 - ✅ **Phase 0: Logging & Debugging** (commits: df30a4a, bccea62)
@@ -27,12 +27,28 @@
 - ✅ **Phase 1.2: Settings Infrastructure** (commit: c69c69a)
   - Constructor receives settings_interface and counters
   - Thread pools configured from settings (aio_threads, hashing_threads)
-  - settings_updated() interface implemented (reserved for future cache)
+  - settings_updated() interface implemented
+
+- ✅ **Phase 3.1: Unified Cache** (commits: 960fdd7 → c18fa72)
+  - **Write-through cache** replacing temporary store_buffer
+  - 32-way sharded cache with per-partition mutex
+  - LRU eviction with dirty block pinning
+  - Configurable cache size via `--cache-size` option (default 512MB)
+  - Hash-based partition distribution for better load balancing
+  - Cache lookup moved to worker threads (main thread optimization)
+  - Fixed critical bug: cache_size was 16x too large (32GB → 2GB)
+  - Removed unused handler infrastructure (42 lines deleted)
+
+**Key Improvements (2025-12-20 to 2025-12-21):**
+- 🐛 **Critical Fix**: cache_size interpreted correctly (16KiB blocks, not KB)
+- 🚀 **Performance**: Cache lookup on worker threads, not main thread
+- 🎯 **Better Distribution**: Hash-based partitioning (torrent + piece + offset)
+- ⚙️  **Configurable**: `--cache-size <MB>` command line option
+- 🧹 **Code Quality**: Removed 42 lines (handler cleanup)
 
 **🔥 Next: Phase 2 - Parallel Write Optimization**
-- Increase write thread pool (8 → 32) for NVMe
+- Increase write thread pool for NVMe (simple configuration change)
 - Expected: +100-150% write throughput on NVMe
-- Just configuration change, infrastructure already done in Phase 1.2!
 
 ### Critical Architecture Facts
 
@@ -46,14 +62,20 @@
    - Dynamic allocation with watermarks (50% low, 87.5% high)
    - Fixed size (temporary I/O buffers, not a cache)
 
-3. **Settings Infrastructure** (after Phase 1.2)
+3. **Unified Cache** (after Phase 3.1)
+   - Write-through cache (default 512MB, configurable via `--cache-size`)
+   - 32-way sharded with per-partition mutex for concurrency
+   - LRU eviction (dirty blocks pinned during async writes)
+   - Replaces temporary store_buffer with persistent read/write cache
+
+4. **Settings Infrastructure** (after Phase 1.2)
    - Constructor: `raw_disk_io(io_context&, settings_interface&, counters&)`
    - Thread pools read from settings in init list
-   - settings_updated() implemented (reserved for future use)
+   - Cache size configurable: `./ezio --cache-size 1024` (1GB)
 
-4. **Naming Convention**
+5. **Naming Convention**
    - Member variables use `m_` prefix (libtorrent style)
-   - E.g., `m_buffer_pool`, `m_store_buffer`, `m_settings`
+   - E.g., `m_buffer_pool`, `m_cache`, `m_settings`
 
 ### Key Files Navigation
 
@@ -72,6 +94,7 @@
 - `docs/LIBTORRENT_ALERTS_LOGGING.md` - Event-driven alerts (Phase 0.2)
 - `docs/BUFFER_POOL_MERGER.md` - Buffer pool unification (Phase 1.1)
 - `docs/CACHE_SIZE_CONFIG.md` - Settings infrastructure (Phase 1.2)
+- `docs/UNIFIED_CACHE_DESIGN.md` - Unified cache design (Phase 3.1)
 
 **Future Optimization:**
 - `docs/FUTURE_OPTIMIZATIONS.md` - 25 optimization opportunities
@@ -98,12 +121,20 @@ EZIO is a **BitTorrent-based raw disk imaging tool** for fast LAN deployment. Th
 
 **Completed Optimizations:**
 
-| Phase | Description | Benefit | Commit |
-|-------|-------------|---------|--------|
+| Phase | Description | Benefit | Commit Range |
+|-------|-------------|---------|--------------|
 | 0.1 | Runtime log control | Debug without recompiling | df30a4a |
 | 0.2 | Event-driven alerts | 5000x faster response | bccea62 |
 | 1.1 | Unified buffer pool | +48% memory efficiency | b018516 |
 | 1.2 | Configurable settings | Production tuning | c69c69a |
+| 3.1 | Unified cache (write-through) | Read cache + reduced code | 960fdd7→c18fa72 |
+
+**Phase 3.1 Details:**
+- Write-through cache replacing store_buffer (512MB default, configurable)
+- Fixed critical cache_size bug (was 16x too large!)
+- Hash-based partitioning for better load balancing
+- Cache lookup on worker threads (main thread optimization)
+- Removed 42 lines of unused handler code
 
 **Next Phase (Ready to Implement):**
 - **Phase 2**: Parallel write optimization (NVMe +100-150%, just config change!)
