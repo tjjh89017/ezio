@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include <stddef.h>
 #include "spdlog/cfg/env.h"
+#include "spdlog/spdlog.h"
 
 #include <libtorrent/libtorrent.hpp>
 
@@ -17,6 +18,8 @@
 int main(int argc, char **argv)
 {
 	spdlog::cfg::load_env_levels();
+	// Set default log level to debug for troubleshooting
+	spdlog::set_level(spdlog::level::debug);
 
 	ezio::config current_config;
 	current_config.parse_from_argv(argc, argv);

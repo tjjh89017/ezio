@@ -168,6 +168,28 @@ std::vector<torrent_location> cache_partition::collect_dirty_blocks()
 			dirty_blocks.push_back(pair.first);
 			// Atomically mark as flushing (pin to cache, prevent eviction)
 			pair.second.flushing = true;
+			// Clear dirty flag (will be written to disk, no longer dirty)
+			pair.second.dirty = false;
+		}
+	}
+
+	return dirty_blocks;
+}
+
+std::vector<torrent_location> cache_partition::collect_dirty_blocks_for_storage(
+	libtorrent::storage_index_t storage)
+{
+	std::unique_lock<std::mutex> l(m_mutex);
+
+	std::vector<torrent_location> dirty_blocks;
+	dirty_blocks.reserve(m_entries.size());
+
+	// Only collect dirty blocks for the specified storage
+	for (auto &pair : m_entries) {
+		if (pair.second.dirty && !pair.second.flushing && pair.first.torrent == storage) {
+			dirty_blocks.push_back(pair.first);
+			pair.second.flushing = true;
+			pair.second.dirty = false;
 		}
 	}
 
@@ -253,10 +275,7 @@ bool cache_partition::evict_one_lru()
 		}
 
 		// Found a clean entry - evict it
-		// Free buffer (cache manages its own memory)
-		free(it->second.buffer);
-
-		// Remove from map
+		// Remove from map (cache_entry destructor will free the buffer)
 		m_entries.erase(it);
 
 		// Remove from LRU list (need to convert reverse_iterator to iterator)
@@ -346,16 +365,11 @@ std::vector<torrent_location> unified_cache::collect_dirty_blocks(libtorrent::st
 {
 	std::vector<torrent_location> all_dirty;
 
-	// Collect from all partitions
+	// Collect from all partitions, but only for the specified storage
+	// This ensures we don't mark other storage's blocks as flushing
 	for (size_t i = 0; i < NUM_PARTITIONS; ++i) {
-		auto partition_dirty = m_partitions[i].collect_dirty_blocks();
-
-		// Filter by storage
-		for (auto const &loc : partition_dirty) {
-			if (loc.torrent == storage) {
-				all_dirty.push_back(loc);
-			}
-		}
+		auto partition_dirty = m_partitions[i].collect_dirty_blocks_for_storage(storage);
+		all_dirty.insert(all_dirty.end(), partition_dirty.begin(), partition_dirty.end());
 	}
 
 	return all_dirty;
