@@ -294,7 +294,6 @@ std::vector<torrent_location> unified_cache::collect_dirty_blocks(libtorrent::st
 	std::vector<torrent_location> all_dirty;
 
 	// Collect from all partitions, but only for the specified storage
-	// This ensures we don't mark other storage's blocks as flushing
 	for (size_t i = 0; i < NUM_PARTITIONS; ++i) {
 		auto partition_dirty = m_partitions[i].collect_dirty_blocks_for_storage(storage);
 		all_dirty.insert(all_dirty.end(), partition_dirty.begin(), partition_dirty.end());
