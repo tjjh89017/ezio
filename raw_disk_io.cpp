@@ -567,6 +567,17 @@ void raw_disk_io::submit_jobs()
 
 void raw_disk_io::settings_updated()
 {
+	// Update cache size from settings
+	size_t new_cache_entries = calculate_cache_entries(*m_settings);
+	if (new_cache_entries != m_cache.max_entries()) {
+		spdlog::info("[raw_disk_io] Updating cache size from {} to {} entries ({} MB -> {} MB)",
+			m_cache.max_entries(), new_cache_entries,
+			(m_cache.max_entries() * 16) / 1024, (new_cache_entries * 16) / 1024);
+		m_cache.set_max_entries(new_cache_entries);
+	}
+
+	// Note: Thread pool sizes are set in constructor init list and cannot be changed at runtime
+	// Future: Consider implementing dynamic thread pool resizing if needed
 }
 
 // ============================================================================
