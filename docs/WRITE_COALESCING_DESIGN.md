@@ -1,8 +1,26 @@
 # Write Coalescing Design Document
 
-**Version:** 1.0
-**Date:** 2024-12-14
-**Status:** Design Phase
+**Version:** 1.1
+**Date:** 2025-12-21 (Updated)
+**Status:** ⏸️ DEFERRED - Pending Phase 3.1 Performance Evaluation
+
+---
+
+## ⚠️ Implementation Status
+
+**DEFERRED:** Phase 3.2 (Write Coalescing) has been deferred pending performance evaluation of Phase 3.1 (Unified Cache).
+
+**Rationale:**
+- Phase 3.1 (unified cache) may already provide sufficient performance improvements
+- Write coalescing adds complexity (flush timers, backpressure management)
+- Should measure actual performance needs before implementing
+- Write-through cache design in Phase 3.1 simplifies implementation if needed later
+
+**Next Steps:**
+1. Complete Phase 2 testing (parallel writes)
+2. Benchmark unified cache performance with production workloads
+3. Re-evaluate if write coalescing is still needed
+4. If needed, this design document provides the implementation roadmap
 
 ---
 
