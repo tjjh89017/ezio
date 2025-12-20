@@ -303,7 +303,10 @@ public:
 private:
 	size_t get_partition_index(torrent_location const &loc) const
 	{
-		return static_cast<size_t>(loc.piece) % NUM_PARTITIONS;
+		// Use existing hash function for better distribution across partitions
+		// Use upper bits (better entropy) by right shifting before modulo
+		size_t hash = std::hash<torrent_location>{}(loc);
+		return (hash >> 32) % NUM_PARTITIONS;
 	}
 };
 
