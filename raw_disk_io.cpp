@@ -672,10 +672,12 @@ void raw_disk_io::on_flush_timer(boost::system::error_code const &ec)
 		spdlog::debug("[raw_disk_io] Time-based flush triggered (usage: {}%, dirty: {})",
 			m_cache.usage_percentage(), m_cache.total_dirty_count());
 
-		// Flush dirty blocks for all storages
+		// Post flush jobs to write thread pool (non-blocking, avoids blocking io_context)
 		for (auto const &pair : storages_) {
 			libtorrent::storage_index_t storage_id = pair.first;
-			flush_dirty_blocks(storage_id);
+			boost::asio::post(write_thread_pool_, [this, storage_id]() {
+				flush_dirty_blocks(storage_id);
+			});
 		}
 	}
 
