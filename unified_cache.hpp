@@ -20,7 +20,6 @@ struct cache_entry {
 	char *buffer;  // 16KB buffer, malloc'ed by cache
 	int length;	 // Actual data size in buffer (can be < 16KB for last block)
 	bool dirty;	 // Needs writeback to disk?
-	bool flushing;	// Currently being flushed to disk?
 
 	// Write completion handler (called after flush completes)
 	std::function<void(libtorrent::storage_error const &)> handler;
@@ -34,7 +33,6 @@ struct cache_entry {
 		buffer(nullptr),
 		length(0),
 		dirty(false),
-		flushing(false),
 		handler(nullptr)
 	{
 	}
@@ -53,7 +51,6 @@ struct cache_entry {
 		buffer(other.buffer),
 		length(other.length),
 		dirty(other.dirty),
-		flushing(other.flushing),
 		handler(std::move(other.handler)),
 		lru_iter(other.lru_iter)
 	{
@@ -72,7 +69,6 @@ struct cache_entry {
 			buffer = other.buffer;
 			length = other.length;
 			dirty = other.dirty;
-			flushing = other.flushing;
 			handler = std::move(other.handler);	 // Handler can be nullptr for read operations
 			lru_iter = other.lru_iter;
 			other.buffer = nullptr;	 // Transfer ownership
@@ -163,13 +159,6 @@ public:
 	// Mark entry as clean (writeback completed)
 	// Entry remains in cache for future reads
 	void mark_clean(torrent_location const &loc);
-
-	// Set flushing flag (before flush operation)
-	void set_flushing(torrent_location const &loc, bool value);
-
-	// Mark clean if still flushing and not dirty (atomic check)
-	// Returns true if marked clean, false if entry was modified during flush
-	bool mark_clean_if_flushing(torrent_location const &loc);
 
 	// Get and clear handler for a location (returns nullptr if no handler)
 	std::function<void(libtorrent::storage_error const &)> get_and_clear_handler(torrent_location const &loc);
@@ -273,12 +262,6 @@ public:
 
 	// Mark as clean after writeback completes
 	void mark_clean(torrent_location const &loc);
-
-	// Set flushing flag for a block
-	void set_flushing(torrent_location const &loc, bool value);
-
-	// Mark clean if still flushing and not dirty (atomic check)
-	bool mark_clean_if_flushing(torrent_location const &loc);
 
 	// Get and clear handler for a location (returns nullptr if no handler)
 	std::function<void(libtorrent::storage_error const &)> get_and_clear_handler(torrent_location const &loc);
