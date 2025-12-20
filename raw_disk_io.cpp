@@ -339,63 +339,72 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 	auto t_start = libtorrent::clock_type::now();
 
-	bool exceeded = false;
-	libtorrent::disk_buffer_holder buffer(m_buffer_pool, m_buffer_pool.allocate_buffer(exceeded, o), DEFAULT_BLOCK_SIZE);
+	// Insert into cache (cache allocates buffer and copies data)
+	// Marked as dirty to prevent eviction during write
+	torrent_location loc{storage, r.piece, r.start};
+	bool cache_inserted = m_cache.insert_write(loc, buf, r.length, nullptr);
 
-	auto t_alloc = libtorrent::clock_type::now();
+	auto t_insert = libtorrent::clock_type::now();
 
-	if (buffer) {
-		// async
-		memcpy(buffer.data(), buf, r.length);
+	if (cache_inserted) {
+		// Get buffer pointer from cache
+		char *cache_buf = nullptr;
+		int cache_len = r.length;
+		m_cache.get(loc, [&](char const *data) {
+			cache_buf = const_cast<char*>(data);
+		});
 
-		auto t_memcpy = libtorrent::clock_type::now();
+		auto t_get = libtorrent::clock_type::now();
 
-		// Insert into cache for read hits (best effort, ignore if failed)
-		torrent_location loc{storage, r.piece, r.start};
-		m_cache.insert_write(loc, buffer.data(), r.length, nullptr);
+		if (cache_buf) {
+			// Write-through: immediately write to disk using cache buffer
+			boost::asio::post(write_thread_pool_,
+				[=, this, handler = std::move(handler)]() {
+					libtorrent::storage_error error;
 
-		auto t_insert = libtorrent::clock_type::now();
+					// Write to disk (using cache's buffer)
+					auto const start_time = libtorrent::clock_type::now();
+					storages_[storage]->write(cache_buf, r.piece, r.start, cache_len, error);
+					auto const write_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
 
-		// Write-through: immediately write to disk
-		boost::asio::post(write_thread_pool_,
-			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
-				libtorrent::storage_error error;
+					// Update counters
+					m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_written);
+					m_stats_counters.inc_stats_counter(libtorrent::counters::num_write_ops);
+					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_write_time, write_time);
+					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, write_time);
 
-				// Write to disk
-				auto const start_time = libtorrent::clock_type::now();
-				storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
-				auto const write_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+					// Mark cache entry as clean (write completed)
+					m_cache.mark_clean(loc);
 
-				// Update counters
-				m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_written);
-				m_stats_counters.inc_stats_counter(libtorrent::counters::num_write_ops);
-				m_stats_counters.inc_stats_counter(libtorrent::counters::disk_write_time, write_time);
-				m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, write_time);
-
-				// Mark cache entry as clean (if it was cached)
-				m_cache.mark_clean(loc);
-
-				// Call handler
-				post(ioc_, [=, h = std::move(handler)] {
-					h(error);
+					// Call handler
+					post(ioc_, [=, h = std::move(handler)] {
+						h(error);
+					});
 				});
-			});
 
-		auto t_end = libtorrent::clock_type::now();
+			auto t_end = libtorrent::clock_type::now();
 
-		// Log timing if total time > 100 microseconds
-		auto total_us = libtorrent::total_microseconds(t_end - t_start);
-		if (total_us > 100) {
-			auto alloc_us = libtorrent::total_microseconds(t_alloc - t_start);
-			auto memcpy_us = libtorrent::total_microseconds(t_memcpy - t_alloc);
-			auto insert_us = libtorrent::total_microseconds(t_insert - t_memcpy);
-			auto rest_us = libtorrent::total_microseconds(t_end - t_insert);
+			// Log timing if total time > 100 microseconds
+			auto total_us = libtorrent::total_microseconds(t_end - t_start);
+			if (total_us > 100) {
+				auto insert_us = libtorrent::total_microseconds(t_insert - t_start);
+				auto get_us = libtorrent::total_microseconds(t_get - t_insert);
+				auto rest_us = libtorrent::total_microseconds(t_end - t_get);
 
-			spdlog::warn("[async_write] SLOW: total={}us (alloc={}us, memcpy={}us, insert={}us, rest={}us)",
-				total_us, alloc_us, memcpy_us, insert_us, rest_us);
+				spdlog::warn("[async_write] SLOW: total={}us (insert={}us, get={}us, rest={}us)",
+					total_us, insert_us, get_us, rest_us);
+			}
+
+			return false;  // No buffer pool, so never exceeded
+		} else {
+			// Cache get failed (entry was evicted between insert and get)
+			spdlog::warn("[async_write] Cache entry disappeared after insert!");
+			// Fall through to sync write
 		}
-
-		return exceeded;
+	} else {
+		// Cache insert failed (cache full)
+		spdlog::warn("[async_write] Cache insert failed - using sync write");
+		// Fall through to sync write
 	}
 
 	// sync
@@ -414,7 +423,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	post(ioc_, [=, h = std::move(handler)] {
 		h(error);
 	});
-	return exceeded;
+	return false;  // No buffer pool used, so never exceeded
 }
 
 void raw_disk_io::async_hash(
