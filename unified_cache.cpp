@@ -17,7 +17,8 @@ cache_partition::cache_partition(size_t max_entries) : m_max_entries(max_entries
 {
 }
 
-bool cache_partition::insert(torrent_location const &loc, char const *data, bool dirty)
+bool cache_partition::insert(torrent_location const &loc, char const *data, bool dirty,
+	std::function<void(libtorrent::storage_error const &)> handler)
 {
 	std::unique_lock<std::mutex> l(m_mutex);
 
@@ -27,6 +28,7 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, bool
 		// Entry exists - update it
 		memcpy(it->second.buffer, data, 16384);
 		it->second.dirty = dirty;
+		it->second.handler = std::move(handler);  // Update handler (can be nullptr for reads)
 
 		// Move to front of LRU (most recently used)
 		m_lru_list.erase(it->second.lru_iter);
@@ -59,6 +61,7 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, bool
 	entry.loc = loc;
 	entry.buffer = buffer;
 	entry.dirty = dirty;
+	entry.handler = std::move(handler);	 // Store handler (can be nullptr for reads)
 
 	// Add to LRU list (most recently used = front)
 	m_lru_list.push_front(loc);
@@ -95,25 +98,56 @@ void cache_partition::set_flushing(torrent_location const &loc, bool value)
 
 bool cache_partition::mark_clean_if_flushing(torrent_location const &loc)
 {
+	std::function<void(libtorrent::storage_error const &)> handler;
+
+	{
+		std::unique_lock<std::mutex> l(m_mutex);
+
+		auto it = m_entries.find(loc);
+		if (it == m_entries.end()) {
+			return false;  // Entry was evicted
+		}
+
+		// Only mark clean if:
+		// 1. Entry is still marked as flushing (we own it)
+		// 2. Entry is not dirty (no concurrent write happened)
+		if (it->second.flushing && !it->second.dirty) {
+			it->second.dirty = false;  // Already false, but explicit
+			it->second.flushing = false;
+
+			// Move handler out before releasing lock
+			handler = std::move(it->second.handler);
+			it->second.handler = nullptr;
+			// Successfully marked clean, handler will be called after lock release
+		} else {
+			// Entry was modified during flush, keep it dirty
+			it->second.flushing = false;
+			return false;
+		}
+	}  // Release mutex before calling handler
+
+	// Call handler outside mutex to avoid potential deadlock
+	if (handler) {
+		handler(libtorrent::storage_error());  // Success - no error
+	}
+
+	return true;
+}
+
+std::function<void(libtorrent::storage_error const &)> cache_partition::get_and_clear_handler(
+	torrent_location const &loc)
+{
 	std::unique_lock<std::mutex> l(m_mutex);
 
 	auto it = m_entries.find(loc);
 	if (it == m_entries.end()) {
-		return false;  // Entry was evicted
+		return nullptr;	 // Entry not found
 	}
 
-	// Only mark clean if:
-	// 1. Entry is still marked as flushing (we own it)
-	// 2. Entry is not dirty (no concurrent write happened)
-	if (it->second.flushing && !it->second.dirty) {
-		it->second.dirty = false;  // Already false, but explicit
-		it->second.flushing = false;
-		return true;  // Successfully marked clean
-	}
-
-	// Entry was modified during flush, keep it dirty
-	it->second.flushing = false;
-	return false;
+	// Move handler out and clear it
+	std::function<void(libtorrent::storage_error const &)> handler = std::move(it->second.handler);
+	it->second.handler = nullptr;
+	return handler;
 }
 
 std::vector<torrent_location> cache_partition::collect_dirty_blocks()
@@ -266,16 +300,17 @@ unified_cache::unified_cache(size_t max_entries) : m_max_entries(max_entries)
 		(max_entries * 16) / 1024, NUM_PARTITIONS);
 }
 
-bool unified_cache::insert_write(torrent_location const &loc, char const *data)
+bool unified_cache::insert_write(torrent_location const &loc, char const *data,
+	std::function<void(libtorrent::storage_error const &)> handler)
 {
 	size_t partition_idx = get_partition_index(loc);
-	return m_partitions[partition_idx].insert(loc, data, true);	 // dirty=true
+	return m_partitions[partition_idx].insert(loc, data, true, std::move(handler));	 // dirty=true, with handler
 }
 
 bool unified_cache::insert_read(torrent_location const &loc, char const *data)
 {
 	size_t partition_idx = get_partition_index(loc);
-	return m_partitions[partition_idx].insert(loc, data, false);  // dirty=false
+	return m_partitions[partition_idx].insert(loc, data, false, nullptr);  // dirty=false, no handler
 }
 
 void unified_cache::mark_clean(torrent_location const &loc)
@@ -294,6 +329,13 @@ bool unified_cache::mark_clean_if_flushing(torrent_location const &loc)
 {
 	size_t partition_idx = get_partition_index(loc);
 	return m_partitions[partition_idx].mark_clean_if_flushing(loc);
+}
+
+std::function<void(libtorrent::storage_error const &)> unified_cache::get_and_clear_handler(
+	torrent_location const &loc)
+{
+	size_t partition_idx = get_partition_index(loc);
+	return m_partitions[partition_idx].get_and_clear_handler(loc);
 }
 
 std::vector<torrent_location> unified_cache::collect_dirty_blocks(libtorrent::storage_index_t storage)
