@@ -16,6 +16,7 @@ struct cache_entry {
 	torrent_location loc;  // (storage, piece, offset)
 	char *buffer;  // 16KB, malloc'ed by cache
 	bool dirty;	 // Needs writeback to disk?
+	bool flushing;	// Currently being flushed to disk?
 
 	// LRU metadata
 	std::list<torrent_location>::iterator lru_iter;
@@ -24,7 +25,8 @@ struct cache_entry {
 	cache_entry() :
 		loc(libtorrent::storage_index_t(0), libtorrent::piece_index_t(0), 0),
 		buffer(nullptr),
-		dirty(false)
+		dirty(false),
+		flushing(false)
 	{
 	}
 
@@ -38,7 +40,7 @@ struct cache_entry {
 
 	// Move constructor
 	cache_entry(cache_entry &&other) noexcept :
-		loc(other.loc), buffer(other.buffer), dirty(other.dirty), lru_iter(other.lru_iter)
+		loc(other.loc), buffer(other.buffer), dirty(other.dirty), flushing(other.flushing), lru_iter(other.lru_iter)
 	{
 		other.buffer = nullptr;	 // Transfer ownership
 	}
@@ -53,6 +55,7 @@ struct cache_entry {
 			loc = other.loc;
 			buffer = other.buffer;
 			dirty = other.dirty;
+			flushing = other.flushing;
 			lru_iter = other.lru_iter;
 			other.buffer = nullptr;	 // Transfer ownership
 		}
@@ -139,8 +142,15 @@ public:
 	// Entry remains in cache for future reads
 	void mark_clean(torrent_location const &loc);
 
-	// Collect all dirty blocks in this partition
-	std::vector<torrent_location> collect_dirty_blocks() const;
+	// Set flushing flag (before flush operation)
+	void set_flushing(torrent_location const &loc, bool value);
+
+	// Mark clean if still flushing and not dirty (atomic check)
+	// Returns true if marked clean, false if entry was modified during flush
+	bool mark_clean_if_flushing(torrent_location const &loc);
+
+	// Collect all dirty blocks in this partition and mark them as flushing
+	std::vector<torrent_location> collect_dirty_blocks();
 
 	// Statistics
 	size_t size() const;
@@ -225,13 +235,19 @@ public:
 	// Mark as clean after writeback completes
 	void mark_clean(torrent_location const &loc);
 
+	// Set flushing flag for a block
+	void set_flushing(torrent_location const &loc, bool value);
+
+	// Mark clean if still flushing and not dirty (atomic check)
+	bool mark_clean_if_flushing(torrent_location const &loc);
+
 	// Collect all dirty blocks for a storage
 	std::vector<torrent_location> collect_dirty_blocks(libtorrent::storage_index_t storage);
 
 	// Statistics
 	size_t total_entries() const;
 	size_t total_dirty_count() const;
-	size_t get_dirty_count(libtorrent::storage_index_t storage) const;
+	size_t get_dirty_count(libtorrent::storage_index_t storage);
 	size_t max_entries() const
 	{
 		return m_max_entries;
@@ -244,10 +260,12 @@ public:
 	// Dynamic resize (from settings_updated)
 	void set_max_entries(size_t new_max);
 
-	// Usage percentage (for flush triggers)
-	double usage_percentage() const
+	// Usage percentage (for flush triggers), returns 0-100
+	int usage_percentage() const
 	{
-		return (total_entries() * 100.0) / m_max_entries;
+		if (m_max_entries == 0)
+			return 0;
+		return static_cast<int>((total_entries() * 100) / m_max_entries);
 	}
 
 private:
