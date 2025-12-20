@@ -185,6 +185,9 @@ public:
 	// Collect all dirty blocks in this partition and mark them as flushing
 	std::vector<torrent_location> collect_dirty_blocks();
 
+	// Collect dirty blocks for a specific storage only
+	std::vector<torrent_location> collect_dirty_blocks_for_storage(libtorrent::storage_index_t storage);
+
 	// Statistics
 	size_t size() const;
 	size_t dirty_count() const;

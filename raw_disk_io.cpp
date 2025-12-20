@@ -17,7 +17,7 @@ namespace ezio
 // Can be adjusted based on workload:
 // - Lower (30-60s): More frequent flush, better for memory pressure
 // - Higher (180-300s): Better write coalescing, requires more memory
-constexpr int CACHE_FLUSH_INTERVAL_SECONDS = 120;
+constexpr int CACHE_FLUSH_INTERVAL_SECONDS = 5;
 
 // Helper function: Calculate cache entries from settings_pack::cache_size
 // cache_size unit is KiB (libtorrent convention)
@@ -353,51 +353,62 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 {
 	BOOST_ASSERT(DEFAULT_BLOCK_SIZE >= r.length);
 
+	auto t_start = libtorrent::clock_type::now();
+
 	bool exceeded = false;
 	libtorrent::disk_buffer_holder buffer(m_buffer_pool, m_buffer_pool.allocate_buffer(exceeded, o), DEFAULT_BLOCK_SIZE);
+
+	auto t_alloc = libtorrent::clock_type::now();
 
 	if (buffer) {
 		// async
 		memcpy(buffer.data(), buf, r.length);
 
-		// Try to insert into unified_cache (persistent cache, marked dirty)
-		// If successful, handler will be called after flush completes
-		// If failed (cache full), fallback to immediate write
-		bool cache_insert_ok = m_cache.insert_write({storage, r.piece, r.start}, buffer.data(), r.length, handler);
+		auto t_memcpy = libtorrent::clock_type::now();
 
-		// Emergency write if cache insert failed (cache full of dirty/flushing blocks)
-		if (!cache_insert_ok) {
-			// Cache insert failed, write immediately (handler was not stored in cache)
-			libtorrent::peer_request r2(r);
-			boost::asio::post(write_thread_pool_,
-				[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
-					libtorrent::storage_error error;
+		// Insert into cache for read hits (best effort, ignore if failed)
+		torrent_location loc{storage, r.piece, r.start};
+		m_cache.insert_write(loc, buffer.data(), r.length, nullptr);
 
-					// Write to disk immediately
-					auto const start_time = libtorrent::clock_type::now();
-					storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
-					auto const write_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+		auto t_insert = libtorrent::clock_type::now();
 
-					// Update counters
-					m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_written);
-					m_stats_counters.inc_stats_counter(libtorrent::counters::num_write_ops);
-					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_write_time, write_time);
-					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, write_time);
+		// Write-through: immediately write to disk
+		boost::asio::post(write_thread_pool_,
+			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
+				libtorrent::storage_error error;
 
-					// Call handler
-					post(ioc_, [=, h = std::move(handler)] {
-						h(error);
-					});
+				// Write to disk
+				auto const start_time = libtorrent::clock_type::now();
+				storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
+				auto const write_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+				// Update counters
+				m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_written);
+				m_stats_counters.inc_stats_counter(libtorrent::counters::num_write_ops);
+				m_stats_counters.inc_stats_counter(libtorrent::counters::disk_write_time, write_time);
+				m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, write_time);
+
+				// Mark cache entry as clean (if it was cached)
+				m_cache.mark_clean(loc);
+
+				// Call handler
+				post(ioc_, [=, h = std::move(handler)] {
+					h(error);
 				});
-		}
-		// else: Cache insert succeeded, handler stored in cache, will be called after flush
-
-		// Check if cache needs flushing (opportunistic flush)
-		// Phase 3.1: Still writes immediately, but prepares for Phase 3.2 delayed write
-		if (should_flush_dirty_cache()) {
-			boost::asio::post(write_thread_pool_, [this, storage]() {
-				flush_dirty_blocks(storage);
 			});
+
+		auto t_end = libtorrent::clock_type::now();
+
+		// Log timing if total time > 100 microseconds
+		auto total_us = libtorrent::total_microseconds(t_end - t_start);
+		if (total_us > 100) {
+			auto alloc_us = libtorrent::total_microseconds(t_alloc - t_start);
+			auto memcpy_us = libtorrent::total_microseconds(t_memcpy - t_alloc);
+			auto insert_us = libtorrent::total_microseconds(t_insert - t_memcpy);
+			auto rest_us = libtorrent::total_microseconds(t_end - t_insert);
+
+			spdlog::warn("[async_write] SLOW: total={}us (alloc={}us, memcpy={}us, insert={}us, rest={}us)",
+				total_us, alloc_us, memcpy_us, insert_us, rest_us);
 		}
 
 		return exceeded;
@@ -624,14 +635,17 @@ bool raw_disk_io::should_flush_dirty_cache() const
 	// Flush trigger 1: Cache usage exceeds threshold (80%)
 	int usage = m_cache.usage_percentage();	 // 0-100
 	if (usage > 80) {
+		spdlog::info("[should_flush] Trigger 1: usage {}% > 80%", usage);
 		return true;
 	}
 
 	// Flush trigger 2: Dirty block count exceeds threshold
-	// For 512MB cache (32768 entries), flush if > 8192 dirty blocks (25%)
+	// For 512MB cache (32768 entries), flush if > 1638 dirty blocks (5%)
+	// Lower threshold ensures timely writes, especially important for HDD
 	size_t dirty_count = m_cache.total_dirty_count();
-	size_t dirty_threshold = m_cache.max_entries() / 4;	 // 25% dirty threshold
+	size_t dirty_threshold = m_cache.max_entries() / 20;  // 5% dirty threshold
 	if (dirty_count > dirty_threshold) {
+		spdlog::info("[should_flush] Trigger 2: dirty {} > threshold {}", dirty_count, dirty_threshold);
 		return true;
 	}
 
@@ -641,15 +655,18 @@ bool raw_disk_io::should_flush_dirty_cache() const
 
 void raw_disk_io::flush_dirty_blocks(libtorrent::storage_index_t storage)
 {
+	auto const flush_start = libtorrent::clock_type::now();
+
 	// Collect all dirty blocks for this storage
 	std::vector<torrent_location> dirty_blocks = m_cache.collect_dirty_blocks(storage);
 
 	if (dirty_blocks.empty()) {
+		spdlog::debug("[flush_dirty_blocks] No dirty blocks for storage {}", static_cast<int>(storage));
 		return;
 	}
 
-	spdlog::debug("[raw_disk_io] Flushing {} dirty blocks for storage {}",
-		dirty_blocks.size(), static_cast<int>(storage));
+	spdlog::info("[flush_dirty_blocks] START: {} dirty blocks for storage {}, cache usage={}%",
+		dirty_blocks.size(), static_cast<int>(storage), m_cache.usage_percentage());
 
 	// Sort by disk offset for sequential writes
 	// This reduces seek time on HDD and improves write throughput
@@ -714,8 +731,9 @@ void raw_disk_io::flush_dirty_blocks(libtorrent::storage_index_t storage)
 		}
 	}
 
-	spdlog::debug("[raw_disk_io] Flushed {} dirty blocks for storage {}",
-		dirty_blocks.size(), static_cast<int>(storage));
+	auto const flush_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - flush_start);
+	spdlog::info("[flush_dirty_blocks] COMPLETE: {} blocks in {} ms, cache usage={}%",
+		dirty_blocks.size(), flush_time / 1000, m_cache.usage_percentage());
 }
 
 void raw_disk_io::on_flush_timer(boost::system::error_code const &ec)
@@ -725,10 +743,12 @@ void raw_disk_io::on_flush_timer(boost::system::error_code const &ec)
 		return;
 	}
 
-	// Check if we should flush dirty cache
-	if (should_flush_dirty_cache()) {
-		spdlog::debug("[raw_disk_io] Time-based flush triggered (usage: {}%, dirty: {})",
-			m_cache.usage_percentage(), m_cache.total_dirty_count());
+	// Unconditionally flush all dirty blocks every timer interval
+	// This ensures timely writes even when cache usage is low
+	size_t dirty = m_cache.total_dirty_count();
+	if (dirty > 0) {
+		spdlog::debug("[raw_disk_io] Time-based flush triggered: {} dirty blocks (usage: {}%)",
+			dirty, m_cache.usage_percentage());
 
 		// Post flush jobs to write thread pool (non-blocking, avoids blocking io_context)
 		for (auto const &pair : storages_) {
