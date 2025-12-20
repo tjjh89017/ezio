@@ -1,5 +1,18 @@
 # Unified Cache Design
 
+**Status:** ✅ **IMPLEMENTED** (Phase 3.1 - commits 960fdd7 → c18fa72)
+**Implementation Date:** 2025-12-20 to 2025-12-21
+**Current Version:** Write-through cache with hash-based partitioning
+
+**Key Implementation Notes:**
+- Write-through design (not delayed write as originally planned)
+- Hash-based partition: `std::hash<torrent_location>(loc) >> 32 % 32`
+- Configurable size: `--cache-size <MB>` (default 512MB)
+- No handler infrastructure needed (handlers managed in async_write)
+- Cache lookup moved to worker threads for main thread optimization
+
+---
+
 ## Background
 
 ### Current Problem
@@ -44,7 +57,7 @@
 │ └──────────┘ └──────────┘      └──────────┘       │
 │                                                      │
 │ - 32 partitions (hardcoded, may be configurable)   │
-│ - partition = piece % 32                            │
+│ - partition = hash(location) >> 32 % 32 (UPDATED)  │
 │ - Each partition: independent mutex + hash map     │
 │ - Cache entry: 16KiB fixed size                    │
 │ - LRU eviction per partition                       │
