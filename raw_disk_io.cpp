@@ -12,6 +12,13 @@
 namespace ezio
 {
 
+// Flush interval for time-based dirty cache flush (seconds)
+// Default 120s allows more write coalescing and reduces I/O frequency
+// Can be adjusted based on workload:
+// - Lower (30-60s): More frequent flush, better for memory pressure
+// - Higher (180-300s): Better write coalescing, requires more memory
+constexpr int CACHE_FLUSH_INTERVAL_SECONDS = 120;
+
 // Helper function: Calculate cache entries from settings_pack::cache_size
 // cache_size unit is KiB (libtorrent convention)
 // Returns number of 16KB entries
@@ -149,8 +156,8 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads)),
 	m_flush_timer(ioc)	// Initialize flush timer
 {
-	// Start periodic flush timer (5 seconds interval)
-	m_flush_timer.expires_after(std::chrono::seconds(5));
+	// Start periodic flush timer
+	m_flush_timer.expires_after(std::chrono::seconds(CACHE_FLUSH_INTERVAL_SECONDS));
 	m_flush_timer.async_wait([this](boost::system::error_code const &ec) {
 		on_flush_timer(ec);
 	});
@@ -672,8 +679,8 @@ void raw_disk_io::on_flush_timer(boost::system::error_code const &ec)
 		}
 	}
 
-	// Reschedule timer for next flush (5 seconds)
-	m_flush_timer.expires_after(std::chrono::seconds(5));
+	// Reschedule timer for next flush
+	m_flush_timer.expires_after(std::chrono::seconds(CACHE_FLUSH_INTERVAL_SECONDS));
 	m_flush_timer.async_wait([this](boost::system::error_code const &ec) {
 		on_flush_timer(ec);
 	});
