@@ -23,6 +23,9 @@ public:
 	std::string listen_address = "127.0.0.1:50051";
 	// cache size in MB
 	int cache_size_mb = 512;  // default 512MB
+	// thread pool sizes
+	int aio_threads = 16;  // default 16 threads for disk I/O
+	int hashing_threads = 8;  // default 8 threads for hashing
 };
 
 }  // namespace ezio
