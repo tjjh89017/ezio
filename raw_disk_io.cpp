@@ -383,10 +383,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 					// 1. Remove from store_buffer (free temp buffer)
 					m_store_buffer.erase({storage, r.piece, r.start});
 
-					// 2. Mark cache entry as clean (but keep in cache!)
-					m_cache.mark_clean({storage, r.piece, r.start});
-
-					// 3. Call handler
+					// 2. Call handler
 					post(ioc_, [=, h = std::move(handler)] {
 						h(error);
 					});
