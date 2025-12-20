@@ -450,16 +450,29 @@ void raw_disk_io::async_hash(
 			int ret = 0;
 			for (int i = 0; i < blocks_to_read; i++) {
 				len = std::min(DEFAULT_BLOCK_SIZE, piece_size - offset);
+
+				// Try store_buffer first (most recent writes)
 				bool hit = m_store_buffer.get({storage, piece, offset}, [&](char const *buf1) {
 					ph.update(buf1, len);
 					ret = len;
 				});
+
+				// Try cache if not in store_buffer
+				if (!hit) {
+					hit = m_cache.get({storage, piece, offset}, [&](char const *cache_buf) {
+						ph.update(cache_buf, len);
+						ret = len;
+					});
+				}
+
+				// Read from disk if not in cache
 				if (!hit) {
 					ret = st->read(buf, piece, offset, len, error);
 					if (ret > 0) {
 						ph.update(buf, ret);
 					}
 				}
+
 				if (ret <= 0) {
 					break;
 				}
