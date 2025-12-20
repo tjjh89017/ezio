@@ -253,6 +253,7 @@ void raw_disk_io::async_read(
 
 		if (ret == 3) {
 			// Both blocks found in cache
+			m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read, 2);
 			handler(std::move(buffer), error);
 			return;
 		}
@@ -269,7 +270,15 @@ void raw_disk_io::async_read(
 					auto len = (ret & 2) ? (r.length - len1) : len1;
 					auto buf_offset = (ret & 2) ? len1 : 0;
 
+					auto const start_time = libtorrent::clock_type::now();
 					storages_[idx]->read(buf + buf_offset, r.piece, offset, len, error);
+					auto const read_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+					// Update counters (1 block from cache, 1 from disk)
+					m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read, 2);
+					m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
+					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_read_time, read_time);
+					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, read_time);
 
 					post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 						h(std::move(b), error);
@@ -282,7 +291,16 @@ void raw_disk_io::async_read(
 		boost::asio::post(read_thread_pool_,
 			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 				libtorrent::storage_error error;
+
+				auto const start_time = libtorrent::clock_type::now();
 				storages_[idx]->read(buf, r.piece, r.start, r.length, error);
+				auto const read_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+				// Update counters (both blocks from disk)
+				m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read, 2);
+				m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
+				m_stats_counters.inc_stats_counter(libtorrent::counters::disk_read_time, read_time);
+				m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, read_time);
 
 				post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 					h(std::move(b), error);
@@ -295,6 +313,8 @@ void raw_disk_io::async_read(
 		if (m_cache.get({idx, r.piece, block_offset}, [&](char const *buf1) {
 				std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
 			})) {
+			// Cache hit
+			m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read);
 			handler(std::move(buffer), error);
 			return;
 		}
@@ -304,7 +324,16 @@ void raw_disk_io::async_read(
 	boost::asio::post(read_thread_pool_,
 		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
+
+			auto const start_time = libtorrent::clock_type::now();
 			storages_[idx]->read(buf, r.piece, r.start, r.length, error);
+			auto const read_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+			// Update counters
+			m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read);
+			m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
+			m_stats_counters.inc_stats_counter(libtorrent::counters::disk_read_time, read_time);
+			m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, read_time);
 
 			// Insert into cache (clean) for future reads
 			if (!error) {
@@ -345,7 +374,15 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 					libtorrent::storage_error error;
 
 					// Write to disk immediately
+					auto const start_time = libtorrent::clock_type::now();
 					storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
+					auto const write_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+					// Update counters
+					m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_written);
+					m_stats_counters.inc_stats_counter(libtorrent::counters::num_write_ops);
+					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_write_time, write_time);
+					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, write_time);
 
 					// Call handler
 					post(ioc_, [=, h = std::move(handler)] {
@@ -368,7 +405,16 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 	// sync
 	libtorrent::storage_error error;
+
+	auto const start_time = libtorrent::clock_type::now();
 	storages_[storage]->write(const_cast<char *>(buf), r.piece, r.start, r.length, error);
+	auto const write_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+	// Update counters
+	m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_written);
+	m_stats_counters.inc_stats_counter(libtorrent::counters::num_write_ops);
+	m_stats_counters.inc_stats_counter(libtorrent::counters::disk_write_time, write_time);
+	m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, write_time);
 
 	post(ioc_, [=, h = std::move(handler)] {
 		h(error);
@@ -402,6 +448,8 @@ void raw_disk_io::async_hash(
 			libtorrent::hasher ph;
 			partition_storage *st = storages_[storage].get();
 
+			auto const start_time = libtorrent::clock_type::now();
+
 			int const piece_size = st->piece_size(piece);
 			int const blocks_in_piece = (piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
 
@@ -433,6 +481,13 @@ void raw_disk_io::async_hash(
 			}
 
 			libtorrent::sha1_hash const hash = ph.final();
+
+			auto const hash_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+			// Update counters
+			m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_hashed, blocks_in_piece);
+			m_stats_counters.inc_stats_counter(libtorrent::counters::disk_hash_time, hash_time);
+			m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, hash_time);
 
 			post(ioc_, [=, h = std::move(handler)] {
 				h(piece, hash, error);
@@ -524,6 +579,12 @@ void raw_disk_io::async_clear_piece(libtorrent::storage_index_t storage,
 
 void raw_disk_io::update_stats_counters(libtorrent::counters &c) const
 {
+	// Update buffer pool usage (gauge)
+	c.set_value(libtorrent::counters::disk_blocks_in_use, m_buffer_pool.in_use());
+
+	// Update cache statistics (gauges)
+	// Note: Could add custom cache metrics here if libtorrent adds counters for them
+	// For now, we rely on the inc_stats_counter calls in async_read/write/hash
 }
 
 std::vector<libtorrent::open_file_state> raw_disk_io::get_status(libtorrent::storage_index_t) const
@@ -626,7 +687,16 @@ void raw_disk_io::flush_dirty_blocks(libtorrent::storage_index_t storage)
 
 		// Write to disk (cache is unlocked, allows concurrent operations)
 		libtorrent::storage_error error;
+
+		auto const start_time = libtorrent::clock_type::now();
 		storages_[storage]->write(temp_buf, loc.piece, loc.offset, length, error);
+		auto const write_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+		// Update counters
+		m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_written);
+		m_stats_counters.inc_stats_counter(libtorrent::counters::num_write_ops);
+		m_stats_counters.inc_stats_counter(libtorrent::counters::disk_write_time, write_time);
+		m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, write_time);
 
 		if (!error) {
 			// Atomically mark clean only if not modified during flush

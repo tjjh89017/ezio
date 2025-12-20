@@ -32,6 +32,12 @@ public:
 	void free_disk_buffer(char *) override;
 	void check_buffer_level(std::unique_lock<std::mutex> &l);
 
+	// Get current number of buffers in use
+	int in_use() const
+	{
+		return m_size;
+	}
+
 private:
 	libtorrent::io_context &m_ios;
 	std::mutex m_pool_mutex;
