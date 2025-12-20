@@ -171,7 +171,7 @@ public:
 		return (it == m_entries.end()) ? 0 : it->second.length;
 	}
 
-	// Collect all dirty blocks in this partition and mark them as flushing
+	// Collect all dirty blocks in this partition and mark them as clean
 	std::vector<torrent_location> collect_dirty_blocks();
 
 	// Collect dirty blocks for a specific storage only

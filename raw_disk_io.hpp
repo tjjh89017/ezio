@@ -243,11 +243,6 @@ public:
 	void settings_updated() override;
 
 private:
-	// Check if cache needs flushing (based on usage/dirty thresholds)
-	bool should_flush_dirty_cache() const;
-
-	// Flush dirty blocks for a storage
-	void flush_dirty_blocks(libtorrent::storage_index_t storage);
 };
 
 }  // namespace ezio
