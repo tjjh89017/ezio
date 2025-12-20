@@ -40,11 +40,13 @@ int main(int argc, char **argv)
 
 	//p.set_int(lt::settings_pack::alert_mask, lt::alert_category::peer | lt::alert_category::status);
 
-	// tune - thread pool sizes from config
+	// thread pool sizes from config
 	p.set_int(lt::settings_pack::aio_threads, current_config.aio_threads);
 	p.set_int(lt::settings_pack::hashing_threads, current_config.hashing_threads);
 	spdlog::info("Thread pools: aio_threads={}, hashing_threads={}",
 		current_config.aio_threads, current_config.hashing_threads);
+
+	// network buffer sizes
 	p.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::suggest_read_cache);
 	p.set_int(lt::settings_pack::max_queued_disk_bytes, 128 * 1024 * 1024);
 	p.set_int(lt::settings_pack::send_not_sent_low_watermark, 524288);
