@@ -1,6 +1,6 @@
 # EZIO Architecture Analysis & Optimization Guide
 
-**Version:** 5.0 (Phase 0, 1.1, 1.2, 3.1 Complete)
+**Version:** 5.1 (Phase 0, 1, 2, 3.1 Complete)
 **Last Updated:** 2025-12-21
 **Reference:** libtorrent-2.0.10 source in `tmp/libtorrent-2.0.10/`
 **Complete Memory:** See `docs/SESSION_MEMORY.md` for full conversation history
@@ -29,6 +29,13 @@
   - Thread pools configured from settings (aio_threads, hashing_threads)
   - settings_updated() interface implemented
 
+- ✅ **Phase 2: Configurable Thread Pools** (commits: bbaf786 → 34ae63c)
+  - Command line options: `--aio-threads` and `--hashing-threads`
+  - Runtime tuning without recompilation
+  - Defaults: aio_threads=16, hashing_threads=8
+  - Enables easy testing for NVMe optimization
+  - Updated README with usage examples
+
 - ✅ **Phase 3.1: Unified Cache** (commits: 960fdd7 → c18fa72)
   - **Write-through cache** replacing temporary store_buffer
   - 32-way sharded cache with per-partition mutex
@@ -39,15 +46,16 @@
   - Fixed critical bug: cache_size was 16x too large (32GB → 2GB)
   - Removed unused handler infrastructure (42 lines deleted)
 
-**Key Improvements (2025-12-20 to 2025-12-21):**
+**Recent Improvements (2025-12-21):**
+- ⚙️  **Thread Pool Tuning**: `--aio-threads` and `--hashing-threads` options
 - 🐛 **Critical Fix**: cache_size interpreted correctly (16KiB blocks, not KB)
 - 🚀 **Performance**: Cache lookup on worker threads, not main thread
 - 🎯 **Better Distribution**: Hash-based partitioning (torrent + piece + offset)
-- ⚙️  **Configurable**: `--cache-size <MB>` command line option
 - 🧹 **Code Quality**: Removed 42 lines (handler cleanup)
+- 📚 **Documentation**: Updated README with thread pool tuning guide
 
-**🔥 Next: Phase 2 - Parallel Write Optimization**
-- Increase write thread pool for NVMe (simple configuration change)
+**🔥 Next: Phase 3.2 - Write Coalescing (Optional)**
+- Batch writes with pwritev() for better HDD performance
 - Expected: +100-150% write throughput on NVMe
 
 ### Critical Architecture Facts
@@ -126,17 +134,25 @@ EZIO is a **BitTorrent-based raw disk imaging tool** for fast LAN deployment. Th
 | 0.2 | Event-driven alerts | 5000x faster response | bccea62 |
 | 1.1 | Unified buffer pool | +48% memory efficiency | b018516 |
 | 1.2 | Configurable settings | Production tuning | c69c69a |
+| 2 | Configurable thread pools | Runtime tuning for NVMe/HDD | bbaf786→34ae63c |
 | 3.1 | Unified cache (write-through) | Read cache + reduced code | 960fdd7→c18fa72 |
 
-**Phase 3.1 Details:**
+**Recent Phase Details:**
+
+**Phase 2: Configurable Thread Pools**
+- Command line options: `--aio-threads`, `--hashing-threads`
+- No recompilation needed for performance testing
+- Examples: `--aio-threads 32` (NVMe), `--aio-threads 2` (HDD)
+
+**Phase 3.1: Unified Cache**
 - Write-through cache replacing store_buffer (512MB default, configurable)
 - Fixed critical cache_size bug (was 16x too large!)
 - Hash-based partitioning for better load balancing
 - Cache lookup on worker threads (main thread optimization)
 - Removed 42 lines of unused handler code
 
-**Next Phase (Ready to Implement):**
-- **Phase 2**: Parallel write optimization (NVMe +100-150%, just config change!)
+**Next Phase (Optional):**
+- **Phase 3.2**: Write coalescing with pwritev() for HDD optimization
 
 ---
 
