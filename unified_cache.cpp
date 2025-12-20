@@ -3,6 +3,8 @@
 #include <cstring>	// for memcpy
 #include <spdlog/spdlog.h>
 
+#include "buffer_pool.hpp"	// for DEFAULT_BLOCK_SIZE
+
 namespace ezio
 {
 
@@ -26,7 +28,7 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, bool
 	auto it = m_entries.find(loc);
 	if (it != m_entries.end()) {
 		// Entry exists - update it
-		memcpy(it->second.buffer, data, 16384);
+		memcpy(it->second.buffer, data, DEFAULT_BLOCK_SIZE);
 		it->second.dirty = dirty;
 		it->second.handler = std::move(handler);  // Update handler (can be nullptr for reads)
 
@@ -47,14 +49,14 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, bool
 	}
 
 	// Allocate new buffer (cache manages its own memory)
-	char *buffer = static_cast<char *>(malloc(16384));
+	char *buffer = static_cast<char *>(malloc(DEFAULT_BLOCK_SIZE));
 	if (!buffer) {
 		spdlog::error("[cache_partition] malloc failed for 16KB buffer");
 		return false;
 	}
 
 	// Copy data to cache buffer
-	memcpy(buffer, data, 16384);
+	memcpy(buffer, data, DEFAULT_BLOCK_SIZE);
 
 	// Create new entry
 	cache_entry entry;
