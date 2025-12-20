@@ -1,8 +1,8 @@
 # EZIO Optimization Phase Plan (Reformulated)
 
-**Version:** 2.0 (Complete Re-analysis)
-**Date:** 2025-12-14
-**Status:** Ready for Implementation
+**Version:** 3.0 (Updated after Phase 3.1 completion)
+**Date:** 2025-12-21
+**Status:** Phase 0, 1.1, 1.2, 3.1 Complete - Ready for Phase 2
 **Language:** English
 
 ---
@@ -11,16 +11,22 @@
 
 This document presents a **reformulated phase plan** based on complete re-analysis of:
 - All documentation in `docs/`
-- Current code state (after Phase 0 completion)
+- Current code state (after Phase 3.1 completion)
 - Dependencies and priorities
 - Implementation complexity
 
-**Key Changes from Original CLAUDE.md:**
-- ✅ Resolved Phase 1.1 naming conflict
-- ✅ Clearer dependency ordering
-- ✅ Split complex phases into sub-phases
-- ✅ Added effort estimates and success criteria
-- ✅ Identified "quick wins" vs. long-term optimizations
+**Completed Phases (as of 2025-12-21):**
+- ✅ Phase 0: Logging & debugging infrastructure (df30a4a, bccea62)
+- ✅ Phase 1.1: Buffer pool merger - unified 256MB pool (b018516)
+- ✅ Phase 1.2: Settings infrastructure - configurable thread pools (c69c69a)
+- ✅ Phase 3.1: Unified cache - 32-way sharded, hash-based partitioning (960fdd7→c18fa72)
+
+**Key Implementation Decisions:**
+- ✅ Write-through cache (not delayed write) for simplicity
+- ✅ Hash-based partitioning for better load distribution
+- ✅ Configurable cache size via `--cache-size` option (default 512MB)
+- ✅ Removed handler infrastructure (simplified code)
+- ✅ Cache lookup moved to worker threads (optimized main thread)
 
 ---
 
@@ -160,9 +166,17 @@ session.apply_settings(pack);
 
 ---
 
-#### Phase 3.1: Unified Cache with Sharding
+#### Phase 3.1: Unified Cache with Sharding ✅ COMPLETE
+
+**Status:** ✅ Implemented (commits 960fdd7 → c18fa72)
 
 **What:** Replace `store_buffer` with persistent sharded cache
+
+**Implementation Notes:**
+- Write-through cache (not delayed write) for simplicity
+- Hash-based partitioning using `std::hash<torrent_location>(loc) >> 32 % 32`
+- Configurable via `--cache-size` option (default 512MB)
+- Removed unused handler infrastructure (simplified 42 lines)
 
 **Why After Phase 2:**
 - ✅ Need Phase 1+2 as foundation
@@ -389,16 +403,16 @@ void partition_storage::writev(std::vector<cache_entry*> const& entries) {
 
 ## Summary Table
 
-| Phase | Description | Duration | Priority | Dependencies | Benefit |
-|-------|-------------|----------|----------|--------------|---------|
-| ✅ 0.1 | spdlog runtime control | ✅ Done | HIGH | None | Debug efficiency |
-| ✅ 0.2 | Event-driven alerts | ✅ Done | HIGH | None | 5000x faster alerts |
-| 🔄 1.1 | Buffer pool merger | 1-2 days | HIGH | None | +48% memory |
-| 🔄 1.2 | Configurable cache + thread pools | 1 day | HIGH | 1.1 | Production ready |
-| 🔄 2 | Parallel writes (config only) | 1 day | HIGH | 1.2 | NVMe +100-150% |
-| ⏸️ 3.1 | Unified cache (sharded) | 2-3 days | MEDIUM | 1, 2 | Persistent cache |
-| ⏸️ 3.2 | Write coalescing | 1-2 days | MEDIUM | 3.1 | HDD +93%, SSD +30% |
-| ⏸️ 4 | io_uring | 3-5 days | LOW | 3 | +20-30% additional |
+| Phase | Description | Duration | Priority | Dependencies | Benefit | Status |
+|-------|-------------|----------|----------|--------------|---------|--------|
+| ✅ 0.1 | spdlog runtime control | ✅ Done | HIGH | None | Debug efficiency | ✅ Complete (df30a4a) |
+| ✅ 0.2 | Event-driven alerts | ✅ Done | HIGH | None | 5000x faster alerts | ✅ Complete (bccea62) |
+| ✅ 1.1 | Buffer pool merger | 1-2 days | HIGH | None | +48% memory | ✅ Complete (b018516) |
+| ✅ 1.2 | Configurable cache + thread pools | 1 day | HIGH | 1.1 | Production ready | ✅ Complete (c69c69a) |
+| 🔄 2 | Parallel writes (config only) | 1 day | HIGH | 1.2 | NVMe +100-150% | 🔄 Ready (infra done) |
+| ✅ 3.1 | Unified cache (sharded) | 2-3 days | MEDIUM | 1, 2 | Persistent cache | ✅ Complete (960fdd7→c18fa72) |
+| ⏸️ 3.2 | Write coalescing | 1-2 days | MEDIUM | 3.1 | HDD +93%, SSD +30% | ⏸️ Deferred |
+| ⏸️ 4 | io_uring | 3-5 days | LOW | 3 | +20-30% additional | ⏸️ Optional |
 
 **Total Estimated Time:**
 - **Phase 1 (Required):** 2-3 days
@@ -522,16 +536,25 @@ All changes should be feature-flaggable for production safety.
 
 ---
 
-**Document Version:** 2.0
-**Last Updated:** 2025-12-14
-**Status:** Ready for User Approval
+**Document Version:** 3.0
+**Last Updated:** 2025-12-21
+**Status:** Phase 0, 1.1, 1.2, 3.1 Complete - Phase 2 Ready for Testing
 
 ---
 
 ## Next Steps
 
-1. **User review:** Review this reformulated plan
-2. **Approve/modify:** Confirm phase ordering and priorities
-3. **Begin Phase 1.1:** Start with buffer pool merger
-4. **Iterative progress:** Complete one phase at a time, test thoroughly
+**Current Status (2025-12-21):**
+- ✅ Phase 0 (Logging & Alerts): Complete
+- ✅ Phase 1.1 (Buffer Pool Merger): Complete
+- ✅ Phase 1.2 (Settings Infrastructure): Complete
+- ✅ Phase 3.1 (Unified Cache): Complete
+- 🔄 Phase 2 (Parallel Writes): Infrastructure ready, just needs testing with different aio_threads values
+
+**Recommended Next Actions:**
+
+1. **Phase 2 Testing:** Test parallel writes with different thread counts (2, 8, 16, 32)
+2. **Performance Benchmarking:** Measure throughput improvements with unified cache
+3. **Phase 3.2 Decision:** Evaluate if write coalescing is still needed after cache improvements
+4. **Production Deployment:** Consider deploying current implementation if performance meets requirements
 

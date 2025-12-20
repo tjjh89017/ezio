@@ -1,8 +1,60 @@
 # EZIO Project Session Memory - Complete Conversation Summary
 
-**Date**: 2024-12-14
-**Status**: In-depth analysis complete, ready for implementation
+**Date**: 2025-12-21 (Updated)
+**Status**: Phase 0, 1.1, 1.2, 3.1 Complete - Phase 2 Ready
 **Note**: This document is the single source of truth (English). A Traditional Chinese translation is provided in `SESSION_MEMORY_zh.md` for human reading.
+
+---
+
+## Part 0: Phase 3.1 Implementation (2025-12-21)
+
+### Unified Cache Implementation
+
+**Completed Work:**
+- Implemented 32-way sharded unified cache to replace store_buffer
+- Write-through cache design (immediate disk write, cache retained for reads)
+- Hash-based partitioning using `std::hash<torrent_location>(loc) >> 32 % 32`
+- Configurable cache size via `--cache-size` command line option (default 512MB)
+- Cache lookup moved to worker threads to optimize main thread
+- Removed unused handler infrastructure (42 lines simplified)
+
+**Key Technical Decisions:**
+
+1. **Write-Through vs Delayed Write:**
+   - Chose write-through for simplicity (no flush timers, no complex backpressure)
+   - Data inserted to cache, then immediately written to disk
+   - Entry remains in cache after write completes (key difference from store_buffer)
+
+2. **Partitioning Strategy:**
+   - Initially considered simple `piece % 32`
+   - Upgraded to full hash-based: `std::hash<torrent_location>(loc) >> 32 % 32`
+   - Benefits: Better distribution when multiple torrents active
+
+3. **Thread Pool Architecture:**
+   - Moved cache lookup from main thread to read_thread_pool
+   - Main thread now only handles network I/O
+   - Worker threads handle both cache lookup and disk I/O
+
+4. **Cache Size Configuration:**
+   - Added `cache_size_mb` config option (default 512MB)
+   - Fixed critical bug: libtorrent's cache_size is number of 16KB blocks, not KB
+   - Cache was 16x too large before fix (32GB instead of 2GB)
+
+**Files Modified:**
+- `unified_cache.hpp` / `unified_cache.cpp` - Cache implementation
+- `raw_disk_io.cpp` - Integration with disk I/O
+- `config.hpp` / `config.cpp` - Added --cache-size option
+- `main.cpp` - Cache size calculation and configuration
+
+**Commits:** 960fdd7 → c18fa72 (28+ commits)
+
+**Benefits:**
+- Persistent cache improves read hit rate
+- 32-way sharding reduces mutex contention
+- Configurable size allows runtime tuning
+- Foundation for future write coalescing (Phase 3.2)
+
+---
 
 ---
 
@@ -633,6 +685,7 @@ void raw_disk_io::dispatch_coalesced_write(
 | `docs/CONCURRENCY_ANALYSIS_zh.md` | ✅ Complete | Traditional Chinese translation |
 | `docs/CACHE_BRANCH_ANALYSIS.md` | ✅ Complete | Post-mortem of previous cache impl |
 | `docs/CACHE_BRANCH_ANALYSIS_zh.md` | ✅ Complete | Traditional Chinese translation |
+| `docs/UNIFIED_CACHE_DESIGN.md` | ✅ Complete | Unified cache design & implementation |
 | `tmp/libtorrent-2.0.10/` | ✅ Retained | libtorrent source for reference |
 | `docs/SESSION_MEMORY.md` | ✅ This document | Complete conversation memory (English SSOT) |
 
@@ -663,18 +716,28 @@ void raw_disk_io::dispatch_coalesced_write(
 
 ## Summary
 
-This conversation deeply analyzed the EZIO project, discovered the key architectural feature (raw disk), and identified three optimization directions:
+This conversation deeply analyzed the EZIO project, discovered the key architectural feature (raw disk), and implemented major optimizations:
 
-1. **Buffer Pool Merger** (1-2 days, +48% memory efficiency)
-2. **Configurable Cache Size** (1 day, production requirement)
-3. **Write Coalescing** (2-3 days, HDD +73% performance)
+**Completed:**
+1. ✅ **Buffer Pool Merger** (Phase 1.1) - +48% memory efficiency
+2. ✅ **Configurable Cache Size** (Phase 1.2) - Production settings
+3. ✅ **Unified Cache** (Phase 3.1) - 32-way sharded, persistent cache
+4. ✅ **Logging Infrastructure** (Phase 0) - Runtime log control, event-driven alerts
 
-All designs are complete and ready for implementation.
+**Remaining:**
+1. 🔄 **Parallel Write Optimization** (Phase 2) - Infrastructure ready, needs testing
+2. ⏸️ **Write Coalescing** (Phase 3.2) - Deferred, may not be needed with current cache
 
-**Next Step**: Awaiting user confirmation to start Phase 1.1 implementation or other instructions.
+**Current State (2025-12-21):**
+- Phase 0, 1.1, 1.2, 3.1 complete and committed
+- Unified cache provides persistent storage for both reads and writes
+- All code formatted with clang-format
+- Documentation updated to reflect Phase 3.1 completion
+
+**Next Step**: Test Phase 2 (parallel writes) with different aio_threads values, or begin production deployment testing.
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2024-12-14
-**Status**: Complete memory, ready for implementation
+**Document Version**: 2.0
+**Last Updated**: 2025-12-21
+**Status**: Phase 3.1 complete, Phase 2 ready for testing
