@@ -363,37 +363,45 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		// Insert into store_buffer (temporary cache for async_read before write completes)
 		m_store_buffer.insert({storage, r.piece, r.start}, buffer.data());
 
-		// Insert into unified_cache (persistent cache, marked dirty)
-		m_cache.insert_write({storage, r.piece, r.start}, buffer.data());
+		// Try to insert into unified_cache (persistent cache, marked dirty)
+		// If successful, handler will be called after flush completes
+		// If failed (cache full), fallback to immediate write
+		bool cache_insert_ok = m_cache.insert_write({storage, r.piece, r.start}, buffer.data(), handler);
+
+		// Emergency write if cache insert failed (cache full of dirty/flushing blocks)
+		if (!cache_insert_ok) {
+			// Cache insert failed, write immediately (handler was not stored in cache)
+			libtorrent::peer_request r2(r);
+			boost::asio::post(write_thread_pool_,
+				[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
+					libtorrent::storage_error error;
+
+					// Write to disk immediately
+					storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
+
+					// After write completes:
+					// 1. Remove from store_buffer (free temp buffer)
+					m_store_buffer.erase({storage, r.piece, r.start});
+
+					// 2. Mark cache entry as clean (but keep in cache!)
+					m_cache.mark_clean({storage, r.piece, r.start});
+
+					// 3. Call handler
+					post(ioc_, [=, h = std::move(handler)] {
+						h(error);
+					});
+				});
+		}
+		// else: Cache insert succeeded, handler stored in cache, will be called after flush
 
 		// Check if cache needs flushing (opportunistic flush)
 		// Phase 3.1: Still writes immediately, but prepares for Phase 3.2 delayed write
 		if (should_flush_dirty_cache()) {
-			// Post flush job to write thread pool (non-blocking)
 			boost::asio::post(write_thread_pool_, [this, storage]() {
 				flush_dirty_blocks(storage);
 			});
 		}
 
-		libtorrent::peer_request r2(r);
-		boost::asio::post(write_thread_pool_,
-			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
-				libtorrent::storage_error error;
-
-				// Write to disk
-				storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
-
-				// After write completes:
-				// 1. Remove from store_buffer (free temp buffer)
-				m_store_buffer.erase({storage, r.piece, r.start});
-
-				// 2. Mark cache entry as clean (but keep in cache!)
-				m_cache.mark_clean({storage, r.piece, r.start});
-
-				post(ioc_, [=, h = std::move(handler)] {
-					h(error);
-				});
-			});
 		return exceeded;
 	}
 
