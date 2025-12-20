@@ -12,13 +12,6 @@
 namespace ezio
 {
 
-// Flush interval for time-based dirty cache flush (seconds)
-// Default 120s allows more write coalescing and reduces I/O frequency
-// Can be adjusted based on workload:
-// - Lower (30-60s): More frequent flush, better for memory pressure
-// - Higher (180-300s): Better write coalescing, requires more memory
-constexpr int CACHE_FLUSH_INTERVAL_SECONDS = 5;
-
 // Helper function: Calculate cache entries from settings_pack::cache_size
 // cache_size unit is KiB (libtorrent convention)
 // Returns number of 16KB entries
@@ -153,21 +146,12 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
 	read_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
 	write_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
-	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads)),
-	m_flush_timer(ioc)	// Initialize flush timer
+	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads))
 {
-	// Start periodic flush timer
-	m_flush_timer.expires_after(std::chrono::seconds(CACHE_FLUSH_INTERVAL_SECONDS));
-	m_flush_timer.async_wait([this](boost::system::error_code const &ec) {
-		on_flush_timer(ec);
-	});
 }
 
 raw_disk_io::~raw_disk_io()
 {
-	// Cancel flush timer
-	m_flush_timer.cancel();
-
 	read_thread_pool_.join();
 	write_thread_pool_.join();
 	hash_thread_pool_.join();
@@ -627,7 +611,7 @@ void raw_disk_io::settings_updated()
 }
 
 // ============================================================================
-// Delayed Write Implementation (Phase 3.1.1)
+// Cache Flush Implementation
 // ============================================================================
 
 bool raw_disk_io::should_flush_dirty_cache() const
@@ -734,36 +718,6 @@ void raw_disk_io::flush_dirty_blocks(libtorrent::storage_index_t storage)
 	auto const flush_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - flush_start);
 	spdlog::info("[flush_dirty_blocks] COMPLETE: {} blocks in {} ms, cache usage={}%",
 		dirty_blocks.size(), flush_time / 1000, m_cache.usage_percentage());
-}
-
-void raw_disk_io::on_flush_timer(boost::system::error_code const &ec)
-{
-	if (ec) {
-		// Timer was cancelled (likely during shutdown)
-		return;
-	}
-
-	// Unconditionally flush all dirty blocks every timer interval
-	// This ensures timely writes even when cache usage is low
-	size_t dirty = m_cache.total_dirty_count();
-	if (dirty > 0) {
-		spdlog::debug("[raw_disk_io] Time-based flush triggered: {} dirty blocks (usage: {}%)",
-			dirty, m_cache.usage_percentage());
-
-		// Post flush jobs to write thread pool (non-blocking, avoids blocking io_context)
-		for (auto const &pair : storages_) {
-			libtorrent::storage_index_t storage_id = pair.first;
-			boost::asio::post(write_thread_pool_, [this, storage_id]() {
-				flush_dirty_blocks(storage_id);
-			});
-		}
-	}
-
-	// Reschedule timer for next flush
-	m_flush_timer.expires_after(std::chrono::seconds(CACHE_FLUSH_INTERVAL_SECONDS));
-	m_flush_timer.async_wait([this](boost::system::error_code const &ec) {
-		on_flush_timer(ec);
-	});
 }
 
 }  // namespace ezio
