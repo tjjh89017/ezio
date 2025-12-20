@@ -38,9 +38,6 @@ private:
 	std::map<libtorrent::storage_index_t, std::unique_ptr<partition_storage>> storages_;
 	std::deque<libtorrent::storage_index_t> free_slots_;
 
-	// Time-based flush (Phase 3.1.1)
-	boost::asio::steady_timer m_flush_timer;
-
 public:
 	raw_disk_io(libtorrent::io_context &ioc,
 		libtorrent::settings_interface const &sett,
@@ -246,14 +243,11 @@ public:
 	void settings_updated() override;
 
 private:
-	// Delayed write (Phase 3.1.1) - Check if cache needs flushing
+	// Check if cache needs flushing (based on usage/dirty thresholds)
 	bool should_flush_dirty_cache() const;
 
-	// Delayed write (Phase 3.1.1) - Flush dirty blocks for a storage
+	// Flush dirty blocks for a storage
 	void flush_dirty_blocks(libtorrent::storage_index_t storage);
-
-	// Delayed write (Phase 3.1.1) - Timer callback for periodic flush
-	void on_flush_timer(boost::system::error_code const &ec);
 };
 
 }  // namespace ezio
