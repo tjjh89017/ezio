@@ -238,10 +238,10 @@ void raw_disk_io::async_read(
 
 		BOOST_ASSERT(r.length > len1);
 
-		// 1. Check store_buffer first (highest priority - data being written)
+		// 1. Check cache
 		// ret encoding: (buf1 ? 2 : 0) | (buf2 ? 1 : 0)
 		//   0 = neither, 1 = buf2 only, 2 = buf1 only, 3 = both
-		int ret = m_store_buffer.get2(loc1, loc2, [&](char const *buf1, char const *buf2) {
+		int ret = m_cache.get2(loc1, loc2, [&](char const *buf1, char const *buf2) {
 			if (buf1) {
 				std::memcpy(buf, buf1 + read_offset, std::size_t(len1));
 			}
@@ -252,33 +252,12 @@ void raw_disk_io::async_read(
 		});
 
 		if (ret == 3) {
-			// Both blocks found in store_buffer
+			// Both blocks found in cache
 			handler(std::move(buffer), error);
 			return;
 		}
 
-		// 2. Check cache for missing blocks (persistent cache)
-		int const ret_cache = m_cache.get2(loc1, loc2, [&](char const *buf1, char const *buf2) {
-			// Only copy blocks not already found in store_buffer
-			if (buf1 && !(ret & 2)) {
-				std::memcpy(buf, buf1 + read_offset, std::size_t(len1));
-			}
-			if (buf2 && !(ret & 1)) {
-				std::memcpy(buf + len1, buf2, std::size_t(r.length - len1));
-			}
-			return (buf1 ? 2 : 0) | (buf2 ? 1 : 0);
-		});
-
-		// Merge cache results with store_buffer results
-		ret |= ret_cache;
-
-		if (ret == 3) {
-			// Both blocks now found (from store_buffer + cache)
-			handler(std::move(buffer), error);
-			return;
-		}
-
-		// 3. Partial hit - read missing block(s) from disk
+		// 2. Partial hit - read missing block(s) from disk
 		// Note: For unaligned reads, we don't insert into cache (data not block-aligned)
 		if (ret != 0) {
 			boost::asio::post(read_thread_pool_,
@@ -299,7 +278,7 @@ void raw_disk_io::async_read(
 			return;
 		}
 
-		// 4. Full cache miss - read from disk (unaligned case, no cache insertion)
+		// 3. Full cache miss - read from disk (unaligned case, no cache insertion)
 		boost::asio::post(read_thread_pool_,
 			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 				libtorrent::storage_error error;
@@ -312,15 +291,7 @@ void raw_disk_io::async_read(
 		return;
 	} else {
 		// aligned block
-		// 1. Check store_buffer first (highest priority - data being written)
-		if (m_store_buffer.get({idx, r.piece, block_offset}, [&](char const *buf1) {
-				std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
-			})) {
-			handler(std::move(buffer), error);
-			return;
-		}
-
-		// 2. Check cache second (persistent cache)
+		// 1. Check cache
 		if (m_cache.get({idx, r.piece, block_offset}, [&](char const *buf1) {
 				std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
 			})) {
@@ -329,7 +300,7 @@ void raw_disk_io::async_read(
 		}
 	}
 
-	// 3. Cache miss - read from disk
+	// 2. Cache miss - read from disk
 	boost::asio::post(read_thread_pool_,
 		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
@@ -337,7 +308,7 @@ void raw_disk_io::async_read(
 
 			// Insert into cache (clean) for future reads
 			if (!error) {
-				m_cache.insert_read({idx, r.piece, block_offset}, buf);
+				m_cache.insert_read({idx, r.piece, block_offset}, buf, r.length);
 			}
 
 			post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
@@ -360,13 +331,10 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		// async
 		memcpy(buffer.data(), buf, r.length);
 
-		// Insert into store_buffer (temporary cache for async_read before write completes)
-		m_store_buffer.insert({storage, r.piece, r.start}, buffer.data());
-
 		// Try to insert into unified_cache (persistent cache, marked dirty)
 		// If successful, handler will be called after flush completes
 		// If failed (cache full), fallback to immediate write
-		bool cache_insert_ok = m_cache.insert_write({storage, r.piece, r.start}, buffer.data(), handler);
+		bool cache_insert_ok = m_cache.insert_write({storage, r.piece, r.start}, buffer.data(), r.length, handler);
 
 		// Emergency write if cache insert failed (cache full of dirty/flushing blocks)
 		if (!cache_insert_ok) {
@@ -379,11 +347,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 					// Write to disk immediately
 					storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
 
-					// After write completes:
-					// 1. Remove from store_buffer (free temp buffer)
-					m_store_buffer.erase({storage, r.piece, r.start});
-
-					// 2. Call handler
+					// Call handler
 					post(ioc_, [=, h = std::move(handler)] {
 						h(error);
 					});
@@ -448,19 +412,11 @@ void raw_disk_io::async_hash(
 			for (int i = 0; i < blocks_to_read; i++) {
 				len = std::min(DEFAULT_BLOCK_SIZE, piece_size - offset);
 
-				// Try store_buffer first (most recent writes)
-				bool hit = m_store_buffer.get({storage, piece, offset}, [&](char const *buf1) {
-					ph.update(buf1, len);
+				// Try cache
+				bool hit = m_cache.get({storage, piece, offset}, [&](char const *cache_buf) {
+					ph.update(cache_buf, len);
 					ret = len;
 				});
-
-				// Try cache if not in store_buffer
-				if (!hit) {
-					hit = m_cache.get({storage, piece, offset}, [&](char const *cache_buf) {
-						ph.update(cache_buf, len);
-						ret = len;
-					});
-				}
 
 				// Read from disk if not in cache
 				if (!hit) {
@@ -651,10 +607,13 @@ void raw_disk_io::flush_dirty_blocks(libtorrent::storage_index_t storage)
 	// which pins them to cache and prevents eviction. Concurrent writes are allowed
 	// and will set dirty=true, which mark_clean_if_flushing() will detect.
 	for (auto const &loc : dirty_blocks) {
+		// Get block length
+		int length = m_cache.get_length(loc);
+
 		// Get block data from cache (already marked flushing by collect_dirty_blocks)
 		char temp_buf[DEFAULT_BLOCK_SIZE];
 		bool found = m_cache.get(loc, [&](char const *buf) {
-			memcpy(temp_buf, buf, DEFAULT_BLOCK_SIZE);
+			memcpy(temp_buf, buf, length);
 		});
 
 		if (!found) {
@@ -667,7 +626,7 @@ void raw_disk_io::flush_dirty_blocks(libtorrent::storage_index_t storage)
 
 		// Write to disk (cache is unlocked, allows concurrent operations)
 		libtorrent::storage_error error;
-		storages_[storage]->write(temp_buf, loc.piece, loc.offset, DEFAULT_BLOCK_SIZE, error);
+		storages_[storage]->write(temp_buf, loc.piece, loc.offset, length, error);
 
 		if (!error) {
 			// Atomically mark clean only if not modified during flush

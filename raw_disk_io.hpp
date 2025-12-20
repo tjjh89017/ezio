@@ -7,7 +7,6 @@
 #include <libtorrent/libtorrent.hpp>
 #include <boost/asio.hpp>
 #include "buffer_pool.hpp"
-#include "store_buffer.hpp"
 #include "unified_cache.hpp"
 
 namespace ezio
@@ -23,8 +22,6 @@ class raw_disk_io final : public libtorrent::disk_interface
 {
 private:
 	buffer_pool m_buffer_pool;	// Unified pool (256MB, temporary I/O buffers)
-
-	store_buffer m_store_buffer;  // Temporary cache (async_write -> pwrite completion)
 
 	unified_cache m_cache;	// Persistent cache (512MB, delayed write + read cache)
 
