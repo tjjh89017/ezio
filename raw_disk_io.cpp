@@ -382,6 +382,10 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	}
 	// Cache insert failed - fall through to sync write
 
+	// Fallback to sync write (cache unavailable)
+	spdlog::debug("[async_write] Sync write fallback - cache unavailable (storage={}, piece={}, offset={})",
+		static_cast<int>(storage), static_cast<int>(r.piece), r.start);
+
 	// sync
 	libtorrent::storage_error error;
 
