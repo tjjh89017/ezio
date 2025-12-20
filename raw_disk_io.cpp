@@ -12,19 +12,18 @@
 namespace ezio
 {
 
-// Helper function: Calculate cache entries from settings_pack::cache_size
-// cache_size unit is KiB (libtorrent convention)
+// Helper function: Get cache entries from settings_pack::cache_size
+// cache_size is number of 16KiB blocks (libtorrent definition)
 // Returns number of 16KB entries
 static size_t calculate_cache_entries(libtorrent::settings_interface const &sett)
 {
-	int cache_kb = sett.get_int(libtorrent::settings_pack::cache_size);
+	int cache_entries = sett.get_int(libtorrent::settings_pack::cache_size);
 
-	// Convert KiB to bytes, then divide by 16KB per entry
-	// Example: 512MB = 524288 KB -> (524288 * 1024) / 16384 = 32768 entries
-	size_t entries = (static_cast<size_t>(cache_kb) * 1024) / 16384;
+	// cache_size is already the number of 16KB blocks
+	size_t entries = static_cast<size_t>(cache_entries);
 
-	spdlog::info("[raw_disk_io] Cache size: {} KB -> {} entries ({} MB)",
-		cache_kb, entries, (entries * 16) / 1024);
+	spdlog::info("[raw_disk_io] Cache size: {} entries ({} MB)",
+		entries, (entries * 16) / 1024);
 
 	return entries;
 }
