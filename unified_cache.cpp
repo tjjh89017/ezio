@@ -90,54 +90,6 @@ void cache_partition::mark_clean(torrent_location const &loc)
 	}
 }
 
-void cache_partition::set_flushing(torrent_location const &loc, bool value)
-{
-	std::unique_lock<std::mutex> l(m_mutex);
-
-	auto it = m_entries.find(loc);
-	if (it != m_entries.end()) {
-		it->second.flushing = value;
-	}
-}
-
-bool cache_partition::mark_clean_if_flushing(torrent_location const &loc)
-{
-	std::function<void(libtorrent::storage_error const &)> handler;
-
-	{
-		std::unique_lock<std::mutex> l(m_mutex);
-
-		auto it = m_entries.find(loc);
-		if (it == m_entries.end()) {
-			return false;  // Entry was evicted
-		}
-
-		// Only mark clean if:
-		// 1. Entry is still marked as flushing (we own it)
-		// 2. Entry is not dirty (no concurrent write happened)
-		if (it->second.flushing && !it->second.dirty) {
-			it->second.dirty = false;  // Already false, but explicit
-			it->second.flushing = false;
-
-			// Move handler out before releasing lock
-			handler = std::move(it->second.handler);
-			it->second.handler = nullptr;
-			// Successfully marked clean, handler will be called after lock release
-		} else {
-			// Entry was modified during flush, keep it dirty
-			it->second.flushing = false;
-			return false;
-		}
-	}  // Release mutex before calling handler
-
-	// Call handler outside mutex to avoid potential deadlock
-	if (handler) {
-		handler(libtorrent::storage_error());  // Success - no error
-	}
-
-	return true;
-}
-
 std::function<void(libtorrent::storage_error const &)> cache_partition::get_and_clear_handler(
 	torrent_location const &loc)
 {
@@ -163,12 +115,10 @@ std::vector<torrent_location> cache_partition::collect_dirty_blocks()
 
 	// NOTE: C++17 could use structured bindings: for (auto &[loc, entry] : m_entries)
 	for (auto &pair : m_entries) {
-		// Collect dirty blocks that are not already being flushed
-		if (pair.second.dirty && !pair.second.flushing) {
+		// Collect dirty blocks
+		if (pair.second.dirty) {
 			dirty_blocks.push_back(pair.first);
-			// Atomically mark as flushing (pin to cache, prevent eviction)
-			pair.second.flushing = true;
-			// Clear dirty flag (will be written to disk, no longer dirty)
+			// Clear dirty flag (will be written to disk)
 			pair.second.dirty = false;
 		}
 	}
@@ -186,9 +136,8 @@ std::vector<torrent_location> cache_partition::collect_dirty_blocks_for_storage(
 
 	// Only collect dirty blocks for the specified storage
 	for (auto &pair : m_entries) {
-		if (pair.second.dirty && !pair.second.flushing && pair.first.torrent == storage) {
+		if (pair.second.dirty && pair.first.torrent == storage) {
 			dirty_blocks.push_back(pair.first);
-			pair.second.flushing = true;
 			pair.second.dirty = false;
 		}
 	}
@@ -243,7 +192,6 @@ bool cache_partition::evict_one_lru()
 	constexpr size_t MAX_SCAN = 32;
 	size_t scanned = 0;
 	size_t dirty_count = 0;
-	size_t flushing_count = 0;
 
 	auto lru_it = m_lru_list.rbegin();	// Start from least recently used
 	while (lru_it != m_lru_list.rend() && scanned < MAX_SCAN) {
@@ -266,14 +214,6 @@ bool cache_partition::evict_one_lru()
 			continue;
 		}
 
-		// Skip entries being flushed (pinned to cache)
-		if (it->second.flushing) {
-			++flushing_count;
-			++lru_it;
-			++scanned;
-			continue;
-		}
-
 		// Found a clean entry - evict it
 		// Remove from map (cache_entry destructor will free the buffer)
 		m_entries.erase(it);
@@ -285,9 +225,9 @@ bool cache_partition::evict_one_lru()
 		return true;
 	}
 
-	// Scanned MAX_SCAN entries but all were dirty or flushing
-	spdlog::warn("[cache_partition] Cannot evict: scanned {} entries, {} dirty, {} flushing",
-		scanned, dirty_count, flushing_count);
+	// Scanned MAX_SCAN entries but all were dirty
+	spdlog::warn("[cache_partition] Cannot evict: scanned {} entries, {} dirty",
+		scanned, dirty_count);
 	return false;
 }
 
@@ -340,18 +280,6 @@ void unified_cache::mark_clean(torrent_location const &loc)
 {
 	size_t partition_idx = get_partition_index(loc);
 	m_partitions[partition_idx].mark_clean(loc);
-}
-
-void unified_cache::set_flushing(torrent_location const &loc, bool value)
-{
-	size_t partition_idx = get_partition_index(loc);
-	m_partitions[partition_idx].set_flushing(loc, value);
-}
-
-bool unified_cache::mark_clean_if_flushing(torrent_location const &loc)
-{
-	size_t partition_idx = get_partition_index(loc);
-	return m_partitions[partition_idx].mark_clean_if_flushing(loc);
 }
 
 std::function<void(libtorrent::storage_error const &)> unified_cache::get_and_clear_handler(
