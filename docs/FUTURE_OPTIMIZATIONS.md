@@ -1,15 +1,23 @@
 # Future Optimizations (Low Priority)
 
-**Version:** 1.0
-**Date:** 2024-12-14
+**Version:** 1.1
+**Date:** 2025-12-21 (Updated)
 **Status:** Ideas for Future Work
-**Priority:** ⬇️ Low (after Phase 1 & 2 complete)
+**Priority:** ⬇️ Low (Phase 0, 1, 3.1 complete - evaluate after Phase 2 testing)
 
 ---
 
 ## Introduction
 
 This document lists potential optimizations discovered from libtorrent 2.x documentation and source code analysis. These are **lower priority** items to consider after completing the main optimization phases.
+
+**Current Status (2025-12-21):**
+- ✅ Phase 0, 1.1, 1.2 complete
+- ✅ Phase 3.1 (Unified Cache) complete
+- 🔄 Phase 2 (Parallel Writes) - infrastructure ready, needs testing
+- ⏸️ Phase 3.2 (Write Coalescing) - deferred pending performance evaluation
+
+Many optimizations below should be reconsidered after measuring the impact of the unified cache.
 
 **Reference:** libtorrent 2.0.10 `/docs/tuning.rst`, `/docs/features.rst`
 
@@ -1557,7 +1565,7 @@ public:
 
 ---
 
-**Document Version:** 2.0
-**Last Updated:** 2024-12-14
-**Status:** Comprehensive Analysis Complete
+**Document Version:** 2.1
+**Last Updated:** 2025-12-21
+**Status:** Comprehensive Analysis Complete (Updated for Phase 3.1)
 **Coverage:** All libtorrent 2.0.10 .rst documentation reviewed
