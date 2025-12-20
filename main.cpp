@@ -48,6 +48,10 @@ int main(int argc, char **argv)
 	p.set_int(lt::settings_pack::send_buffer_watermark, 128 * 1024 * 1024);
 	p.set_int(lt::settings_pack::send_buffer_low_watermark, 32 * 1024 * 1024);
 
+	// unified_cache size: 2GB
+	// Note: cache_size is deprecated but still used by raw_disk_io to calculate cache entries
+	p.set_int(lt::settings_pack::cache_size, 2 * 1024 * 1024);	// 2GB in KB
+
 	lt::session_params ses_params(p);
 	if (!current_config.file_flag) {
 		ses_params.disk_io_constructor = ezio::raw_disk_io_constructor;
