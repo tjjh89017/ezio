@@ -14,10 +14,11 @@
 namespace ezio
 {
 
-// Cache entry: 16KB fixed size block
+// Cache entry: 16KB fixed size block (buffer always allocated as 16KB, but actual data size may vary)
 struct cache_entry {
 	torrent_location loc;  // (storage, piece, offset)
-	char *buffer;  // 16KB, malloc'ed by cache
+	char *buffer;  // 16KB buffer, malloc'ed by cache
+	int length;	 // Actual data size in buffer (can be < 16KB for last block)
 	bool dirty;	 // Needs writeback to disk?
 	bool flushing;	// Currently being flushed to disk?
 
@@ -31,6 +32,7 @@ struct cache_entry {
 	cache_entry() :
 		loc(libtorrent::storage_index_t(0), libtorrent::piece_index_t(0), 0),
 		buffer(nullptr),
+		length(0),
 		dirty(false),
 		flushing(false),
 		handler(nullptr)
@@ -49,12 +51,14 @@ struct cache_entry {
 	cache_entry(cache_entry &&other) noexcept :
 		loc(other.loc),
 		buffer(other.buffer),
+		length(other.length),
 		dirty(other.dirty),
 		flushing(other.flushing),
 		handler(std::move(other.handler)),
 		lru_iter(other.lru_iter)
 	{
 		other.buffer = nullptr;	 // Transfer ownership
+		other.length = 0;
 	}
 
 	// Move assignment
@@ -66,11 +70,13 @@ struct cache_entry {
 			}
 			loc = other.loc;
 			buffer = other.buffer;
+			length = other.length;
 			dirty = other.dirty;
 			flushing = other.flushing;
 			handler = std::move(other.handler);	 // Handler can be nullptr for read operations
 			lru_iter = other.lru_iter;
 			other.buffer = nullptr;	 // Transfer ownership
+			other.length = 0;
 		}
 		return *this;
 	}
@@ -98,7 +104,8 @@ public:
 	// Insert or update cache entry
 	// If dirty=true, marks as needs writeback
 	// Handler is called after flush completes (can be nullptr for read operations)
-	bool insert(torrent_location const &loc, char const *data, bool dirty,
+	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
+	bool insert(torrent_location const &loc, char const *data, int length, bool dirty,
 		std::function<void(libtorrent::storage_error const &)> handler = nullptr);
 
 	// Try to get from cache
@@ -167,6 +174,14 @@ public:
 	// Get and clear handler for a location (returns nullptr if no handler)
 	std::function<void(libtorrent::storage_error const &)> get_and_clear_handler(torrent_location const &loc);
 
+	// Get length of entry (returns 0 if not found)
+	int get_length(torrent_location const &loc) const
+	{
+		std::unique_lock<std::mutex> l(m_mutex);
+		auto it = m_entries.find(loc);
+		return (it == m_entries.end()) ? 0 : it->second.length;
+	}
+
 	// Collect all dirty blocks in this partition and mark them as flushing
 	std::vector<torrent_location> collect_dirty_blocks();
 
@@ -204,11 +219,13 @@ public:
 	explicit unified_cache(size_t max_entries);
 
 	// Write operation: insert and mark dirty, store handler for flush completion
-	bool insert_write(torrent_location const &loc, char const *data,
+	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
+	bool insert_write(torrent_location const &loc, char const *data, int length,
 		std::function<void(libtorrent::storage_error const &)> handler);
 
 	// Read operation: insert clean entry (from disk read), no handler needed
-	bool insert_read(torrent_location const &loc, char const *data);
+	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
+	bool insert_read(torrent_location const &loc, char const *data, int length);
 
 	// Try to get from cache
 	// Calls function f with buffer pointer if found
@@ -262,6 +279,13 @@ public:
 
 	// Get and clear handler for a location (returns nullptr if no handler)
 	std::function<void(libtorrent::storage_error const &)> get_and_clear_handler(torrent_location const &loc);
+
+	// Get length of entry (returns 0 if not found)
+	int get_length(torrent_location const &loc) const
+	{
+		size_t partition_idx = get_partition_index(loc);
+		return m_partitions[partition_idx].get_length(loc);
+	}
 
 	// Collect all dirty blocks for a storage
 	std::vector<torrent_location> collect_dirty_blocks(libtorrent::storage_index_t storage);

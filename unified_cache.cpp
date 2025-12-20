@@ -19,7 +19,7 @@ cache_partition::cache_partition(size_t max_entries) : m_max_entries(max_entries
 {
 }
 
-bool cache_partition::insert(torrent_location const &loc, char const *data, bool dirty,
+bool cache_partition::insert(torrent_location const &loc, char const *data, int length, bool dirty,
 	std::function<void(libtorrent::storage_error const &)> handler)
 {
 	std::unique_lock<std::mutex> l(m_mutex);
@@ -28,7 +28,8 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, bool
 	auto it = m_entries.find(loc);
 	if (it != m_entries.end()) {
 		// Entry exists - update it
-		memcpy(it->second.buffer, data, DEFAULT_BLOCK_SIZE);
+		memcpy(it->second.buffer, data, length);
+		it->second.length = length;
 		it->second.dirty = dirty;
 		it->second.handler = std::move(handler);  // Update handler (can be nullptr for reads)
 
@@ -56,12 +57,13 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, bool
 	}
 
 	// Copy data to cache buffer
-	memcpy(buffer, data, DEFAULT_BLOCK_SIZE);
+	memcpy(buffer, data, length);
 
 	// Create new entry
 	cache_entry entry;
 	entry.loc = loc;
 	entry.buffer = buffer;
+	entry.length = length;
 	entry.dirty = dirty;
 	entry.handler = std::move(handler);	 // Store handler (can be nullptr for reads)
 
@@ -302,17 +304,17 @@ unified_cache::unified_cache(size_t max_entries) : m_max_entries(max_entries)
 		(max_entries * 16) / 1024, NUM_PARTITIONS);
 }
 
-bool unified_cache::insert_write(torrent_location const &loc, char const *data,
+bool unified_cache::insert_write(torrent_location const &loc, char const *data, int length,
 	std::function<void(libtorrent::storage_error const &)> handler)
 {
 	size_t partition_idx = get_partition_index(loc);
-	return m_partitions[partition_idx].insert(loc, data, true, std::move(handler));	 // dirty=true, with handler
+	return m_partitions[partition_idx].insert(loc, data, length, true, std::move(handler));	 // dirty=true, with handler
 }
 
-bool unified_cache::insert_read(torrent_location const &loc, char const *data)
+bool unified_cache::insert_read(torrent_location const &loc, char const *data, int length)
 {
 	size_t partition_idx = get_partition_index(loc);
-	return m_partitions[partition_idx].insert(loc, data, false, nullptr);  // dirty=false, no handler
+	return m_partitions[partition_idx].insert(loc, data, length, false, nullptr);  // dirty=false, no handler
 }
 
 void unified_cache::mark_clean(torrent_location const &loc)
