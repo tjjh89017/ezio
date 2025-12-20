@@ -8,6 +8,7 @@
 #include <boost/asio.hpp>
 #include "buffer_pool.hpp"
 #include "store_buffer.hpp"
+#include "unified_cache.hpp"
 
 namespace ezio
 {
@@ -21,9 +22,11 @@ class partition_storage;
 class raw_disk_io final : public libtorrent::disk_interface
 {
 private:
-	buffer_pool m_buffer_pool;	// Unified pool
+	buffer_pool m_buffer_pool;	// Unified pool (256MB, temporary I/O buffers)
 
-	store_buffer m_store_buffer;
+	store_buffer m_store_buffer;  // Temporary cache (async_write -> pwrite completion)
+
+	unified_cache m_cache;	// Persistent cache (512MB, delayed write + read cache)
 
 	boost::asio::thread_pool read_thread_pool_;
 	boost::asio::thread_pool write_thread_pool_;
@@ -37,6 +40,9 @@ private:
 
 	std::map<libtorrent::storage_index_t, std::unique_ptr<partition_storage>> storages_;
 	std::deque<libtorrent::storage_index_t> free_slots_;
+
+	// TODO: Time-based flush (Phase 3.1.1)
+	// boost::asio::steady_timer m_flush_timer;
 
 public:
 	raw_disk_io(libtorrent::io_context &ioc,

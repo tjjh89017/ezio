@@ -11,6 +11,24 @@
 
 namespace ezio
 {
+
+// Helper function: Calculate cache entries from settings_pack::cache_size
+// cache_size unit is KiB (libtorrent convention)
+// Returns number of 16KB entries
+static size_t calculate_cache_entries(libtorrent::settings_interface const &sett)
+{
+	int cache_kb = sett.get_int(libtorrent::settings_pack::cache_size);
+
+	// Convert KiB to bytes, then divide by 16KB per entry
+	// Example: 512MB = 524288 KB -> (524288 * 1024) / 16384 = 32768 entries
+	size_t entries = (static_cast<size_t>(cache_kb) * 1024) / 16384;
+
+	spdlog::info("[raw_disk_io] Cache size: {} KB -> {} entries ({} MB)",
+		cache_kb, entries, (entries * 16) / 1024);
+
+	return entries;
+}
+
 class partition_storage
 {
 private:
@@ -125,6 +143,7 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	m_settings(&sett),
 	m_stats_counters(cnt),
 	m_buffer_pool(ioc),
+	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
 	read_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
 	write_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
 	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads))
@@ -240,7 +259,16 @@ void raw_disk_io::async_read(
 		// if we cannot find any block, post it as normal job
 	} else {
 		// aligned block
+		// 1. Check store_buffer first (highest priority - data being written)
 		if (m_store_buffer.get({idx, r.piece, block_offset}, [&](char const *buf1) {
+				std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
+			})) {
+			handler(std::move(buffer), error);
+			return;
+		}
+
+		// 2. Check cache second (persistent cache)
+		if (m_cache.get({idx, r.piece, block_offset}, [&](char const *buf1) {
 				std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
 			})) {
 			handler(std::move(buffer), error);
@@ -248,10 +276,16 @@ void raw_disk_io::async_read(
 		}
 	}
 
+	// 3. Cache miss - read from disk
 	boost::asio::post(read_thread_pool_,
 		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
 			storages_[idx]->read(buf, r.piece, r.start, r.length, error);
+
+			// Insert into cache (clean) for future reads
+			if (!error) {
+				m_cache.insert_read({idx, r.piece, block_offset}, buf);
+			}
 
 			post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 				h(std::move(b), error);
@@ -272,15 +306,32 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	if (buffer) {
 		// async
 		memcpy(buffer.data(), buf, r.length);
+
+		// Insert into store_buffer (temporary cache for async_read before write completes)
 		m_store_buffer.insert({storage, r.piece, r.start}, buffer.data());
+
+		// Insert into unified_cache (persistent cache, marked dirty)
+		m_cache.insert_write({storage, r.piece, r.start}, buffer.data());
+
+		// TODO: Check if should flush dirty blocks (delayed write)
+		// if (should_flush_dirty_cache(storage)) {
+		//     flush_dirty_blocks(storage);
+		// }
 
 		libtorrent::peer_request r2(r);
 		boost::asio::post(write_thread_pool_,
 			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
 				libtorrent::storage_error error;
+
+				// Write to disk
 				storages_[storage]->write(buffer.data(), r.piece, r.start, r.length, error);
 
+				// After write completes:
+				// 1. Remove from store_buffer (free temp buffer)
 				m_store_buffer.erase({storage, r.piece, r.start});
+
+				// 2. Mark cache entry as clean (but keep in cache!)
+				m_cache.mark_clean({storage, r.piece, r.start});
 
 				post(ioc_, [=, h = std::move(handler)] {
 					h(error);

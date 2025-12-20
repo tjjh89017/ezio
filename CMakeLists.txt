@@ -11,6 +11,7 @@ set(sources
 	config.cpp
 	daemon.cpp
 	buffer_pool.cpp
+	unified_cache.cpp
 	raw_disk_io.cpp
 	service.cpp
 	log.cpp
