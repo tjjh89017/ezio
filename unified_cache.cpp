@@ -19,8 +19,7 @@ cache_partition::cache_partition(size_t max_entries) : m_max_entries(max_entries
 {
 }
 
-bool cache_partition::insert(torrent_location const &loc, char const *data, int length, bool dirty,
-	std::function<void(libtorrent::storage_error const &)> handler)
+bool cache_partition::insert(torrent_location const &loc, char const *data, int length, bool dirty)
 {
 	std::unique_lock<std::mutex> l(m_mutex);
 
@@ -31,7 +30,6 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 		memcpy(it->second.buffer, data, length);
 		it->second.length = length;
 		it->second.dirty = dirty;
-		it->second.handler = std::move(handler);  // Update handler (can be nullptr for reads)
 
 		// Move to front of LRU (most recently used)
 		m_lru_list.erase(it->second.lru_iter);
@@ -65,7 +63,6 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 	entry.buffer = buffer;
 	entry.length = length;
 	entry.dirty = dirty;
-	entry.handler = std::move(handler);	 // Store handler (can be nullptr for reads)
 
 	// Add to LRU list (most recently used = front)
 	m_lru_list.push_front(loc);
@@ -88,22 +85,6 @@ void cache_partition::mark_clean(torrent_location const &loc)
 		// Note: Entry remains in cache for future reads!
 		// This is the key difference from store_buffer
 	}
-}
-
-std::function<void(libtorrent::storage_error const &)> cache_partition::get_and_clear_handler(
-	torrent_location const &loc)
-{
-	std::unique_lock<std::mutex> l(m_mutex);
-
-	auto it = m_entries.find(loc);
-	if (it == m_entries.end()) {
-		return nullptr;	 // Entry not found
-	}
-
-	// Move handler out and clear it
-	std::function<void(libtorrent::storage_error const &)> handler = std::move(it->second.handler);
-	it->second.handler = nullptr;
-	return handler;
 }
 
 std::vector<torrent_location> cache_partition::collect_dirty_blocks()
@@ -263,30 +244,22 @@ unified_cache::unified_cache(size_t max_entries) : m_max_entries(max_entries)
 		(max_entries * 16) / 1024, NUM_PARTITIONS);
 }
 
-bool unified_cache::insert_write(torrent_location const &loc, char const *data, int length,
-	std::function<void(libtorrent::storage_error const &)> handler)
+bool unified_cache::insert_write(torrent_location const &loc, char const *data, int length)
 {
 	size_t partition_idx = get_partition_index(loc);
-	return m_partitions[partition_idx].insert(loc, data, length, true, std::move(handler));	 // dirty=true, with handler
+	return m_partitions[partition_idx].insert(loc, data, length, true);  // dirty=true
 }
 
 bool unified_cache::insert_read(torrent_location const &loc, char const *data, int length)
 {
 	size_t partition_idx = get_partition_index(loc);
-	return m_partitions[partition_idx].insert(loc, data, length, false, nullptr);  // dirty=false, no handler
+	return m_partitions[partition_idx].insert(loc, data, length, false);  // dirty=false
 }
 
 void unified_cache::mark_clean(torrent_location const &loc)
 {
 	size_t partition_idx = get_partition_index(loc);
 	m_partitions[partition_idx].mark_clean(loc);
-}
-
-std::function<void(libtorrent::storage_error const &)> unified_cache::get_and_clear_handler(
-	torrent_location const &loc)
-{
-	size_t partition_idx = get_partition_index(loc);
-	return m_partitions[partition_idx].get_and_clear_handler(loc);
 }
 
 std::vector<torrent_location> unified_cache::collect_dirty_blocks(libtorrent::storage_index_t storage)

@@ -316,7 +316,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	// Insert into cache (cache allocates buffer and copies data)
 	// Marked as dirty to prevent eviction during write
 	torrent_location loc{storage, r.piece, r.start};
-	bool cache_inserted = m_cache.insert_write(loc, buf, r.length, nullptr);
+	bool cache_inserted = m_cache.insert_write(loc, buf, r.length);
 
 	if (cache_inserted) {
 		// Get buffer pointer from cache
