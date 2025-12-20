@@ -178,41 +178,60 @@ bool cache_partition::evict_one_lru()
 		return false;  // Nothing to evict
 	}
 
-	// Get least recently used entry (back of list)
-	torrent_location victim = m_lru_list.back();
-	auto it = m_entries.find(victim);
+	// Scan up to 32 LRU entries to find a clean one
+	// This avoids failing immediately if LRU entry is dirty
+	constexpr size_t MAX_SCAN = 32;
+	size_t scanned = 0;
+	size_t dirty_count = 0;
+	size_t flushing_count = 0;
 
-	if (it == m_entries.end()) {
-		// Inconsistency - remove from LRU list and try again
-		spdlog::error("[cache_partition] LRU inconsistency: entry not found in map");
-		m_lru_list.pop_back();
-		return false;
+	auto lru_it = m_lru_list.rbegin();	// Start from least recently used
+	while (lru_it != m_lru_list.rend() && scanned < MAX_SCAN) {
+		torrent_location const &loc = *lru_it;
+		auto it = m_entries.find(loc);
+
+		if (it == m_entries.end()) {
+			// Inconsistency - this shouldn't happen
+			spdlog::error("[cache_partition] LRU inconsistency: entry not found in map");
+			++lru_it;
+			++scanned;
+			continue;
+		}
+
+		// Skip dirty entries (will be flushed later)
+		if (it->second.dirty) {
+			++dirty_count;
+			++lru_it;
+			++scanned;
+			continue;
+		}
+
+		// Skip entries being flushed (pinned to cache)
+		if (it->second.flushing) {
+			++flushing_count;
+			++lru_it;
+			++scanned;
+			continue;
+		}
+
+		// Found a clean entry - evict it
+		// Free buffer (cache manages its own memory)
+		free(it->second.buffer);
+
+		// Remove from map
+		m_entries.erase(it);
+
+		// Remove from LRU list (need to convert reverse_iterator to iterator)
+		auto forward_it = std::next(lru_it).base();
+		m_lru_list.erase(forward_it);
+
+		return true;
 	}
 
-	// Phase 3.1: Do NOT evict dirty or flushing entries
-	// Phase 3.2 (write coalescing) will handle dirty eviction
-	if (it->second.dirty) {
-		spdlog::debug("[cache_partition] Cannot evict dirty entry: piece={}", static_cast<int>(victim.piece));
-		return false;
-	}
-
-	// Do NOT evict entries being flushed (pinned to cache)
-	if (it->second.flushing) {
-		spdlog::debug("[cache_partition] Cannot evict flushing entry: piece={}", static_cast<int>(victim.piece));
-		return false;
-	}
-
-	// Clean entry - safe to evict
-	// Free buffer (cache manages its own memory)
-	free(it->second.buffer);
-
-	// Remove from map
-	m_entries.erase(it);
-
-	// Remove from LRU list
-	m_lru_list.pop_back();
-
-	return true;
+	// Scanned MAX_SCAN entries but all were dirty or flushing
+	spdlog::warn("[cache_partition] Cannot evict: scanned {} entries, {} dirty, {} flushing",
+		scanned, dirty_count, flushing_count);
+	return false;
 }
 
 void cache_partition::touch(torrent_location const &loc)
