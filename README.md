@@ -134,11 +134,17 @@ EZIO's disk I/O and hashing performance can be tuned via thread pool settings. T
 
 ### Thread Pool Configuration
 
+**Command Line Options:**
+```shell
+./ezio --aio-threads <num>       # Disk I/O threads (default: 16)
+./ezio --hashing-threads <num>   # Hashing threads (default: 8)
+```
+
 **Default Settings:**
 - `aio_threads`: 16 (disk I/O operations: read, write)
 - `hashing_threads`: 8 (SHA-1 piece verification)
 
-These settings are configured in `main.cpp` and provide good balance for most deployments.
+These settings can now be adjusted at runtime without recompilation.
 
 ### Memory Configuration
 
@@ -153,38 +159,40 @@ For optimal performance, consider your storage hardware:
 
 **HDD (Traditional Hard Disk):**
 - Lower thread count recommended to reduce seek overhead
-- Suggested: `aio_threads = 2-4`
+- Example: `./ezio --aio-threads 2 --hashing-threads 4`
 - Sequential access performs better than parallel
 
 **SATA SSD:**
 - Moderate parallelism
-- Default settings work well: `aio_threads = 16`
+- Default settings work well: `./ezio` (16 threads)
+- Or explicit: `./ezio --aio-threads 16 --hashing-threads 8`
 
 **NVMe SSD:**
 - High parallelism for maximum throughput
-- Consider increasing: `aio_threads = 32` or higher
+- Example: `./ezio --aio-threads 32 --hashing-threads 8`
 - Can saturate 10Gbps network with proper configuration
 
 **Hashing Threads:**
 - CPU-bound operation
-- Default `hashing_threads = 8` matches typical server cores
-- Adjust based on available CPU cores
+- Default 8 threads matches typical server cores
+- Adjust based on available CPU cores and workload
 
-### Modifying Settings
+### Testing Different Configurations
 
-To change thread pool settings, edit `main.cpp` before building:
+You can easily test different thread pool configurations without recompilation:
 
-```cpp
-// In main.cpp, around line 43:
-p.set_int(lt::settings_pack::aio_threads, 16);      // Adjust for your storage
-p.set_int(lt::settings_pack::hashing_threads, 8);   // Adjust for your CPU
-```
-
-Then rebuild:
 ```shell
-cd build
-make
-sudo make install
+# Test with minimal threads (HDD)
+./ezio --aio-threads 2 --hashing-threads 2
+
+# Test with default threads (SATA SSD)
+./ezio
+
+# Test with high parallelism (NVMe)
+./ezio --aio-threads 32 --hashing-threads 8
+
+# Combined with other options
+./ezio --aio-threads 32 --cache-size 1024 --listen 0.0.0.0:50051
 ```
 
 ### Performance Monitoring
@@ -230,9 +238,13 @@ When you have a `sda1.torrent` you can deploy or clone your disk via Network.
 
 ```
 Allowed Options:
-  -h [ --help ]          some help
-  -F [ --file ]          read data from file rather than raw disk
-  --listen arg           gRPC service listen address and port, default is 
+  -h [ --help ]              some help
+  -F [ --file ]              read data from file rather than raw disk
+  --listen arg               gRPC service listen address and port, default is 127.0.0.1:50051
+  --cache-size arg           unified cache size in MB, default is 512
+  --aio-threads arg          number of threads for disk I/O, default is 16
+  --hashing-threads arg      number of threads for hashing, default is 8
+  -v [ --version ]           show version
 ```
 
 #### Seeding
