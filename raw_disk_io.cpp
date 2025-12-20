@@ -146,12 +146,21 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
 	read_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
 	write_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
-	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads))
+	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads)),
+	m_flush_timer(ioc)	// Initialize flush timer
 {
+	// Start periodic flush timer (5 seconds interval)
+	m_flush_timer.expires_after(std::chrono::seconds(5));
+	m_flush_timer.async_wait([this](boost::system::error_code const &ec) {
+		on_flush_timer(ec);
+	});
 }
 
 raw_disk_io::~raw_disk_io()
 {
+	// Cancel flush timer
+	m_flush_timer.cancel();
+
 	read_thread_pool_.join();
 	write_thread_pool_.join();
 	hash_thread_pool_.join();
@@ -215,14 +224,17 @@ void raw_disk_io::async_read(
 	// it might be unaligned request, refer libtorrent async_read
 
 	if (read_offset + r.length > DEFAULT_BLOCK_SIZE) {
-		// unaligned
+		// unaligned - spans two blocks
 		torrent_location const loc1{idx, r.piece, block_offset};
 		torrent_location const loc2{idx, r.piece, block_offset + DEFAULT_BLOCK_SIZE};
 		std::ptrdiff_t const len1 = DEFAULT_BLOCK_SIZE - read_offset;
 
 		BOOST_ASSERT(r.length > len1);
 
-		int const ret = m_store_buffer.get2(loc1, loc2, [&](char const *buf1, char const *buf2) {
+		// 1. Check store_buffer first (highest priority - data being written)
+		// ret encoding: (buf1 ? 2 : 0) | (buf2 ? 1 : 0)
+		//   0 = neither, 1 = buf2 only, 2 = buf1 only, 3 = both
+		int ret = m_store_buffer.get2(loc1, loc2, [&](char const *buf1, char const *buf2) {
 			if (buf1) {
 				std::memcpy(buf, buf1 + read_offset, std::size_t(len1));
 			}
@@ -233,20 +245,44 @@ void raw_disk_io::async_read(
 		});
 
 		if (ret == 3) {
-			// success get whole piece
-			// return immediately
+			// Both blocks found in store_buffer
 			handler(std::move(buffer), error);
 			return;
 		}
 
+		// 2. Check cache for missing blocks (persistent cache)
+		int const ret_cache = m_cache.get2(loc1, loc2, [&](char const *buf1, char const *buf2) {
+			// Only copy blocks not already found in store_buffer
+			if (buf1 && !(ret & 2)) {
+				std::memcpy(buf, buf1 + read_offset, std::size_t(len1));
+			}
+			if (buf2 && !(ret & 1)) {
+				std::memcpy(buf + len1, buf2, std::size_t(r.length - len1));
+			}
+			return (buf1 ? 2 : 0) | (buf2 ? 1 : 0);
+		});
+
+		// Merge cache results with store_buffer results
+		ret |= ret_cache;
+
+		if (ret == 3) {
+			// Both blocks now found (from store_buffer + cache)
+			handler(std::move(buffer), error);
+			return;
+		}
+
+		// 3. Partial hit - read missing block(s) from disk
+		// Note: For unaligned reads, we don't insert into cache (data not block-aligned)
 		if (ret != 0) {
-			// partial
 			boost::asio::post(read_thread_pool_,
 				[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 					libtorrent::storage_error error;
-					auto offset = (ret == 1) ? r.start : block_offset + DEFAULT_BLOCK_SIZE;
-					auto len = (ret == 1) ? len1 : r.length - len1;
-					auto buf_offset = (ret == 1) ? 0 : len1;
+
+					// Determine which block to read
+					auto offset = (ret & 2) ? (block_offset + DEFAULT_BLOCK_SIZE) : r.start;
+					auto len = (ret & 2) ? (r.length - len1) : len1;
+					auto buf_offset = (ret & 2) ? len1 : 0;
+
 					storages_[idx]->read(buf + buf_offset, r.piece, offset, len, error);
 
 					post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
@@ -256,7 +292,17 @@ void raw_disk_io::async_read(
 			return;
 		}
 
-		// if we cannot find any block, post it as normal job
+		// 4. Full cache miss - read from disk (unaligned case, no cache insertion)
+		boost::asio::post(read_thread_pool_,
+			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
+				libtorrent::storage_error error;
+				storages_[idx]->read(buf, r.piece, r.start, r.length, error);
+
+				post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
+					h(std::move(b), error);
+				});
+			});
+		return;
 	} else {
 		// aligned block
 		// 1. Check store_buffer first (highest priority - data being written)
@@ -313,10 +359,14 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		// Insert into unified_cache (persistent cache, marked dirty)
 		m_cache.insert_write({storage, r.piece, r.start}, buffer.data());
 
-		// TODO: Check if should flush dirty blocks (delayed write)
-		// if (should_flush_dirty_cache(storage)) {
-		//     flush_dirty_blocks(storage);
-		// }
+		// Check if cache needs flushing (opportunistic flush)
+		// Phase 3.1: Still writes immediately, but prepares for Phase 3.2 delayed write
+		if (should_flush_dirty_cache()) {
+			// Post flush job to write thread pool (non-blocking)
+			boost::asio::post(write_thread_pool_, [this, storage]() {
+				flush_dirty_blocks(storage);
+			});
+		}
 
 		libtorrent::peer_request r2(r);
 		boost::asio::post(write_thread_pool_,
@@ -510,6 +560,123 @@ void raw_disk_io::submit_jobs()
 
 void raw_disk_io::settings_updated()
 {
+}
+
+// ============================================================================
+// Delayed Write Implementation (Phase 3.1.1)
+// ============================================================================
+
+bool raw_disk_io::should_flush_dirty_cache() const
+{
+	// Flush trigger 1: Cache usage exceeds threshold (80%)
+	int usage = m_cache.usage_percentage();	 // 0-100
+	if (usage > 80) {
+		return true;
+	}
+
+	// Flush trigger 2: Dirty block count exceeds threshold
+	// For 512MB cache (32768 entries), flush if > 8192 dirty blocks (25%)
+	size_t dirty_count = m_cache.total_dirty_count();
+	size_t dirty_threshold = m_cache.max_entries() / 4;	 // 25% dirty threshold
+	if (dirty_count > dirty_threshold) {
+		return true;
+	}
+
+	// No flush needed
+	return false;
+}
+
+void raw_disk_io::flush_dirty_blocks(libtorrent::storage_index_t storage)
+{
+	// Collect all dirty blocks for this storage
+	std::vector<torrent_location> dirty_blocks = m_cache.collect_dirty_blocks(storage);
+
+	if (dirty_blocks.empty()) {
+		return;
+	}
+
+	spdlog::debug("[raw_disk_io] Flushing {} dirty blocks for storage {}",
+		dirty_blocks.size(), static_cast<int>(storage));
+
+	// Sort by disk offset for sequential writes
+	// This reduces seek time on HDD and improves write throughput
+	std::sort(dirty_blocks.begin(), dirty_blocks.end(), [](torrent_location const &a, torrent_location const &b) {
+		// Compare by piece first, then offset
+		if (a.piece != b.piece) {
+			return a.piece < b.piece;
+		}
+		return a.offset < b.offset;
+	});
+
+	// Write each dirty block to disk
+	// Phase 3.2 (future): Use pwritev() for write coalescing
+	//
+	// Thread safety: collect_dirty_blocks() atomically marks blocks as flushing,
+	// which pins them to cache and prevents eviction. Concurrent writes are allowed
+	// and will set dirty=true, which mark_clean_if_flushing() will detect.
+	for (auto const &loc : dirty_blocks) {
+		// Get block data from cache (already marked flushing by collect_dirty_blocks)
+		char temp_buf[DEFAULT_BLOCK_SIZE];
+		bool found = m_cache.get(loc, [&](char const *buf) {
+			memcpy(temp_buf, buf, DEFAULT_BLOCK_SIZE);
+		});
+
+		if (!found) {
+			// Block was evicted (shouldn't happen since flushing=true pins it)
+			spdlog::warn("[raw_disk_io] Flushing block disappeared: piece={} offset={}",
+				static_cast<int>(loc.piece), loc.offset);
+			m_cache.set_flushing(loc, false);
+			continue;
+		}
+
+		// Write to disk (cache is unlocked, allows concurrent operations)
+		libtorrent::storage_error error;
+		storages_[storage]->write(temp_buf, loc.piece, loc.offset, DEFAULT_BLOCK_SIZE, error);
+
+		if (!error) {
+			// Atomically mark clean only if not modified during flush
+			// If concurrent write happened (dirty=true), keep it dirty for next flush
+			bool marked_clean = m_cache.mark_clean_if_flushing(loc);
+			if (!marked_clean) {
+				spdlog::debug("[raw_disk_io] Block modified during flush, keeping dirty: piece={} offset={}",
+					static_cast<int>(loc.piece), loc.offset);
+			}
+		} else {
+			// Write failed, clear flushing flag but keep dirty
+			m_cache.set_flushing(loc, false);
+			spdlog::error("[raw_disk_io] Failed to flush block piece={} offset={}: {}",
+				static_cast<int>(loc.piece), loc.offset, error.ec.message());
+		}
+	}
+
+	spdlog::debug("[raw_disk_io] Flushed {} dirty blocks for storage {}",
+		dirty_blocks.size(), static_cast<int>(storage));
+}
+
+void raw_disk_io::on_flush_timer(boost::system::error_code const &ec)
+{
+	if (ec) {
+		// Timer was cancelled (likely during shutdown)
+		return;
+	}
+
+	// Check if we should flush dirty cache
+	if (should_flush_dirty_cache()) {
+		spdlog::debug("[raw_disk_io] Time-based flush triggered (usage: {}%, dirty: {})",
+			m_cache.usage_percentage(), m_cache.total_dirty_count());
+
+		// Flush dirty blocks for all storages
+		for (auto const &pair : storages_) {
+			libtorrent::storage_index_t storage_id = pair.first;
+			flush_dirty_blocks(storage_id);
+		}
+	}
+
+	// Reschedule timer for next flush (5 seconds)
+	m_flush_timer.expires_after(std::chrono::seconds(5));
+	m_flush_timer.async_wait([this](boost::system::error_code const &ec) {
+		on_flush_timer(ec);
+	});
 }
 
 }  // namespace ezio

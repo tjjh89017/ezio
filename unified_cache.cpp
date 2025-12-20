@@ -83,17 +83,53 @@ void cache_partition::mark_clean(torrent_location const &loc)
 	}
 }
 
-std::vector<torrent_location> cache_partition::collect_dirty_blocks() const
+void cache_partition::set_flushing(torrent_location const &loc, bool value)
+{
+	std::unique_lock<std::mutex> l(m_mutex);
+
+	auto it = m_entries.find(loc);
+	if (it != m_entries.end()) {
+		it->second.flushing = value;
+	}
+}
+
+bool cache_partition::mark_clean_if_flushing(torrent_location const &loc)
+{
+	std::unique_lock<std::mutex> l(m_mutex);
+
+	auto it = m_entries.find(loc);
+	if (it == m_entries.end()) {
+		return false;  // Entry was evicted
+	}
+
+	// Only mark clean if:
+	// 1. Entry is still marked as flushing (we own it)
+	// 2. Entry is not dirty (no concurrent write happened)
+	if (it->second.flushing && !it->second.dirty) {
+		it->second.dirty = false;  // Already false, but explicit
+		it->second.flushing = false;
+		return true;  // Successfully marked clean
+	}
+
+	// Entry was modified during flush, keep it dirty
+	it->second.flushing = false;
+	return false;
+}
+
+std::vector<torrent_location> cache_partition::collect_dirty_blocks()
 {
 	std::unique_lock<std::mutex> l(m_mutex);
 
 	std::vector<torrent_location> dirty_blocks;
 	dirty_blocks.reserve(m_entries.size());
 
-	// NOTE: C++17 could use structured bindings: for (auto const &[loc, entry] : m_entries)
-	for (auto const &pair : m_entries) {
-		if (pair.second.dirty) {
+	// NOTE: C++17 could use structured bindings: for (auto &[loc, entry] : m_entries)
+	for (auto &pair : m_entries) {
+		// Collect dirty blocks that are not already being flushed
+		if (pair.second.dirty && !pair.second.flushing) {
 			dirty_blocks.push_back(pair.first);
+			// Atomically mark as flushing (pin to cache, prevent eviction)
+			pair.second.flushing = true;
 		}
 	}
 
@@ -153,10 +189,16 @@ bool cache_partition::evict_one_lru()
 		return false;
 	}
 
-	// Phase 3.1: Do NOT evict dirty entries
+	// Phase 3.1: Do NOT evict dirty or flushing entries
 	// Phase 3.2 (write coalescing) will handle dirty eviction
 	if (it->second.dirty) {
 		spdlog::debug("[cache_partition] Cannot evict dirty entry: piece={}", static_cast<int>(victim.piece));
+		return false;
+	}
+
+	// Do NOT evict entries being flushed (pinned to cache)
+	if (it->second.flushing) {
+		spdlog::debug("[cache_partition] Cannot evict flushing entry: piece={}", static_cast<int>(victim.piece));
 		return false;
 	}
 
@@ -223,6 +265,18 @@ void unified_cache::mark_clean(torrent_location const &loc)
 	m_partitions[partition_idx].mark_clean(loc);
 }
 
+void unified_cache::set_flushing(torrent_location const &loc, bool value)
+{
+	size_t partition_idx = get_partition_index(loc);
+	m_partitions[partition_idx].set_flushing(loc, value);
+}
+
+bool unified_cache::mark_clean_if_flushing(torrent_location const &loc)
+{
+	size_t partition_idx = get_partition_index(loc);
+	return m_partitions[partition_idx].mark_clean_if_flushing(loc);
+}
+
 std::vector<torrent_location> unified_cache::collect_dirty_blocks(libtorrent::storage_index_t storage)
 {
 	std::vector<torrent_location> all_dirty;
@@ -260,7 +314,7 @@ size_t unified_cache::total_dirty_count() const
 	return total;
 }
 
-size_t unified_cache::get_dirty_count(libtorrent::storage_index_t storage) const
+size_t unified_cache::get_dirty_count(libtorrent::storage_index_t storage)
 {
 	// Collect dirty blocks for this storage
 	size_t count = 0;
