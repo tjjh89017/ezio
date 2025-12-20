@@ -51,11 +51,13 @@ int main(int argc, char **argv)
 	p.set_int(lt::settings_pack::send_buffer_watermark, 128 * 1024 * 1024);
 	p.set_int(lt::settings_pack::send_buffer_low_watermark, 32 * 1024 * 1024);
 
-	// unified_cache size: 2GB
+	// unified_cache size from config (default 512MB)
 	// Note: cache_size is deprecated but still used by raw_disk_io
 	// cache_size unit: number of 16KiB blocks
-	// 2GB = 2048MB = (2048 * 1024 / 16) blocks = 131072 blocks
-	p.set_int(lt::settings_pack::cache_size, 131072);  // 2GB
+	// Convert MB to number of 16KB blocks: (MB * 1024) / 16
+	int cache_blocks = (current_config.cache_size_mb * 1024) / 16;
+	p.set_int(lt::settings_pack::cache_size, cache_blocks);
+	spdlog::info("Cache size: {} MB ({} blocks)", current_config.cache_size_mb, cache_blocks);
 
 	lt::session_params ses_params(p);
 	if (!current_config.file_flag) {
