@@ -337,24 +337,18 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 {
 	BOOST_ASSERT(DEFAULT_BLOCK_SIZE >= r.length);
 
-	auto t_start = libtorrent::clock_type::now();
-
 	// Insert into cache (cache allocates buffer and copies data)
 	// Marked as dirty to prevent eviction during write
 	torrent_location loc{storage, r.piece, r.start};
 	bool cache_inserted = m_cache.insert_write(loc, buf, r.length, nullptr);
-
-	auto t_insert = libtorrent::clock_type::now();
 
 	if (cache_inserted) {
 		// Get buffer pointer from cache
 		char *cache_buf = nullptr;
 		int cache_len = r.length;
 		m_cache.get(loc, [&](char const *data) {
-			cache_buf = const_cast<char*>(data);
+			cache_buf = const_cast<char *>(data);
 		});
-
-		auto t_get = libtorrent::clock_type::now();
 
 		if (cache_buf) {
 			// Write-through: immediately write to disk using cache buffer
@@ -382,30 +376,11 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 					});
 				});
 
-			auto t_end = libtorrent::clock_type::now();
-
-			// Log timing if total time > 100 microseconds
-			auto total_us = libtorrent::total_microseconds(t_end - t_start);
-			if (total_us > 100) {
-				auto insert_us = libtorrent::total_microseconds(t_insert - t_start);
-				auto get_us = libtorrent::total_microseconds(t_get - t_insert);
-				auto rest_us = libtorrent::total_microseconds(t_end - t_get);
-
-				spdlog::warn("[async_write] SLOW: total={}us (insert={}us, get={}us, rest={}us)",
-					total_us, insert_us, get_us, rest_us);
-			}
-
 			return false;  // No buffer pool, so never exceeded
-		} else {
-			// Cache get failed (entry was evicted between insert and get)
-			spdlog::warn("[async_write] Cache entry disappeared after insert!");
-			// Fall through to sync write
 		}
-	} else {
-		// Cache insert failed (cache full)
-		spdlog::warn("[async_write] Cache insert failed - using sync write");
-		// Fall through to sync write
+		// Cache get failed - fall through to sync write
 	}
+	// Cache insert failed - fall through to sync write
 
 	// sync
 	libtorrent::storage_error error;
