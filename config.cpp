@@ -12,8 +12,7 @@ void config::parse_from_argv(int argc, char **argv)
 		("file,F", bpo::bool_switch(&file_flag)->default_value(false), "read data from file rather than raw disk")
 		("listen,l", bpo::value<std::string>(&listen_address), "gRPC service listen address and port, default is 127.0.0.1:50051")
 		("cache-size", bpo::value<int>(&cache_size_mb)->default_value(4096), "unified cache size in MB, default is 4096")
-		("aio-threads", bpo::value<int>(&aio_threads)->default_value(16), "number of threads for disk I/O, default is 16")
-		("hashing-threads", bpo::value<int>(&hashing_threads)->default_value(8), "number of threads for hashing, default is 8")
+		("aio-threads", bpo::value<int>(&aio_threads)->default_value(16), "number of threads for disk I/O and hashing, default is 16")
 		("version,v", "show version")
 	;
 	// clang-format on
