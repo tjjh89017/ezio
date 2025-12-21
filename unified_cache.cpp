@@ -9,17 +9,6 @@
 namespace ezio
 {
 
-// Watermark recovery callback (called on io_context thread)
-// Same design as buffer_pool::watermark_callback
-void cache_watermark_callback(std::vector<std::weak_ptr<libtorrent::disk_observer>> const &cbs)
-{
-	for (auto const &weak_obs : cbs) {
-		if (auto obs = weak_obs.lock()) {
-			obs->on_disk();
-		}
-	}
-}
-
 // ============================================================================
 // cache_partition implementation
 // ============================================================================
@@ -216,45 +205,6 @@ bool cache_partition::evict_one_lru()
 	// All entries are dirty - cannot evict
 	// This is expected when cache is under write pressure
 	return false;
-}
-
-// touch() and move_to_list() removed - not needed with single LRU
-
-void cache_partition::check_buffer_level()
-{
-	// Watermark mechanism disabled for performance testing
-	// If cache is full, insert() returns false and caller does sync_write
-	/*
-	TORRENT_ASSERT(l.owns_lock());
-
-	if (!m_exceeded || m_max_entries == 0)
-		return;
-
-	float dirty_ratio = static_cast<float>(m_num_dirty) / m_max_entries;
-
-	spdlog::info("[cache_partition] check_buffer_level: dirty={}, max={}, ratio={:.1f}%, low_wm={:.1f}%",
-		m_num_dirty, m_max_entries, dirty_ratio * 100.0, DIRTY_LOW_WATERMARK * 100.0);
-
-	if (dirty_ratio >= DIRTY_LOW_WATERMARK) {
-		// Still above low watermark
-		spdlog::debug("[cache_partition] Still above low watermark, keeping exceeded=true");
-		return;
-	}
-
-	// Recovered! Swap out observers and post callback
-	m_exceeded = false;
-	std::vector<std::weak_ptr<libtorrent::disk_observer>> cbs;
-	m_observers.swap(cbs);
-
-	spdlog::info("[cache_partition] Watermark RECOVERED: dirty {:.1f}% < low_wm {:.1f}%, notifying {} observers",
-		dirty_ratio * 100.0, DIRTY_LOW_WATERMARK * 100.0, cbs.size());
-
-	// Unlock before posting (allow other threads to proceed)
-	l.unlock();
-
-	// Post callback to thread pool (fixed 2 threads)
-	boost::asio::post(m_callback_pool, std::bind(&cache_watermark_callback, std::move(cbs)));
-	*/
 }
 
 // ============================================================================

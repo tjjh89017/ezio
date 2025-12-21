@@ -163,26 +163,17 @@ private:
 	std::list<torrent_location> m_lru;	// unified LRU list
 
 	size_t m_max_entries;
-	boost::asio::thread_pool m_callback_pool;  // Fixed 2 threads for watermark callbacks
 	cache_partition_stats_internal m_stats;	 // Performance statistics (atomic)
 
-	// Watermark tracking (for backpressure)
+	// Dirty block tracking
 	size_t m_num_dirty{0};	// count of dirty blocks
-	std::atomic<bool> m_exceeded{false};  // true = cache under pressure
-
-	// Observer list for watermark recovery notification
-	std::vector<std::weak_ptr<libtorrent::disk_observer>> m_observers;
-
-	// Watermark thresholds (configurable)
-	static constexpr float DIRTY_HIGH_WATERMARK = 0.875f;  // 87.5% dirty = stop writes
-	static constexpr float DIRTY_LOW_WATERMARK = 0.50f;	 // 50% dirty = resume writes
 
 public:
-	cache_partition() : m_max_entries(0), m_callback_pool(1)
+	cache_partition() : m_max_entries(0)
 	{
 	}
 	cache_partition(size_t max_entries) :
-		m_max_entries(max_entries), m_callback_pool(1)
+		m_max_entries(max_entries)
 	{
 	}
 
@@ -308,73 +299,10 @@ public:
 	// Get per-LRU-list statistics snapshots
 	// Single LRU - no per-list stats needed
 
-	// Watermark checking (disabled for performance testing)
-	// Returns true if cache is OK, false if exceeded (caller should pause writes)
-	// If exceeded, saves observer for later notification
-	bool check_watermark(std::shared_ptr<libtorrent::disk_observer> o)
-	{
-		// Watermark mechanism disabled - always return true (OK to insert)
-		return true;
-		/*
-		if (m_max_entries == 0)
-			return true;
-
-		float dirty_ratio = static_cast<float>(m_num_dirty) / m_max_entries;
-
-		if (!m_exceeded && dirty_ratio > DIRTY_HIGH_WATERMARK) {
-			// Exceeded high watermark - cache under pressure
-			m_exceeded = true;
-			spdlog::warn("[cache_partition] Watermark EXCEEDED ON: dirty={}/{} ({:.1f}%) > {:.1f}%",
-				m_num_dirty, m_max_entries, dirty_ratio * 100.0, DIRTY_HIGH_WATERMARK * 100.0);
-			if (o)
-				m_observers.push_back(o);
-			return false;
-		}
-
-		if (m_exceeded && dirty_ratio < DIRTY_LOW_WATERMARK) {
-			// Recovered below low watermark
-			m_exceeded = false;
-			spdlog::info("[cache_partition] Watermark EXCEEDED OFF: dirty={}/{} ({:.1f}%) < {:.1f}%",
-				m_num_dirty, m_max_entries, dirty_ratio * 100.0, DIRTY_LOW_WATERMARK * 100.0);
-			return true;
-		}
-
-		// Still exceeded - save observer
-		if (m_exceeded && o) {
-			m_observers.push_back(o);
-		}
-
-		return !m_exceeded;	 // Current state
-		*/
-	}
-
-	// Get current watermark status
-	bool is_exceeded() const
-	{
-		return m_exceeded;
-	}
-
-	// Get dirty ratio (0.0 to 1.0)
-	float get_dirty_ratio() const
-	{
-		if (m_max_entries == 0)
-			return 0.0f;
-		return static_cast<float>(m_num_dirty) / m_max_entries;
-	}
-
-	// Check watermark recovery (called after mark_clean or eviction)
-	// Similar to buffer_pool::check_buffer_level
-	void check_buffer_level();
-
 private:
-	// LRU eviction (O(1) with multi-LRU design)
+	// LRU eviction
 	// Returns false if cannot evict (e.g., all entries are dirty)
 	bool evict_one_lru();
-
-	// Move entry to front of LRU (most recently used)
-	void touch(torrent_location const &loc);
-
-	// Move entry to a different LRU list (for state transitions)
 };
 
 // Unified cache with dynamic partitions (sharded for concurrency)
@@ -513,34 +441,6 @@ public:
 
 	// Log detailed statistics (for debugging)
 	void log_stats() const;
-
-	// Check watermark for a specific location (with observer)
-	// Returns true if OK to insert, false if exceeded (caller should pause writes)
-	// Note: This modifies m_exceeded state in the partition, so it's not const
-	bool check_watermark(torrent_location const &loc, std::shared_ptr<libtorrent::disk_observer> o)
-	{
-		size_t partition_idx = get_partition_index(loc);
-		return m_partitions[partition_idx]->check_watermark(o);
-	}
-
-	// Check watermark for a specific location (without observer)
-	// Simpler version for read-only checks
-	bool check_watermark_readonly(torrent_location const &loc) const
-	{
-		size_t partition_idx = get_partition_index(loc);
-		return !m_partitions[partition_idx]->is_exceeded();
-	}
-
-	// Check if any partition is exceeded
-	bool is_any_partition_exceeded() const
-	{
-		for (size_t i = 0; i < m_partitions.size(); ++i) {
-			if (m_partitions[i]->is_exceeded()) {
-				return true;
-			}
-		}
-		return false;
-	}
 
 private:
 	size_t get_partition_index(torrent_location const &loc) const
