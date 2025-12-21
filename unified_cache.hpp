@@ -2,6 +2,8 @@
 #define __UNIFIED_CACHE_HPP__
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <functional>
 #include <list>
 #include <mutex>
@@ -13,6 +15,49 @@
 
 namespace ezio
 {
+
+// Per-partition statistics snapshot (non-atomic for copying)
+struct cache_partition_stats {
+	uint64_t hits = 0;
+	uint64_t misses = 0;
+	uint64_t inserts = 0;
+	uint64_t evictions = 0;
+	uint64_t lock_contentions = 0;
+	uint64_t total_lock_wait_us = 0;  // Microseconds spent waiting for lock
+};
+
+// Internal atomic statistics (not copyable)
+struct cache_partition_stats_internal {
+	std::atomic<uint64_t> hits{0};
+	std::atomic<uint64_t> misses{0};
+	std::atomic<uint64_t> inserts{0};
+	std::atomic<uint64_t> evictions{0};
+	std::atomic<uint64_t> lock_contentions{0};
+	std::atomic<uint64_t> total_lock_wait_us{0};  // Microseconds spent waiting for lock
+
+	void reset()
+	{
+		hits = 0;
+		misses = 0;
+		inserts = 0;
+		evictions = 0;
+		lock_contentions = 0;
+		total_lock_wait_us = 0;
+	}
+
+	// Convert to snapshot
+	cache_partition_stats snapshot() const
+	{
+		cache_partition_stats s;
+		s.hits = hits.load();
+		s.misses = misses.load();
+		s.inserts = inserts.load();
+		s.evictions = evictions.load();
+		s.lock_contentions = lock_contentions.load();
+		s.total_lock_wait_us = total_lock_wait_us.load();
+		return s;
+	}
+};
 
 // Cache entry: 16KB fixed size block (buffer always allocated as 16KB, but actual data size may vary)
 struct cache_entry {
@@ -84,6 +129,7 @@ private:
 	std::unordered_map<torrent_location, cache_entry> m_entries;
 	std::list<torrent_location> m_lru_list;	 // MRU at front, LRU at back
 	size_t m_max_entries;
+	cache_partition_stats_internal m_stats;	 // Performance statistics (atomic)
 
 public:
 	cache_partition() : m_max_entries(0)
@@ -102,9 +148,25 @@ public:
 	template<typename Fun>
 	bool get(torrent_location const &loc, Fun f)
 	{
+		// Measure lock wait time
+		auto lock_start = std::chrono::steady_clock::now();
 		std::unique_lock<std::mutex> l(m_mutex);
+		auto lock_acquired = std::chrono::steady_clock::now();
+
+		auto lock_wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
+			lock_acquired - lock_start)
+								.count();
+
+		if (lock_wait_us > 100) {  // More than 100us wait = contention
+			m_stats.lock_contentions++;
+		}
+		m_stats.total_lock_wait_us += lock_wait_us;
+
 		auto it = m_entries.find(loc);
 		if (it != m_entries.end()) {
+			// Cache hit
+			m_stats.hits++;
+
 			// Move to front of LRU (most recently used)
 			m_lru_list.erase(it->second.lru_iter);
 			m_lru_list.push_front(loc);
@@ -114,6 +176,9 @@ public:
 			f(it->second.buffer);
 			return true;
 		}
+
+		// Cache miss
+		m_stats.misses++;
 		return false;
 	}
 
@@ -122,12 +187,35 @@ public:
 	template<typename Fun>
 	int get2(torrent_location const &loc1, torrent_location const &loc2, Fun f)
 	{
+		// Measure lock wait time
+		auto lock_start = std::chrono::steady_clock::now();
 		std::unique_lock<std::mutex> l(m_mutex);
+		auto lock_acquired = std::chrono::steady_clock::now();
+
+		auto lock_wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
+			lock_acquired - lock_start)
+								.count();
+
+		if (lock_wait_us > 100) {  // More than 100us wait = contention
+			m_stats.lock_contentions++;
+		}
+		m_stats.total_lock_wait_us += lock_wait_us;
+
 		auto it1 = m_entries.find(loc1);
 		auto it2 = m_entries.find(loc2);
 
 		char const *buf1 = (it1 == m_entries.end()) ? nullptr : it1->second.buffer;
 		char const *buf2 = (it2 == m_entries.end()) ? nullptr : it2->second.buffer;
+
+		// Update hit/miss stats
+		if (buf1)
+			m_stats.hits++;
+		else
+			m_stats.misses++;
+		if (buf2)
+			m_stats.hits++;
+		else
+			m_stats.misses++;
 
 		if (buf1 == nullptr && buf2 == nullptr) {
 			return 0;
@@ -176,6 +264,17 @@ public:
 
 	// Dynamic resize
 	void set_max_entries(size_t new_max);
+
+	// Get statistics snapshot (for diagnostics)
+	cache_partition_stats get_stats() const
+	{
+		return m_stats.snapshot();
+	}
+
+	void reset_stats()
+	{
+		m_stats.reset();
+	}
 
 private:
 	// LRU eviction
@@ -284,6 +383,18 @@ public:
 			return 0;
 		return static_cast<int>((total_entries() * 100) / m_max_entries);
 	}
+
+	// Get per-partition statistics
+	std::vector<cache_partition_stats> get_partition_stats() const;
+
+	// Get aggregated statistics (all partitions combined)
+	cache_partition_stats get_aggregated_stats() const;
+
+	// Reset all statistics
+	void reset_stats();
+
+	// Log detailed statistics (for debugging)
+	void log_stats() const;
 
 private:
 	size_t get_partition_index(torrent_location const &loc) const

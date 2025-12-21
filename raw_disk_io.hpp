@@ -242,6 +242,18 @@ public:
 	// changed settings relevant to its operations.
 	void settings_updated() override;
 
+	// Log cache performance statistics (for diagnostics)
+	void log_cache_stats() const
+	{
+		m_cache.log_stats();
+	}
+
+	// Reset cache statistics
+	void reset_cache_stats()
+	{
+		m_cache.reset_stats();
+	}
+
 private:
 };
 
