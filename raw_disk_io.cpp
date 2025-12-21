@@ -180,10 +180,8 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 
 	spdlog::info("[raw_disk_io] All {} I/O thread pools started successfully", num_io_threads_);
 
-	// DISABLED: Stats reporting thread causes race condition without mutex
-	// The stats thread calls log_stats() which reads from all partitions
-	// while I/O threads are modifying them, causing segfault
-	// m_stats_thread = std::thread(&raw_disk_io::stats_report_loop, this);
+	// Start stats reporting thread (posts tasks to each io thread - lock-free!)
+	m_stats_thread = std::thread(&raw_disk_io::stats_report_loop, this);
 }
 
 raw_disk_io::~raw_disk_io()
@@ -635,8 +633,26 @@ void raw_disk_io::stats_report_loop()
 			break;
 		}
 
-		// Output cache statistics
-		m_cache.log_stats();
+		// Post stats logging task to each io thread
+		// Each thread logs its own partition only (lock-free!)
+		spdlog::info("[unified_cache] === Lock-Free Cache Performance Statistics ===");
+
+		for (size_t i = 0; i < num_io_threads_; ++i) {
+			boost::asio::post((*io_thread_pools_[i]), [this, i]() {
+				// Each io thread reads its own partition only (lock-free!)
+				auto p_stats = m_cache.get_partition_stats(i);	// Single partition
+				size_t entries = m_cache.get_partition_size(i);
+				size_t max_entries = m_cache.get_partition_max_entries(i);
+
+				double usage = (max_entries > 0) ? (100.0 * entries / max_entries) : 0.0;
+				uint64_t p_ops = p_stats.hits + p_stats.misses;
+				double p_hit_rate = (p_ops > 0) ? (100.0 * p_stats.hits / p_ops) : 0.0;
+
+				spdlog::info("[unified_cache]   P{:2d}: {:5d} entries ({:4.1f}%) | "
+							 "{:6d} ops | hit: {:5.2f}%",
+					i, entries, usage, p_ops, p_hit_rate);
+			});
+		}
 	}
 
 	spdlog::info("[raw_disk_io] Cache stats reporting thread exiting");

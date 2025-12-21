@@ -487,6 +487,24 @@ public:
 	// Get per-partition statistics
 	std::vector<cache_partition_stats> get_partition_stats() const;
 
+	// Get statistics for a single partition (lock-free when called from owning thread)
+	cache_partition_stats get_partition_stats(size_t partition_idx) const
+	{
+		return m_partitions[partition_idx]->get_stats();
+	}
+
+	// Get size for a single partition (lock-free when called from owning thread)
+	size_t get_partition_size(size_t partition_idx) const
+	{
+		return m_partitions[partition_idx]->size();
+	}
+
+	// Get max entries for a single partition (lock-free when called from owning thread)
+	size_t get_partition_max_entries(size_t partition_idx) const
+	{
+		return m_partitions[partition_idx]->max_entries();
+	}
+
 	// Get aggregated statistics (all partitions combined)
 	cache_partition_stats get_aggregated_stats() const;
 
