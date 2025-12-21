@@ -4,6 +4,8 @@
 #include <map>
 #include <memory>
 #include <deque>
+#include <vector>
+#include <thread>
 #include <libtorrent/libtorrent.hpp>
 #include <boost/asio.hpp>
 #include "buffer_pool.hpp"
@@ -30,15 +32,17 @@ private:
 
 	unified_cache m_cache;	// Persistent cache (512MB, delayed write + read cache)
 
-	boost::asio::thread_pool read_thread_pool_;
-	boost::asio::thread_pool write_thread_pool_;
-	boost::asio::thread_pool hash_thread_pool_;
+	// Per-thread pool for consistent hashing (each pool has 1 thread)
+	// Each thread owns its cache partition exclusively (lock-free!)
+	std::vector<std::unique_ptr<boost::asio::thread_pool>> io_thread_pools_;
+
+	const size_t num_io_threads_;  // Fixed at startup (from aio_threads setting)
 
 	// Cache statistics reporting (temporary for debugging)
 	std::thread m_stats_thread;
 	std::atomic<bool> m_shutdown{false};
 
-	// callbacks are posted on this
+	// callbacks are posted on this (main network I/O context)
 	libtorrent::io_context &ioc_;
 
 	libtorrent::settings_interface const *m_settings;
@@ -46,6 +50,17 @@ private:
 
 	std::map<libtorrent::storage_index_t, std::unique_ptr<partition_storage>> storages_;
 	std::deque<libtorrent::storage_index_t> free_slots_;
+
+	// Consistent hashing: maps (storage, piece) to thread index
+	// Same piece always goes to same thread (and its cache partition)
+	size_t get_thread_index(libtorrent::storage_index_t storage,
+		libtorrent::piece_index_t piece) const
+	{
+		size_t h = 0;
+		h ^= std::hash<int>{}(static_cast<int>(storage));
+		h ^= std::hash<int>{}(static_cast<int>(piece));
+		return h % num_io_threads_;
+	}
 
 public:
 	raw_disk_io(libtorrent::io_context &ioc,
