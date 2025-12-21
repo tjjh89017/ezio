@@ -102,6 +102,7 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 	// New entry - try to evict if at capacity
 	// libtorrent 2.x design: allow over-allocation (short-term exceeding max_entries)
 	// This prevents blocking writes when all entries are temporarily dirty
+	bool did_evict = false;
 	while (m_entries.size() >= m_max_entries) {
 		if (!evict_one_lru()) {
 			// Cannot evict (all clean entries exhausted)
@@ -110,6 +111,13 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 				m_entries.size() + 1, m_max_entries);
 			break;
 		}
+		did_evict = true;
+	}
+
+	// Check watermark recovery after eviction (but before releasing lock)
+	std::vector<std::weak_ptr<libtorrent::disk_observer>> observers_to_notify;
+	if (did_evict) {
+		observers_to_notify = check_watermark_recovery();
 	}
 
 	// Allocate new buffer (cache manages its own memory)
@@ -157,6 +165,16 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 	m_stats.inserts++;
 	target_stats->inserts++;
 
+	// Release lock before notifying observers
+	l.unlock();
+
+	// Notify observers if we evicted and recovered
+	for (auto &weak_obs : observers_to_notify) {
+		if (auto obs = weak_obs.lock()) {
+			obs->on_disk();
+		}
+	}
+
 	return true;
 }
 
@@ -177,6 +195,17 @@ void cache_partition::mark_clean(torrent_location const &loc)
 			// Update counters
 			m_num_dirty--;
 			m_num_clean++;
+		}
+
+		// Check watermark recovery (dirty decreased)
+		auto observers = check_watermark_recovery();
+		l.unlock();
+
+		// Notify observers without holding lock
+		for (auto &weak_obs : observers) {
+			if (auto obs = weak_obs.lock()) {
+				obs->on_disk();
+			}
 		}
 
 		// Note: Entry remains in cache for future reads!
@@ -281,6 +310,7 @@ bool cache_partition::evict_one_lru()
 		m_num_clean--;
 		m_read_lru1_stats.evictions++;
 
+		// Note: Caller should check watermark recovery after eviction
 		return true;  // O(1) eviction!
 	}
 
@@ -302,6 +332,7 @@ bool cache_partition::evict_one_lru()
 		m_num_clean--;
 		m_read_lru2_stats.evictions++;
 
+		// Note: Caller should check watermark recovery after eviction
 		return true;  // O(1) eviction!
 	}
 
@@ -401,15 +432,16 @@ unified_cache::unified_cache(size_t max_entries) : m_max_entries(max_entries)
 		(max_entries * 16) / 1024, NUM_PARTITIONS);
 }
 
-bool unified_cache::insert_write(torrent_location const &loc, char const *data, int length, bool &exceeded)
+bool unified_cache::insert_write(torrent_location const &loc, char const *data, int length, bool &exceeded,
+	std::shared_ptr<libtorrent::disk_observer> o)
 {
 	size_t partition_idx = get_partition_index(loc);
 
 	// Try to insert (allows over-allocation like libtorrent 2.x)
 	bool success = m_partitions[partition_idx].insert(loc, data, length, true);	 // dirty=true
 
-	// Check watermark after insert
-	exceeded = !m_partitions[partition_idx].check_watermark();
+	// Check watermark after insert (saves observer if exceeded)
+	exceeded = !m_partitions[partition_idx].check_watermark(o);
 
 	return success;
 }

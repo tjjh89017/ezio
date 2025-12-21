@@ -194,6 +194,9 @@ private:
 	size_t m_num_clean{0};	// count of clean blocks (in read_lru1 + read_lru2)
 	std::atomic<bool> m_exceeded{false};  // true = cache under pressure
 
+	// Observer list for watermark recovery notification
+	std::vector<std::weak_ptr<libtorrent::disk_observer>> m_observers;
+
 	// Watermark thresholds (configurable)
 	static constexpr float DIRTY_HIGH_WATERMARK = 0.90f;  // 90% dirty = stop writes
 	static constexpr float DIRTY_LOW_WATERMARK = 0.70f;	 // 70% dirty = resume writes
@@ -448,7 +451,8 @@ public:
 
 	// Watermark checking (for backpressure)
 	// Returns true if cache is OK, false if exceeded (caller should pause writes)
-	bool check_watermark()
+	// If exceeded, saves observer for later notification
+	bool check_watermark(std::shared_ptr<libtorrent::disk_observer> o)
 	{
 		if (m_max_entries == 0)
 			return true;
@@ -458,6 +462,8 @@ public:
 		if (!m_exceeded && dirty_ratio > DIRTY_HIGH_WATERMARK) {
 			// Exceeded high watermark - cache under pressure
 			m_exceeded = true;
+			if (o)
+				m_observers.push_back(o);
 			return false;
 		}
 
@@ -465,6 +471,11 @@ public:
 			// Recovered below low watermark
 			m_exceeded = false;
 			return true;
+		}
+
+		// Still exceeded - save observer
+		if (m_exceeded && o) {
+			m_observers.push_back(o);
 		}
 
 		return !m_exceeded;	 // Current state
@@ -482,6 +493,27 @@ public:
 		if (m_max_entries == 0)
 			return 0.0f;
 		return static_cast<float>(m_num_dirty) / m_max_entries;
+	}
+
+	// Check watermark recovery and notify observers
+	// Called after mark_clean or eviction (caller must hold mutex)
+	// Returns list of observers to notify (caller should notify without holding lock)
+	std::vector<std::weak_ptr<libtorrent::disk_observer>> check_watermark_recovery()
+	{
+		std::vector<std::weak_ptr<libtorrent::disk_observer>> observers_to_notify;
+
+		if (!m_exceeded || m_max_entries == 0)
+			return observers_to_notify;
+
+		float dirty_ratio = static_cast<float>(m_num_dirty) / m_max_entries;
+
+		if (dirty_ratio < DIRTY_LOW_WATERMARK) {
+			// Recovered! Notify all observers
+			m_exceeded = false;
+			m_observers.swap(observers_to_notify);
+		}
+
+		return observers_to_notify;
 	}
 
 private:
@@ -512,8 +544,10 @@ public:
 	// Write operation: insert and mark dirty
 	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
 	// exceeded: output parameter, set to true if watermark exceeded
+	// o: disk_observer to notify when cache recovers (optional)
 	// Returns true on success, false if failed to allocate buffer
-	bool insert_write(torrent_location const &loc, char const *data, int length, bool &exceeded);
+	bool insert_write(torrent_location const &loc, char const *data, int length, bool &exceeded,
+		std::shared_ptr<libtorrent::disk_observer> o = nullptr);
 
 	// Read operation: insert clean entry (from disk read)
 	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
@@ -609,13 +643,21 @@ public:
 	// Log detailed statistics (for debugging)
 	void log_stats() const;
 
-	// Check watermark for a specific location
+	// Check watermark for a specific location (with observer)
 	// Returns true if OK to insert, false if exceeded (caller should pause writes)
 	// Note: This modifies m_exceeded state in the partition, so it's not const
-	bool check_watermark(torrent_location const &loc)
+	bool check_watermark(torrent_location const &loc, std::shared_ptr<libtorrent::disk_observer> o)
 	{
 		size_t partition_idx = get_partition_index(loc);
-		return m_partitions[partition_idx].check_watermark();
+		return m_partitions[partition_idx].check_watermark(o);
+	}
+
+	// Check watermark for a specific location (without observer)
+	// Simpler version for read-only checks
+	bool check_watermark_readonly(torrent_location const &loc) const
+	{
+		size_t partition_idx = get_partition_index(loc);
+		return !m_partitions[partition_idx].is_exceeded();
 	}
 
 	// Check if any partition is exceeded
