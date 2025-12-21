@@ -1,5 +1,7 @@
 #include <string>
 #include <sys/mman.h>
+#include <thread>
+#include <chrono>
 
 #include <boost/assert.hpp>
 #include <spdlog/spdlog.h>
@@ -11,6 +13,10 @@
 
 namespace ezio
 {
+
+// Global pointer to raw_disk_io instance for stats reporting
+// Set by raw_disk_io_constructor, accessed by log thread
+static raw_disk_io *g_raw_disk_io_instance = nullptr;
 
 // Helper function: Get cache entries from settings_pack::cache_size
 // cache_size is number of 16KiB blocks (libtorrent definition)
@@ -132,7 +138,14 @@ std::unique_ptr<libtorrent::disk_interface> raw_disk_io_constructor(libtorrent::
 	libtorrent::settings_interface const &s,
 	libtorrent::counters &c)
 {
-	return std::make_unique<raw_disk_io>(ioc, s, c);
+	auto disk_io = std::make_unique<raw_disk_io>(ioc, s, c);
+	g_raw_disk_io_instance = disk_io.get();
+	return disk_io;
+}
+
+raw_disk_io *get_raw_disk_io_instance()
+{
+	return g_raw_disk_io_instance;
 }
 
 raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
@@ -147,10 +160,18 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	write_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
 	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads))
 {
+	// Start stats reporting thread (temporary for debugging)
+	m_stats_thread = std::thread(&raw_disk_io::stats_report_loop, this);
 }
 
 raw_disk_io::~raw_disk_io()
 {
+	// Stop stats reporting thread
+	m_shutdown = true;
+	if (m_stats_thread.joinable()) {
+		m_stats_thread.join();
+	}
+
 	read_thread_pool_.join();
 	write_thread_pool_.join();
 	hash_thread_pool_.join();
@@ -572,6 +593,24 @@ void raw_disk_io::settings_updated()
 
 	// Note: Thread pool sizes are set in constructor init list and cannot be changed at runtime
 	// Future: Consider implementing dynamic thread pool resizing if needed
+}
+
+void raw_disk_io::stats_report_loop()
+{
+	spdlog::info("[raw_disk_io] Cache stats reporting thread started (30s interval)");
+
+	while (!m_shutdown) {
+		std::this_thread::sleep_for(std::chrono::seconds(30));
+
+		if (m_shutdown) {
+			break;
+		}
+
+		// Output cache statistics
+		m_cache.log_stats();
+	}
+
+	spdlog::info("[raw_disk_io] Cache stats reporting thread exiting");
 }
 
 

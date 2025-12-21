@@ -11,12 +11,17 @@
 
 namespace ezio
 {
+class partition_storage;
+class raw_disk_io;
+
 std::unique_ptr<libtorrent::disk_interface>
 raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::settings_interface const &,
 	libtorrent::counters &);
 
-class partition_storage;
+// Get global raw_disk_io instance (set by raw_disk_io_constructor)
+// Returns nullptr if using default disk_io or before construction
+raw_disk_io *get_raw_disk_io_instance();
 
 class raw_disk_io final : public libtorrent::disk_interface
 {
@@ -28,6 +33,10 @@ private:
 	boost::asio::thread_pool read_thread_pool_;
 	boost::asio::thread_pool write_thread_pool_;
 	boost::asio::thread_pool hash_thread_pool_;
+
+	// Cache statistics reporting (temporary for debugging)
+	std::thread m_stats_thread;
+	std::atomic<bool> m_shutdown{false};
 
 	// callbacks are posted on this
 	libtorrent::io_context &ioc_;
@@ -255,6 +264,8 @@ public:
 	}
 
 private:
+	// Stats reporting thread (temporary for debugging)
+	void stats_report_loop();
 };
 
 }  // namespace ezio
