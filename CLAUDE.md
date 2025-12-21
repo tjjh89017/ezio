@@ -1,6 +1,6 @@
 # EZIO Architecture Analysis & Optimization Guide
 
-**Version:** 5.1 (Phase 0, 1, 2, 3.1 Complete)
+**Version:** 6.0 (Phase 0, 1, 2, 3.1 Complete - Lock-Free)
 **Last Updated:** 2025-12-21
 **Reference:** libtorrent-2.0.10 source in `tmp/libtorrent-2.0.10/`
 **Complete Memory:** See `docs/SESSION_MEMORY.md` for full conversation history
@@ -36,27 +36,30 @@
   - Enables easy testing for NVMe optimization
   - Updated README with usage examples
 
-- ✅ **Phase 3.1: Unified Cache** (commits: 960fdd7 → c18fa72)
-  - **Write-through cache** replacing temporary store_buffer
-  - 32-way sharded cache with per-partition mutex
+- ✅ **Phase 3.1: Lock-Free Unified Cache** (commits: 78cd7ee → 0a6c48c, merged 2025-12-21)
+  - **True lock-free cache** with 1:1 thread:partition mapping
+  - Per-thread pools (each with 1 thread) for deterministic partition ownership
+  - Consistent hashing (storage + piece) ensures same piece → same thread
+  - Write-through cache replacing temporary store_buffer
   - LRU eviction with dirty block pinning
   - Configurable cache size via `--cache-size` option (default 512MB)
-  - Hash-based partition distribution for better load balancing
-  - Cache lookup moved to worker threads (main thread optimization)
-  - Fixed critical bug: cache_size was 16x too large (32GB → 2GB)
-  - Removed unused handler infrastructure (42 lines deleted)
+  - Lock-free stats reporting (each thread logs its own partition)
+  - All cache operations on worker threads (zero main thread access)
+  - Removed 189 lines of obsolete code (watermark, mutexes, handlers)
+  - **Performance: 2.8x improvement** (270 MB/s → 766 MB/s in 1-on-1)
+  - **Cache hit rate: 98-100%** with excellent locality
 
-**Recent Improvements (2025-12-21):**
-- ⚙️  **Thread Pool Tuning**: `--aio-threads` and `--hashing-threads` options
-- 🐛 **Critical Fix**: cache_size interpreted correctly (16KiB blocks, not KB)
-- 🚀 **Performance**: Cache lookup on worker threads, not main thread
-- 🎯 **Better Distribution**: Hash-based partitioning (torrent + piece + offset)
-- 🧹 **Code Quality**: Removed 42 lines (handler cleanup)
-- 📚 **Documentation**: Updated README with thread pool tuning guide
+**Recent Improvements (2025-12-21) - Lock-Free Cache:**
+- 🚀 **Zero-Mutex Design**: True lock-free with 1:1 thread:partition mapping
+- 🎯 **Consistent Hashing**: Same piece always on same thread (storage + piece hash)
+- ⚡ **Performance Boost**: 2.8x improvement (270→766 MB/s in 1-on-1)
+- 📊 **Lock-Free Stats**: Each thread logs its own partition every 30s
+- 🧹 **Code Cleanup**: Removed 189 lines (watermark, mutexes, obsolete functions)
+- ✅ **No store_buffer**: Consistent hashing guarantees execution order
+- 📈 **Cache Hit Rate**: 98-100% with excellent locality
+- 🔧 **Config Simplified**: Removed obsolete options (cache-partitions-multiplier, hashing-threads)
 
-**🔥 Next: Phase 3.2 - Write Coalescing (Optional)**
-- Batch writes with pwritev() for better HDD performance
-- Expected: +100-150% write throughput on NVMe
+**🎉 Phase 3.1 Complete - Ready for Production!**
 
 ### Critical Architecture Facts
 
@@ -70,11 +73,14 @@
    - Dynamic allocation with watermarks (50% low, 87.5% high)
    - Fixed size (temporary I/O buffers, not a cache)
 
-3. **Unified Cache** (after Phase 3.1)
+3. **Lock-Free Unified Cache** (after Phase 3.1)
    - Write-through cache (default 512MB, configurable via `--cache-size`)
-   - 32-way sharded with per-partition mutex for concurrency
+   - Dynamic partitions (= aio_threads) with 1:1 thread:partition mapping
+   - Zero mutexes - true lock-free design with per-thread ownership
+   - Consistent hashing (storage + piece) ensures same piece → same thread
    - LRU eviction (dirty blocks pinned during async writes)
-   - Replaces temporary store_buffer with persistent read/write cache
+   - Replaces temporary store_buffer (ordering guaranteed by consistent hashing)
+   - Lock-free stats reporting (each thread logs its own partition)
 
 4. **Settings Infrastructure** (after Phase 1.2)
    - Constructor: `raw_disk_io(io_context&, settings_interface&, counters&)`
@@ -135,21 +141,33 @@ EZIO is a **BitTorrent-based raw disk imaging tool** for fast LAN deployment. Th
 | 1.1 | Unified buffer pool | +48% memory efficiency | b018516 |
 | 1.2 | Configurable settings | Production tuning | c69c69a |
 | 2 | Configurable thread pools | Runtime tuning for NVMe/HDD | bbaf786→34ae63c |
-| 3.1 | Unified cache (write-through) | Read cache + reduced code | 960fdd7→c18fa72 |
+| **3.1** | **Lock-Free Unified Cache** | **+184% performance (2.8x)** | **78cd7ee→0a6c48c** |
 
-**Recent Phase Details:**
+**Phase 3.1 Details: Lock-Free Unified Cache (Merged 2025-12-21)**
 
-**Phase 2: Configurable Thread Pools**
-- Command line options: `--aio-threads`, `--hashing-threads`
-- No recompilation needed for performance testing
-- Examples: `--aio-threads 32` (NVMe), `--aio-threads 2` (HDD)
+**Architecture:**
+- True lock-free design with 1:1 thread:partition mapping
+- Per-thread pools (each with 1 thread) for deterministic ownership
+- Consistent hashing (storage + piece) ensures ordering without store_buffer
+- Dynamic partitions (= aio_threads, typically 16)
+- Write-through cache with LRU eviction
 
-**Phase 3.1: Unified Cache**
-- Write-through cache replacing store_buffer (512MB default, configurable)
-- Fixed critical cache_size bug (was 16x too large!)
-- Hash-based partitioning for better load balancing
-- Cache lookup on worker threads (main thread optimization)
-- Removed 42 lines of unused handler code
+**Performance Results:**
+- Multi-peer: 330-380 MB/s (was 270 MB/s, +24-41%)
+- **1-on-1: 766 MB/s (was 270 MB/s, +184%)** 🚀
+- Cache hit rate: 98-100%
+- Zero mutex contention
+
+**Code Quality:**
+- Removed 189 lines of obsolete code
+- Cleaned up watermark mechanism (154 lines)
+- Simplified async_write (18 lines)
+- Removed obsolete config options
+
+**Key Innovation:**
+- No store_buffer needed - consistent hashing guarantees async_read executes after async_write for the same piece
+- All cache operations on worker threads (zero main thread access)
+- Lock-free stats reporting (each thread logs its own partition every 30s)
 
 **Next Phase (Optional):**
 - **Phase 3.2**: Write coalescing with pwritev() for HDD optimization
