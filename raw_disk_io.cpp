@@ -155,7 +155,7 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	m_settings(&sett),
 	m_stats_counters(cnt),
 	m_buffer_pool(ioc),
-	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
+	m_cache(calculate_cache_entries(sett), ioc),  // Initialize from settings_pack::cache_size
 	read_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
 	write_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
 	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads))

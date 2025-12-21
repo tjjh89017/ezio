@@ -12,13 +12,20 @@ namespace ezio
 // NOTE: C++17 inline variables would eliminate the need for this definition
 constexpr size_t unified_cache::NUM_PARTITIONS;
 
+// Watermark recovery callback (called on io_context thread)
+// Same design as buffer_pool::watermark_callback
+void cache_watermark_callback(std::vector<std::weak_ptr<libtorrent::disk_observer>> const &cbs)
+{
+	for (auto const &weak_obs : cbs) {
+		if (auto obs = weak_obs.lock()) {
+			obs->on_disk();
+		}
+	}
+}
+
 // ============================================================================
 // cache_partition implementation
 // ============================================================================
-
-cache_partition::cache_partition(size_t max_entries) : m_max_entries(max_entries)
-{
-}
 
 bool cache_partition::insert(torrent_location const &loc, char const *data, int length, bool dirty)
 {
@@ -114,12 +121,6 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 		did_evict = true;
 	}
 
-	// Check watermark recovery after eviction (but before releasing lock)
-	std::vector<std::weak_ptr<libtorrent::disk_observer>> observers_to_notify;
-	if (did_evict) {
-		observers_to_notify = check_watermark_recovery();
-	}
-
 	// Allocate new buffer (cache manages its own memory)
 	char *buffer = static_cast<char *>(malloc(DEFAULT_BLOCK_SIZE));
 	if (!buffer) {
@@ -165,14 +166,10 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 	m_stats.inserts++;
 	target_stats->inserts++;
 
-	// Release lock before notifying observers
-	l.unlock();
-
-	// Notify observers if we evicted and recovered
-	for (auto &weak_obs : observers_to_notify) {
-		if (auto obs = weak_obs.lock()) {
-			obs->on_disk();
-		}
+	// Check watermark recovery if we did eviction
+	// Similar to buffer_pool::free_buffer() calling check_buffer_level()
+	if (did_evict) {
+		check_buffer_level(l);	// This will unlock mutex and post callbacks
 	}
 
 	return true;
@@ -198,15 +195,8 @@ void cache_partition::mark_clean(torrent_location const &loc)
 		}
 
 		// Check watermark recovery (dirty decreased)
-		auto observers = check_watermark_recovery();
-		l.unlock();
-
-		// Notify observers without holding lock
-		for (auto &weak_obs : observers) {
-			if (auto obs = weak_obs.lock()) {
-				obs->on_disk();
-			}
-		}
+		// Similar to buffer_pool::free_buffer() calling check_buffer_level()
+		check_buffer_level(l);	// This will unlock mutex and post callbacks
 
 		// Note: Entry remains in cache for future reads!
 		// This is the key difference from store_buffer
@@ -413,19 +403,47 @@ void cache_partition::move_to_list(cache_entry &entry, cache_state new_state)
 	}
 }
 
+void cache_partition::check_buffer_level(std::unique_lock<std::mutex> &l)
+{
+	TORRENT_ASSERT(l.owns_lock());
+
+	if (!m_exceeded || m_max_entries == 0 || !m_ioc)
+		return;
+
+	float dirty_ratio = static_cast<float>(m_num_dirty) / m_max_entries;
+
+	if (dirty_ratio >= DIRTY_LOW_WATERMARK) {
+		// Still above low watermark
+		return;
+	}
+
+	// Recovered! Swap out observers and post callback
+	m_exceeded = false;
+	std::vector<std::weak_ptr<libtorrent::disk_observer>> cbs;
+	m_observers.swap(cbs);
+
+	// Unlock before posting (allow other threads to proceed)
+	l.unlock();
+
+	// Post callback to io_context (same as buffer_pool design)
+	libtorrent::post(*m_ioc, std::bind(&cache_watermark_callback, std::move(cbs)));
+}
+
 // ============================================================================
 // unified_cache implementation
 // ============================================================================
 
-unified_cache::unified_cache(size_t max_entries) : m_max_entries(max_entries)
+unified_cache::unified_cache(size_t max_entries, libtorrent::io_context &ioc) :
+	m_max_entries(max_entries), m_ioc(ioc)
 {
 	// Distribute entries evenly across partitions
 	size_t entries_per_partition = max_entries / NUM_PARTITIONS;
 
 	// Note: Cannot assign cache_partition because mutex is not copyable/movable
-	// Array is already default-constructed, just set max_entries for each
+	// Array is already default-constructed, need to initialize each with io_context
 	for (size_t i = 0; i < NUM_PARTITIONS; ++i) {
-		m_partitions[i].set_max_entries(entries_per_partition);
+		// Use placement new to re-construct partition with io_context
+		new (&m_partitions[i]) cache_partition(entries_per_partition, &ioc);
 	}
 
 	spdlog::info("[unified_cache] Initialized with {} entries ({} MB), {} partitions", max_entries,
