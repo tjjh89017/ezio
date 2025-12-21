@@ -299,6 +299,29 @@ EZIO implements a custom `libtorrent` [disk I/O interface](http://libtorrent.org
 - **Configurable thread pools**: Separate pools for disk I/O and hashing
 - **Event-driven alerts**: Instant notification via `set_alert_notify()`
 
+### Lock-Free Cache Architecture
+
+EZIO implements a lock-free unified cache using consistent hashing and per-thread partitioning:
+
+**Consistent Hashing:**
+- Hash function: `hash(storage_index, piece_index) % num_threads`
+- All operations on the same piece are assigned to the same I/O thread
+- Guarantees execution order: `async_read` for a piece always executes after any pending `async_write` for that piece
+- Eliminates the need for temporary store_buffer (used in standard libtorrent)
+
+**Lock-Free Design:**
+- 1:1 thread-to-partition mapping: Each I/O thread exclusively owns one cache partition
+- No mutex required: Single-threaded access to each partition
+- Per-thread pools: Vector of `thread_pool(1)` for deterministic thread assignment
+- Dynamic partitions: Number of partitions equals `aio_threads` setting
+
+**Cache Configuration:**
+```shell
+./ezio --cache-size <MB>    # Cache size in MB (default: 512)
+```
+
+The cache is divided into N partitions (where N = `aio_threads`), with each partition managed by exactly one thread. This design achieves true lock-free operation while maintaining cache coherency through consistent hashing.
+
 ### Torrent Format
 
 We store the disk "offset" in hexadecimal as the file path, and "length" as the file attribute. This allows BitTorrent to locate and seek to the exact disk position
