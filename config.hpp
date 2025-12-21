@@ -22,7 +22,7 @@ public:
 	// --listen address
 	std::string listen_address = "127.0.0.1:50051";
 	// cache size in MB
-	int cache_size_mb = 4096;  // default 4GB for testing
+	int cache_size_mb = 512;  // default 512MB
 	// thread pool size (used for both I/O and hashing)
 	int aio_threads = 16;  // default 16 threads for disk I/O
 };
