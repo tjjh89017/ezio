@@ -31,7 +31,7 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 {
 	// Measure lock wait time
 	auto lock_start = std::chrono::steady_clock::now();
-	std::unique_lock<std::mutex> l(m_mutex);
+	std::unique_lock<std::shared_mutex> l(m_mutex);
 	auto lock_acquired = std::chrono::steady_clock::now();
 
 	auto lock_wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -50,58 +50,22 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 		memcpy(it->second.buffer, data, length);
 		it->second.length = length;
 
-		// State transition based on dirty flag
+		// Update dirty flag and counters
 		bool was_dirty = it->second.dirty;
 		it->second.dirty = dirty;
 
-		// Determine target state
-		cache_state new_state;
-		if (dirty) {
-			new_state = cache_state::write_lru;
-			if (!was_dirty) {
-				// Clean → dirty transition
-				m_num_clean--;
-				m_num_dirty++;
-			}
-		} else {
-			// Read insert (cache miss fill) - goes to read_lru1
-			new_state = cache_state::read_lru1;
-			if (was_dirty) {
-				// Dirty → clean transition
-				m_num_dirty--;
-				m_num_clean++;
-			}
+		if (dirty && !was_dirty) {
+			// Clean → dirty transition
+			m_num_dirty++;
+		} else if (!dirty && was_dirty) {
+			// Dirty → clean transition
+			m_num_dirty--;
 		}
 
-		// Move to appropriate LRU list if state changed
-		if (it->second.state != new_state) {
-			move_to_list(it->second, new_state);
-		} else {
-			// Touch within same list (move to front)
-			std::list<torrent_location> *target_list = nullptr;
-			lru_stats_internal *target_stats = nullptr;
-
-			switch (it->second.state) {
-			case cache_state::write_lru:
-				target_list = &m_write_lru;
-				target_stats = &m_write_lru_stats;
-				break;
-			case cache_state::read_lru1:
-				target_list = &m_read_lru1;
-				target_stats = &m_read_lru1_stats;
-				break;
-			case cache_state::read_lru2:
-				target_list = &m_read_lru2;
-				target_stats = &m_read_lru2_stats;
-				break;
-			}
-
-			// Move to front of current list
-			target_list->erase(it->second.lru_iter);
-			target_list->push_front(loc);
-			it->second.lru_iter = target_list->begin();
-			target_stats->hits++;
-		}
+		// Single LRU: touch (move to front)
+		m_lru.erase(it->second.lru_iter);
+		m_lru.push_front(loc);
+		it->second.lru_iter = m_lru.begin();
 
 		return true;
 	}
@@ -138,74 +102,52 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 	entry.length = length;
 	entry.dirty = dirty;
 
-	// Determine which LRU list based on dirty flag
-	std::list<torrent_location> *target_list = nullptr;
-	lru_stats_internal *target_stats = nullptr;
-
-	if (dirty) {
-		// Write operation → write_lru (dirty blocks)
-		entry.state = cache_state::write_lru;
-		target_list = &m_write_lru;
-		target_stats = &m_write_lru_stats;
-		m_num_dirty++;
-	} else {
-		// Read operation (cache miss fill) → read_lru1 (accessed once)
-		entry.state = cache_state::read_lru1;
-		target_list = &m_read_lru1;
-		target_stats = &m_read_lru1_stats;
-		m_num_clean++;
-	}
-
-	// Add to appropriate LRU list (most recently used = front)
-	target_list->push_front(loc);
-	entry.lru_iter = target_list->begin();
+	// Single LRU: add to front (most recently used)
+	m_lru.push_front(loc);
+	entry.lru_iter = m_lru.begin();
 
 	// Insert into map
 	m_entries.emplace(loc, std::move(entry));
 
 	m_stats.inserts++;
-	target_stats->inserts++;
 
-	// Check watermark recovery if we did eviction
-	// Similar to buffer_pool::free_buffer() calling check_buffer_level()
-	if (did_evict) {
-		check_buffer_level(l);	// This will unlock mutex and post callbacks
+	// Update dirty counter
+	if (dirty) {
+		m_num_dirty++;
 	}
+
+	// Watermark mechanism disabled for performance testing
+	// If cache is full and can't evict, insert() will return false
+	// and caller will do sync_write
+	// if (did_evict) {
+	// 	check_buffer_level(l);
+	// }
 
 	return true;
 }
 
 void cache_partition::mark_clean(torrent_location const &loc)
 {
-	std::unique_lock<std::mutex> l(m_mutex);
+	std::unique_lock<std::shared_mutex> l(m_mutex);
 
 	auto it = m_entries.find(loc);
 	if (it != m_entries.end() && it->second.dirty) {
 		it->second.dirty = false;
 
-		// State transition: write_lru → read_lru2
-		// Assumption: blocks that were just written are likely to be read soon
-		// Put them in high-priority read cache (read_lru2)
-		if (it->second.state == cache_state::write_lru) {
-			move_to_list(it->second, cache_state::read_lru2);
+		// Update counters
+		m_num_dirty--;
 
-			// Update counters
-			m_num_dirty--;
-			m_num_clean++;
-		}
+		spdlog::debug("[cache_partition] mark_clean: dirty {} -> {}",
+			m_num_dirty + 1, m_num_dirty);
 
-		// Check watermark recovery (dirty decreased)
-		// Similar to buffer_pool::free_buffer() calling check_buffer_level()
-		check_buffer_level(l);	// This will unlock mutex and post callbacks
-
-		// Note: Entry remains in cache for future reads!
-		// This is the key difference from store_buffer
+		// Watermark checking disabled
+		// check_buffer_level(l);
 	}
 }
 
 std::vector<torrent_location> cache_partition::collect_dirty_blocks()
 {
-	std::unique_lock<std::mutex> l(m_mutex);
+	std::unique_lock<std::shared_mutex> l(m_mutex);
 
 	std::vector<torrent_location> dirty_blocks;
 	dirty_blocks.reserve(m_entries.size());
@@ -226,7 +168,7 @@ std::vector<torrent_location> cache_partition::collect_dirty_blocks()
 std::vector<torrent_location> cache_partition::collect_dirty_blocks_for_storage(
 	libtorrent::storage_index_t storage)
 {
-	std::unique_lock<std::mutex> l(m_mutex);
+	std::unique_lock<std::shared_mutex> l(m_mutex);
 
 	std::vector<torrent_location> dirty_blocks;
 	dirty_blocks.reserve(m_entries.size());
@@ -244,13 +186,13 @@ std::vector<torrent_location> cache_partition::collect_dirty_blocks_for_storage(
 
 size_t cache_partition::size() const
 {
-	std::unique_lock<std::mutex> l(m_mutex);
+	std::unique_lock<std::shared_mutex> l(m_mutex);
 	return m_entries.size();
 }
 
 size_t cache_partition::dirty_count() const
 {
-	std::unique_lock<std::mutex> l(m_mutex);
+	std::unique_lock<std::shared_mutex> l(m_mutex);
 
 	size_t count = 0;
 	// NOTE: C++17 could use structured bindings: for (auto const &[loc, entry] : m_entries)
@@ -264,7 +206,7 @@ size_t cache_partition::dirty_count() const
 
 void cache_partition::set_max_entries(size_t new_max)
 {
-	std::unique_lock<std::mutex> l(m_mutex);
+	std::unique_lock<std::shared_mutex> l(m_mutex);
 	m_max_entries = new_max;
 
 	// If shrinking, evict entries until size <= new_max
@@ -280,140 +222,50 @@ bool cache_partition::evict_one_lru()
 {
 	// NOTE: Caller must hold m_mutex!
 
-	// Multi-LRU eviction: O(1) operation!
-	// Try read_lru1 first (lowest priority - accessed once)
-	if (!m_read_lru1.empty()) {
-		torrent_location const &loc = m_read_lru1.back();  // LRU end
-		auto it = m_entries.find(loc);
-
-		if (it == m_entries.end()) {
-			spdlog::error("[cache_partition] LRU1 inconsistency: entry not found");
-			return false;
+	// Single LRU eviction: scan from LRU end for first clean block
+	// Skip dirty blocks (cannot evict while pending write)
+	for (auto it = m_lru.rbegin(); it != m_lru.rend(); ++it) {
+		auto entry_it = m_entries.find(*it);
+		if (entry_it == m_entries.end()) {
+			spdlog::error("[cache_partition] LRU inconsistency: entry not found");
+			continue;
 		}
 
-		// Free buffer and erase entry
-		// Note: cache_entry destructor will free buffer via free()
-		m_entries.erase(it);
-		m_read_lru1.pop_back();
+		if (!entry_it->second.dirty) {
+			// Found clean block - evict it
+			m_entries.erase(entry_it);
+			m_lru.erase(std::next(it).base());	// Convert reverse_iterator to iterator
 
-		// Update counters
-		m_num_clean--;
-		m_read_lru1_stats.evictions++;
-
-		// Note: Caller should check watermark recovery after eviction
-		return true;  // O(1) eviction!
-	}
-
-	// Try read_lru2 if lru1 is empty (higher priority - accessed 2+ times)
-	if (!m_read_lru2.empty()) {
-		torrent_location const &loc = m_read_lru2.back();  // LRU end
-		auto it = m_entries.find(loc);
-
-		if (it == m_entries.end()) {
-			spdlog::error("[cache_partition] LRU2 inconsistency: entry not found");
-			return false;
+			m_stats.evictions++;
+			return true;
 		}
-
-		// Free buffer and erase entry
-		m_entries.erase(it);
-		m_read_lru2.pop_back();
-
-		// Update counters
-		m_num_clean--;
-		m_read_lru2_stats.evictions++;
-
-		// Note: Caller should check watermark recovery after eviction
-		return true;  // O(1) eviction!
 	}
 
-	// All entries are dirty (in write_lru) - cannot evict
-	// This is expected behavior when cache is under write pressure
+	// All entries are dirty - cannot evict
+	// This is expected when cache is under write pressure
 	return false;
 }
 
-void cache_partition::touch(torrent_location const &loc)
+// touch() and move_to_list() removed - not needed with single LRU
+
+void cache_partition::check_buffer_level(std::unique_lock<std::shared_mutex> &l)
 {
-	// NOTE: Caller must hold m_mutex!
-	// This function is no longer used with multi-LRU design
-	// State-specific touch logic is now in insert() and get()
-	(void)loc;	// Suppress unused parameter warning
-}
-
-void cache_partition::move_to_list(cache_entry &entry, cache_state new_state)
-{
-	// NOTE: Caller must hold m_mutex!
-
-	if (entry.state == new_state) {
-		return;	 // Already in target list
-	}
-
-	// Remove from current LRU list
-	std::list<torrent_location> *old_list = nullptr;
-	lru_stats_internal *old_stats = nullptr;
-
-	switch (entry.state) {
-	case cache_state::write_lru:
-		old_list = &m_write_lru;
-		old_stats = &m_write_lru_stats;
-		break;
-	case cache_state::read_lru1:
-		old_list = &m_read_lru1;
-		old_stats = &m_read_lru1_stats;
-		break;
-	case cache_state::read_lru2:
-		old_list = &m_read_lru2;
-		old_stats = &m_read_lru2_stats;
-		break;
-	}
-
-	old_list->erase(entry.lru_iter);
-
-	// Add to new LRU list (at front = most recently used)
-	std::list<torrent_location> *new_list = nullptr;
-	lru_stats_internal *new_stats = nullptr;
-
-	switch (new_state) {
-	case cache_state::write_lru:
-		new_list = &m_write_lru;
-		new_stats = &m_write_lru_stats;
-		break;
-	case cache_state::read_lru1:
-		new_list = &m_read_lru1;
-		new_stats = &m_read_lru1_stats;
-		break;
-	case cache_state::read_lru2:
-		new_list = &m_read_lru2;
-		new_stats = &m_read_lru2_stats;
-		break;
-	}
-
-	new_list->push_front(entry.loc);
-	entry.lru_iter = new_list->begin();
-	entry.state = new_state;
-
-	// Update statistics (promotion/demotion)
-	if (new_state == cache_state::read_lru2 &&
-		(entry.state == cache_state::read_lru1 || entry.state == cache_state::write_lru)) {
-		// Promotion to read_lru2
-		old_stats->promotions++;
-		new_stats->inserts++;
-	} else {
-		// Other transitions (just track inserts)
-		new_stats->inserts++;
-	}
-}
-
-void cache_partition::check_buffer_level(std::unique_lock<std::mutex> &l)
-{
+	// Watermark mechanism disabled for performance testing
+	// If cache is full, insert() returns false and caller does sync_write
+	/*
 	TORRENT_ASSERT(l.owns_lock());
 
-	if (!m_exceeded || m_max_entries == 0 || !m_ioc)
+	if (!m_exceeded || m_max_entries == 0)
 		return;
 
 	float dirty_ratio = static_cast<float>(m_num_dirty) / m_max_entries;
 
+	spdlog::info("[cache_partition] check_buffer_level: dirty={}, max={}, ratio={:.1f}%, low_wm={:.1f}%",
+		m_num_dirty, m_max_entries, dirty_ratio * 100.0, DIRTY_LOW_WATERMARK * 100.0);
+
 	if (dirty_ratio >= DIRTY_LOW_WATERMARK) {
 		// Still above low watermark
+		spdlog::debug("[cache_partition] Still above low watermark, keeping exceeded=true");
 		return;
 	}
 
@@ -422,32 +274,36 @@ void cache_partition::check_buffer_level(std::unique_lock<std::mutex> &l)
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> cbs;
 	m_observers.swap(cbs);
 
+	spdlog::info("[cache_partition] Watermark RECOVERED: dirty {:.1f}% < low_wm {:.1f}%, notifying {} observers",
+		dirty_ratio * 100.0, DIRTY_LOW_WATERMARK * 100.0, cbs.size());
+
 	// Unlock before posting (allow other threads to proceed)
 	l.unlock();
 
-	// Post callback to io_context (same as buffer_pool design)
-	libtorrent::post(*m_ioc, std::bind(&cache_watermark_callback, std::move(cbs)));
+	// Post callback to thread pool (fixed 2 threads)
+	boost::asio::post(m_callback_pool, std::bind(&cache_watermark_callback, std::move(cbs)));
+	*/
 }
 
 // ============================================================================
 // unified_cache implementation
 // ============================================================================
 
-unified_cache::unified_cache(size_t max_entries, libtorrent::io_context &ioc) :
-	m_max_entries(max_entries), m_ioc(ioc)
+unified_cache::unified_cache(size_t max_entries) :
+	m_max_entries(max_entries)
 {
 	// Distribute entries evenly across partitions
 	size_t entries_per_partition = max_entries / NUM_PARTITIONS;
 
 	// Note: Cannot assign cache_partition because mutex is not copyable/movable
-	// Array is already default-constructed, need to initialize each with io_context
+	// Array is already default-constructed, need to reinitialize each
 	for (size_t i = 0; i < NUM_PARTITIONS; ++i) {
-		// Use placement new to re-construct partition with io_context
-		new (&m_partitions[i]) cache_partition(entries_per_partition, &ioc);
+		// Use placement new to re-construct partition
+		new (&m_partitions[i]) cache_partition(entries_per_partition);
 	}
 
-	spdlog::info("[unified_cache] Initialized with {} entries ({} MB), {} partitions", max_entries,
-		(max_entries * 16) / 1024, NUM_PARTITIONS);
+	spdlog::info("[unified_cache] Single-LRU cache initialized: {} entries ({} MB), {} partitions",
+		max_entries, (max_entries * 16) / 1024, NUM_PARTITIONS);
 }
 
 bool unified_cache::insert_write(torrent_location const &loc, char const *data, int length, bool &exceeded,
@@ -458,8 +314,9 @@ bool unified_cache::insert_write(torrent_location const &loc, char const *data, 
 	// Try to insert (allows over-allocation like libtorrent 2.x)
 	bool success = m_partitions[partition_idx].insert(loc, data, length, true);	 // dirty=true
 
-	// Check watermark after insert (saves observer if exceeded)
-	exceeded = !m_partitions[partition_idx].check_watermark(o);
+	// Watermark checking disabled - if insert fails (cache full), caller does sync_write
+	exceeded = false;
+	// exceeded = !m_partitions[partition_idx].check_watermark(o);
 
 	return success;
 }
@@ -594,60 +451,10 @@ void unified_cache::log_stats() const
 		total_entries(), m_max_entries, usage_percentage());
 	spdlog::info("[unified_cache] Dirty entries: {}", total_dirty_count());
 
-	// Aggregate per-LRU statistics
-	spdlog::info("[unified_cache] === Per-LRU-List Statistics (All Partitions) ===");
+	// Single-LRU design: no per-list statistics needed
 
-	uint64_t total_write_lru_size = 0, total_write_lru_inserts = 0, total_write_lru_hits = 0;
-	uint64_t total_write_lru_promotions = 0, total_write_lru_evictions = 0;
-
-	uint64_t total_read_lru1_size = 0, total_read_lru1_inserts = 0, total_read_lru1_hits = 0;
-	uint64_t total_read_lru1_promotions = 0, total_read_lru1_evictions = 0;
-
-	uint64_t total_read_lru2_size = 0, total_read_lru2_inserts = 0, total_read_lru2_hits = 0;
-	uint64_t total_read_lru2_promotions = 0, total_read_lru2_evictions = 0;
-
-	for (size_t i = 0; i < NUM_PARTITIONS; ++i) {
-		auto w_stats = m_partitions[i].get_write_lru_stats();
-		auto r1_stats = m_partitions[i].get_read_lru1_stats();
-		auto r2_stats = m_partitions[i].get_read_lru2_stats();
-
-		total_write_lru_size += w_stats.size;
-		total_write_lru_inserts += w_stats.inserts;
-		total_write_lru_hits += w_stats.hits;
-		total_write_lru_promotions += w_stats.promotions;
-		total_write_lru_evictions += w_stats.evictions;
-
-		total_read_lru1_size += r1_stats.size;
-		total_read_lru1_inserts += r1_stats.inserts;
-		total_read_lru1_hits += r1_stats.hits;
-		total_read_lru1_promotions += r1_stats.promotions;
-		total_read_lru1_evictions += r1_stats.evictions;
-
-		total_read_lru2_size += r2_stats.size;
-		total_read_lru2_inserts += r2_stats.inserts;
-		total_read_lru2_hits += r2_stats.hits;
-		total_read_lru2_promotions += r2_stats.promotions;
-		total_read_lru2_evictions += r2_stats.evictions;
-	}
-
-	size_t total_ent = total_entries();
-	double w_pct = (total_ent > 0) ? (100.0 * total_write_lru_size / total_ent) : 0.0;
-	double r1_pct = (total_ent > 0) ? (100.0 * total_read_lru1_size / total_ent) : 0.0;
-	double r2_pct = (total_ent > 0) ? (100.0 * total_read_lru2_size / total_ent) : 0.0;
-
-	spdlog::info("[unified_cache]   write_lru: {:6} entries ({:5.1f}%) | {:6} inserts | {:6} hits | {:6} → lru2 | {:6} evictions",
-		total_write_lru_size, w_pct, total_write_lru_inserts, total_write_lru_hits,
-		total_write_lru_promotions, total_write_lru_evictions);
-
-	spdlog::info("[unified_cache]   read_lru1: {:6} entries ({:5.1f}%) | {:6} inserts | {:6} hits | {:6} promoted | {:6} evictions",
-		total_read_lru1_size, r1_pct, total_read_lru1_inserts, total_read_lru1_hits,
-		total_read_lru1_promotions, total_read_lru1_evictions);
-
-	spdlog::info("[unified_cache]   read_lru2: {:6} entries ({:5.1f}%) | {:6} inserts | {:6} hits | {:6} promoted | {:6} evictions",
-		total_read_lru2_size, r2_pct, total_read_lru2_inserts, total_read_lru2_hits,
-		total_read_lru2_promotions, total_read_lru2_evictions);
-
-	// Watermark status
+	// Watermark status (disabled)
+	/*
 	spdlog::info("[unified_cache] === Watermark Status ===");
 	size_t exceeded_partitions = 0;
 	float max_dirty_ratio = 0.0f;
@@ -664,8 +471,10 @@ void unified_cache::log_stats() const
 
 	spdlog::info("[unified_cache]   Exceeded partitions: {} / {}", exceeded_partitions, NUM_PARTITIONS);
 	spdlog::info("[unified_cache]   Max dirty ratio: {:.1f}%", max_dirty_ratio * 100.0);
+	size_t total_ent = total_entries();
 	spdlog::info("[unified_cache]   Global dirty ratio: {:.1f}%",
 		(total_ent > 0) ? (100.0 * total_dirty_count() / total_ent) : 0.0);
+	*/
 
 	// Per-partition distribution (condensed)
 	spdlog::info("[unified_cache] === Per-Partition Distribution ===");

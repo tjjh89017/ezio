@@ -155,7 +155,7 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	m_settings(&sett),
 	m_stats_counters(cnt),
 	m_buffer_pool(ioc),
-	m_cache(calculate_cache_entries(sett), ioc),  // Initialize from settings_pack::cache_size
+	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
 	read_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
 	write_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
 	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads))
@@ -233,47 +233,44 @@ void raw_disk_io::async_read(
 	int const block_offset = r.start - (r.start % DEFAULT_BLOCK_SIZE);
 	int const read_offset = r.start - block_offset;
 
-	// Post all work (cache lookup + disk read) to read_thread_pool
-	// This keeps main thread lightweight for network I/O
-	boost::asio::post(read_thread_pool_,
-		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
-			libtorrent::storage_error error;
+	// Try cache lookup on main thread first (fast path)
+	if (read_offset + r.length > DEFAULT_BLOCK_SIZE) {
+		// unaligned - spans two blocks
+		torrent_location const loc1{idx, r.piece, block_offset};
+		torrent_location const loc2{idx, r.piece, block_offset + DEFAULT_BLOCK_SIZE};
+		std::ptrdiff_t const len1 = DEFAULT_BLOCK_SIZE - read_offset;
 
-			if (read_offset + r.length > DEFAULT_BLOCK_SIZE) {
-				// unaligned - spans two blocks
-				torrent_location const loc1{idx, r.piece, block_offset};
-				torrent_location const loc2{idx, r.piece, block_offset + DEFAULT_BLOCK_SIZE};
-				std::ptrdiff_t const len1 = DEFAULT_BLOCK_SIZE - read_offset;
+		BOOST_ASSERT(r.length > len1);
 
-				BOOST_ASSERT(r.length > len1);
+		// Check cache on main thread
+		// ret encoding: (buf1 ? 2 : 0) | (buf2 ? 1 : 0)
+		int ret = m_cache.get2(loc1, loc2, [&](char const *buf1, char const *buf2) {
+			if (buf1) {
+				std::memcpy(buf, buf1 + read_offset, std::size_t(len1));
+			}
+			if (buf2) {
+				std::memcpy(buf + len1, buf2, std::size_t(r.length - len1));
+			}
+			return (buf1 ? 2 : 0) | (buf2 ? 1 : 0);
+		});
 
-				// 1. Check cache
-				// ret encoding: (buf1 ? 2 : 0) | (buf2 ? 1 : 0)
-				//   0 = neither, 1 = buf2 only, 2 = buf1 only, 3 = both
-				int ret = m_cache.get2(loc1, loc2, [&](char const *buf1, char const *buf2) {
-					if (buf1) {
-						std::memcpy(buf, buf1 + read_offset, std::size_t(len1));
-					}
-					if (buf2) {
-						std::memcpy(buf + len1, buf2, std::size_t(r.length - len1));
-					}
-					return (buf1 ? 2 : 0) | (buf2 ? 1 : 0);
-				});
+		if (ret == 3) {
+			// Both blocks found in cache - fast path, no thread switch
+			m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read, 2);
+			post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
+				h(std::move(b), error);
+			});
+			return;
+		}
 
-				if (ret == 3) {
-					// Both blocks found in cache
-					m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read, 2);
-					post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
-						h(std::move(b), error);
-					});
-					return;
-				}
+		// Partial or complete miss - post disk read to worker thread
+		auto offset = (ret == 0) ? r.start : ((ret & 2) ? (block_offset + DEFAULT_BLOCK_SIZE) : r.start);
+		auto len = (ret == 0) ? r.length : ((ret & 2) ? (r.length - len1) : len1);
+		auto buf_offset = (ret == 0) ? 0 : ((ret & 2) ? len1 : 0);
 
-				// 2. Partial or complete miss - read from disk
-				// Determine which block(s) to read
-				auto offset = (ret == 0) ? r.start : ((ret & 2) ? (block_offset + DEFAULT_BLOCK_SIZE) : r.start);
-				auto len = (ret == 0) ? r.length : ((ret & 2) ? (r.length - len1) : len1);
-				auto buf_offset = (ret == 0) ? 0 : ((ret & 2) ? len1 : 0);
+		boost::asio::post(read_thread_pool_,
+			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
+				libtorrent::storage_error error;
 
 				auto const start_time = libtorrent::clock_type::now();
 				storages_[idx]->read(buf + buf_offset, r.piece, offset, len, error);
@@ -288,23 +285,27 @@ void raw_disk_io::async_read(
 				post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 					h(std::move(b), error);
 				});
-			} else {
-				// aligned block
-				// 1. Check cache
-				bool cache_hit = m_cache.get({idx, r.piece, block_offset}, [&](char const *buf1) {
-					std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
-				});
+			});
+	} else {
+		// aligned block - check cache on main thread
+		bool cache_hit = m_cache.get({idx, r.piece, block_offset}, [&](char const *buf1) {
+			std::memcpy(buf, buf1 + read_offset, std::size_t(r.length));
+		});
 
-				if (cache_hit) {
-					// Cache hit
-					m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read);
-					post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
-						h(std::move(b), error);
-					});
-					return;
-				}
+		if (cache_hit) {
+			// Cache hit - fast path, no thread switch
+			m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read);
+			post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
+				h(std::move(b), error);
+			});
+			return;
+		}
 
-				// 2. Cache miss - read from disk
+		// Cache miss - post disk read to worker thread
+		boost::asio::post(read_thread_pool_,
+			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
+				libtorrent::storage_error error;
+
 				auto const start_time = libtorrent::clock_type::now();
 				storages_[idx]->read(buf, r.piece, r.start, r.length, error);
 				auto const read_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
@@ -323,8 +324,8 @@ void raw_disk_io::async_read(
 				post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 					h(std::move(b), error);
 				});
-			}
-		});
+			});
+	}
 }
 
 bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::peer_request const &r,
