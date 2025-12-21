@@ -26,8 +26,6 @@ public:
 	// thread pool sizes
 	int aio_threads = 16;  // default 16 threads for disk I/O
 	int hashing_threads = 8;  // default 8 threads for hashing
-	// cache partitions = aio_threads * cache_partitions_multiplier
-	int cache_partitions_multiplier = 4;  // default 4x aio_threads
 };
 
 }  // namespace ezio
