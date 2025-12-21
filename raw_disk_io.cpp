@@ -180,8 +180,10 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 
 	spdlog::info("[raw_disk_io] All {} I/O thread pools started successfully", num_io_threads_);
 
-	// Start stats reporting thread (temporary for debugging)
-	m_stats_thread = std::thread(&raw_disk_io::stats_report_loop, this);
+	// DISABLED: Stats reporting thread causes race condition without mutex
+	// The stats thread calls log_stats() which reads from all partitions
+	// while I/O threads are modifying them, causing segfault
+	// m_stats_thread = std::thread(&raw_disk_io::stats_report_loop, this);
 }
 
 raw_disk_io::~raw_disk_io()
