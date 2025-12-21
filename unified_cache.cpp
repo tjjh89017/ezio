@@ -26,20 +26,7 @@ void cache_watermark_callback(std::vector<std::weak_ptr<libtorrent::disk_observe
 
 bool cache_partition::insert(torrent_location const &loc, char const *data, int length, bool dirty)
 {
-	// Measure lock wait time
-	auto lock_start = std::chrono::steady_clock::now();
-	std::unique_lock<std::mutex> l(m_mutex);
-	auto lock_acquired = std::chrono::steady_clock::now();
-
-	auto lock_wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
-		lock_acquired - lock_start)
-							.count();
-
-	if (lock_wait_us > 100) {  // More than 100us wait = contention
-		m_stats.lock_contentions++;
-	}
-	m_stats.total_lock_wait_us += lock_wait_us;
-
+	// Lock-free: 1:1 thread:partition mapping ensures single-threaded access
 	// Check if entry already exists (update case)
 	auto it = m_entries.find(loc);
 	if (it != m_entries.end()) {
@@ -125,8 +112,6 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 
 void cache_partition::mark_clean(torrent_location const &loc)
 {
-	std::unique_lock<std::mutex> l(m_mutex);
-
 	auto it = m_entries.find(loc);
 	if (it != m_entries.end() && it->second.dirty) {
 		it->second.dirty = false;
@@ -144,8 +129,6 @@ void cache_partition::mark_clean(torrent_location const &loc)
 
 std::vector<torrent_location> cache_partition::collect_dirty_blocks()
 {
-	std::unique_lock<std::mutex> l(m_mutex);
-
 	std::vector<torrent_location> dirty_blocks;
 	dirty_blocks.reserve(m_entries.size());
 
@@ -165,8 +148,6 @@ std::vector<torrent_location> cache_partition::collect_dirty_blocks()
 std::vector<torrent_location> cache_partition::collect_dirty_blocks_for_storage(
 	libtorrent::storage_index_t storage)
 {
-	std::unique_lock<std::mutex> l(m_mutex);
-
 	std::vector<torrent_location> dirty_blocks;
 	dirty_blocks.reserve(m_entries.size());
 
@@ -183,14 +164,11 @@ std::vector<torrent_location> cache_partition::collect_dirty_blocks_for_storage(
 
 size_t cache_partition::size() const
 {
-	std::unique_lock<std::mutex> l(m_mutex);
 	return m_entries.size();
 }
 
 size_t cache_partition::dirty_count() const
 {
-	std::unique_lock<std::mutex> l(m_mutex);
-
 	size_t count = 0;
 	// NOTE: C++17 could use structured bindings: for (auto const &[loc, entry] : m_entries)
 	for (auto const &pair : m_entries) {
@@ -203,7 +181,6 @@ size_t cache_partition::dirty_count() const
 
 void cache_partition::set_max_entries(size_t new_max)
 {
-	std::unique_lock<std::mutex> l(m_mutex);
 	m_max_entries = new_max;
 
 	// If shrinking, evict entries until size <= new_max
@@ -217,8 +194,6 @@ void cache_partition::set_max_entries(size_t new_max)
 
 bool cache_partition::evict_one_lru()
 {
-	// NOTE: Caller must hold m_mutex!
-
 	// Single LRU eviction: scan from LRU end for first clean block
 	// Skip dirty blocks (cannot evict while pending write)
 	for (auto it = m_lru.rbegin(); it != m_lru.rend(); ++it) {
@@ -245,7 +220,7 @@ bool cache_partition::evict_one_lru()
 
 // touch() and move_to_list() removed - not needed with single LRU
 
-void cache_partition::check_buffer_level(std::unique_lock<std::mutex> &l)
+void cache_partition::check_buffer_level()
 {
 	// Watermark mechanism disabled for performance testing
 	// If cache is full, insert() returns false and caller does sync_write
@@ -420,8 +395,6 @@ cache_partition_stats unified_cache::get_aggregated_stats() const
 		total.misses += p_stats.misses;
 		total.inserts += p_stats.inserts;
 		total.evictions += p_stats.evictions;
-		total.lock_contentions += p_stats.lock_contentions;
-		total.total_lock_wait_us += p_stats.total_lock_wait_us;
 	}
 
 	return total;
@@ -440,16 +413,13 @@ void unified_cache::log_stats() const
 	uint64_t total_ops = total.hits + total.misses;
 
 	double hit_rate = (total_ops > 0) ? (100.0 * total.hits / total_ops) : 0.0;
-	double avg_lock_wait_us = (total_ops > 0) ? (double(total.total_lock_wait_us) / total_ops) : 0.0;
 
-	spdlog::info("[unified_cache] === Multi-LRU Cache Performance Statistics ===");
+	spdlog::info("[unified_cache] === Lock-Free Cache Performance Statistics ===");
 	spdlog::info("[unified_cache] Total operations: {}", total_ops);
 	spdlog::info("[unified_cache] Hits: {} ({:.2f}%)", total.hits, hit_rate);
 	spdlog::info("[unified_cache] Misses: {} ({:.2f}%)", total.misses, 100.0 - hit_rate);
 	spdlog::info("[unified_cache] Inserts: {}", total.inserts);
 	spdlog::info("[unified_cache] Evictions: {}", total.evictions);
-	spdlog::info("[unified_cache] Lock contentions (>100us): {}", total.lock_contentions);
-	spdlog::info("[unified_cache] Avg lock wait: {:.2f} us", avg_lock_wait_us);
 	spdlog::info("[unified_cache] Total entries: {} / {} ({:.1f}%)",
 		total_entries(), m_max_entries, usage_percentage());
 	spdlog::info("[unified_cache] Dirty entries: {}", total_dirty_count());
@@ -491,8 +461,8 @@ void unified_cache::log_stats() const
 		double p_hit_rate = (p_ops > 0) ? (100.0 * p_stats.hits / p_ops) : 0.0;
 
 		spdlog::info("[unified_cache]   P{:2d}: {:5d} entries ({:4.1f}%) | "
-					 "{:6d} ops | hit: {:5.2f}% | cont: {:4d}",
-			i, entries, usage, p_ops, p_hit_rate, p_stats.lock_contentions);
+					 "{:6d} ops | hit: {:5.2f}%",
+			i, entries, usage, p_ops, p_hit_rate);
 	}
 }
 
