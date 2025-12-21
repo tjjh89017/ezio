@@ -40,11 +40,11 @@ int main(int argc, char **argv)
 
 	//p.set_int(lt::settings_pack::alert_mask, lt::alert_category::peer | lt::alert_category::status);
 
-	// thread pool sizes from config
+	// thread pool size from config (used for both I/O and hashing)
 	p.set_int(lt::settings_pack::aio_threads, current_config.aio_threads);
-	p.set_int(lt::settings_pack::hashing_threads, current_config.hashing_threads);
-	spdlog::info("Thread pools: aio_threads={}, hashing_threads={}",
-		current_config.aio_threads, current_config.hashing_threads);
+	p.set_int(lt::settings_pack::hashing_threads, current_config.aio_threads);
+	spdlog::info("Thread pool: aio_threads={} (used for both I/O and hashing)",
+		current_config.aio_threads);
 
 	// network buffer sizes
 	p.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::suggest_read_cache);
