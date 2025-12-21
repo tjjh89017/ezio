@@ -366,28 +366,14 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 				bool exceeded = false;
 				bool cache_inserted = m_cache.insert_write(loc, temp_buf, r.length, exceeded, o);
 
-				char *cache_buf = nullptr;
-				if (cache_inserted) {
-					// Get buffer pointer from cache
-					m_cache.get(loc, [&](char const *data) {
-						cache_buf = const_cast<char *>(data);
-					});
-				}
-
+				// Write-through: always write to disk using temp buffer
 				libtorrent::storage_error error;
 				auto const start_time = libtorrent::clock_type::now();
+				storages_[storage]->write(temp_buf, r.piece, r.start, r.length, error);
 
-				if (cache_buf) {
-					// Write-through: write to disk using cache buffer
-					storages_[storage]->write(cache_buf, r.piece, r.start, r.length, error);
-
-					// Mark cache entry as clean (write completed)
+				// If cache insert succeeded, mark entry as clean (write completed)
+				if (cache_inserted) {
 					m_cache.mark_clean(loc);
-				} else {
-					// Cache unavailable - write directly from temp buffer
-					spdlog::debug("[async_write] Cache unavailable, writing from temp buffer (storage={}, piece={}, offset={})",
-						static_cast<int>(storage), static_cast<int>(r.piece), r.start);
-					storages_[storage]->write(temp_buf, r.piece, r.start, r.length, error);
 				}
 
 				auto const write_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
