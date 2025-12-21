@@ -6,7 +6,6 @@
 #include <functional>
 #include <list>
 #include <memory>
-#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -27,8 +26,6 @@ struct cache_partition_stats {
 	uint64_t misses = 0;
 	uint64_t inserts = 0;
 	uint64_t evictions = 0;
-	uint64_t lock_contentions = 0;
-	uint64_t total_lock_wait_us = 0;  // Microseconds spent waiting for lock
 };
 
 // Per-LRU-list statistics snapshot
@@ -46,8 +43,6 @@ struct cache_partition_stats_internal {
 	std::atomic<uint64_t> misses{0};
 	std::atomic<uint64_t> inserts{0};
 	std::atomic<uint64_t> evictions{0};
-	std::atomic<uint64_t> lock_contentions{0};
-	std::atomic<uint64_t> total_lock_wait_us{0};  // Microseconds spent waiting for lock
 
 	void reset()
 	{
@@ -55,8 +50,6 @@ struct cache_partition_stats_internal {
 		misses = 0;
 		inserts = 0;
 		evictions = 0;
-		lock_contentions = 0;
-		total_lock_wait_us = 0;
 	}
 
 	// Convert to snapshot
@@ -67,8 +60,6 @@ struct cache_partition_stats_internal {
 		s.misses = misses.load();
 		s.inserts = inserts.load();
 		s.evictions = evictions.load();
-		s.lock_contentions = lock_contentions.load();
-		s.total_lock_wait_us = total_lock_wait_us.load();
 		return s;
 	}
 };
@@ -162,11 +153,10 @@ struct cache_entry {
 	cache_entry &operator=(cache_entry const &) = delete;
 };
 
-// Single cache partition with independent mutex
+// Single cache partition (lock-free with 1:1 thread:partition mapping)
 class cache_partition
 {
 private:
-	mutable std::mutex m_mutex;	 // NOTE: With 1 thread : 1 partition, mutex not actually needed!
 	std::unordered_map<torrent_location, cache_entry> m_entries;
 
 	// Single LRU list (all blocks, both dirty and clean)
@@ -209,23 +199,10 @@ public:
 	// Similar to store_buffer::get()
 	// Get with exclusive access (for I/O thread owning this partition)
 	// Can touch (modify LRU)
+	// Lock-free: 1:1 thread:partition mapping ensures single-threaded access
 	template<typename Fun>
 	bool get(torrent_location const &loc, Fun f)
 	{
-		// Measure lock wait time
-		auto lock_start = std::chrono::steady_clock::now();
-		std::lock_guard<std::mutex> l(m_mutex);
-		auto lock_acquired = std::chrono::steady_clock::now();
-
-		auto lock_wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
-			lock_acquired - lock_start)
-								.count();
-
-		if (lock_wait_us > 100) {  // More than 100us wait = contention
-			m_stats.lock_contentions++;
-		}
-		m_stats.total_lock_wait_us += lock_wait_us;
-
 		auto it = m_entries.find(loc);
 		if (it != m_entries.end()) {
 			// Cache hit - touch (move to front of LRU)
@@ -248,23 +225,10 @@ public:
 
 	// Get two entries at once
 	// Similar to store_buffer::get2()
+	// Lock-free: 1:1 thread:partition mapping ensures single-threaded access
 	template<typename Fun>
 	int get2(torrent_location const &loc1, torrent_location const &loc2, Fun f)
 	{
-		// Measure lock wait time
-		auto lock_start = std::chrono::steady_clock::now();
-		std::lock_guard<std::mutex> l(m_mutex);
-		auto lock_acquired = std::chrono::steady_clock::now();
-
-		auto lock_wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
-			lock_acquired - lock_start)
-								.count();
-
-		if (lock_wait_us > 100) {  // More than 100us wait = contention
-			m_stats.lock_contentions++;
-		}
-		m_stats.total_lock_wait_us += lock_wait_us;
-
 		auto it1 = m_entries.find(loc1);
 		auto it2 = m_entries.find(loc2);
 
@@ -308,7 +272,6 @@ public:
 	// Get length of entry (returns 0 if not found)
 	int get_length(torrent_location const &loc) const
 	{
-		std::unique_lock<std::mutex> l(m_mutex);
 		auto it = m_entries.find(loc);
 		return (it == m_entries.end()) ? 0 : it->second.length;
 	}
@@ -401,8 +364,7 @@ public:
 
 	// Check watermark recovery (called after mark_clean or eviction)
 	// Similar to buffer_pool::check_buffer_level
-	// Caller must hold mutex (lock will be released before posting callbacks)
-	void check_buffer_level(std::unique_lock<std::mutex> &l);
+	void check_buffer_level();
 
 private:
 	// LRU eviction (O(1) with multi-LRU design)
