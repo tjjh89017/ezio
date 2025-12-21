@@ -1,14 +1,14 @@
 #ifndef __UNIFIED_CACHE_HPP__
 #define __UNIFIED_CACHE_HPP__
 
-#include <array>
 #include <atomic>
 #include <chrono>
 #include <functional>
 #include <list>
+#include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <unordered_map>
+#include <vector>
 
 #include <boost/asio/thread_pool.hpp>
 #include <libtorrent/libtorrent.hpp>
@@ -166,7 +166,7 @@ struct cache_entry {
 class cache_partition
 {
 private:
-	mutable std::shared_mutex m_mutex;	 // Shared mutex: multiple readers or single writer
+	mutable std::mutex m_mutex;	 // NOTE: With 1 thread : 1 partition, mutex not actually needed!
 	std::unordered_map<torrent_location, cache_entry> m_entries;
 
 	// Single LRU list (all blocks, both dirty and clean)
@@ -214,7 +214,7 @@ public:
 	{
 		// Measure lock wait time
 		auto lock_start = std::chrono::steady_clock::now();
-		std::unique_lock<std::shared_mutex> l(m_mutex);
+		std::lock_guard<std::mutex> l(m_mutex);
 		auto lock_acquired = std::chrono::steady_clock::now();
 
 		auto lock_wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -246,22 +246,6 @@ public:
 		return false;
 	}
 
-	// Get with shared access (for cross-partition access, e.g. hash threads)
-	// Read-only, no touch
-	template<typename Fun>
-	bool get_shared(torrent_location const &loc, Fun f) const
-	{
-		std::shared_lock<std::shared_mutex> l(m_mutex);
-
-		auto it = m_entries.find(loc);
-		if (it != m_entries.end()) {
-			// Call function with buffer pointer and dirty flag
-			f(it->second.buffer, it->second.dirty);
-			return true;
-		}
-		return false;
-	}
-
 	// Get two entries at once
 	// Similar to store_buffer::get2()
 	template<typename Fun>
@@ -269,7 +253,7 @@ public:
 	{
 		// Measure lock wait time
 		auto lock_start = std::chrono::steady_clock::now();
-		std::unique_lock<std::shared_mutex> l(m_mutex);
+		std::lock_guard<std::mutex> l(m_mutex);
 		auto lock_acquired = std::chrono::steady_clock::now();
 
 		auto lock_wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -431,19 +415,22 @@ private:
 	// Move entry to a different LRU list (for state transitions)
 };
 
-// Unified cache with 32 partitions (sharded for concurrency)
+// Unified cache with dynamic partitions (sharded for concurrency)
 class unified_cache
 {
 private:
-	static constexpr size_t NUM_PARTITIONS = 32;
-	std::array<cache_partition, NUM_PARTITIONS> m_partitions;
+	std::vector<std::unique_ptr<cache_partition>> m_partitions;	 // Dynamic size (= num_io_threads)
 	size_t m_max_entries;  // Total capacity across all partitions
-	// No longer needed - each partition has its own thread pool
 
 public:
 	// Constructor: max_entries = total cache size / 16KB
 	// Example: 512MB = (512 * 1024 * 1024) / 16384 = 32768 entries
 	explicit unified_cache(size_t max_entries);
+
+	// Resize partitions (called during initialization)
+	// num_partitions: number of I/O threads (= number of partitions)
+	// entries_per_partition: cache entries per partition
+	void resize_partitions(size_t num_partitions, size_t entries_per_partition);
 
 	// Write operation: insert and mark dirty
 	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
@@ -463,7 +450,7 @@ public:
 	bool get(torrent_location const &loc, Fun f)
 	{
 		size_t partition_idx = get_partition_index(loc);
-		return m_partitions[partition_idx].get(loc, f);
+		return m_partitions[partition_idx]->get(loc, f);
 	}
 
 	// Get two entries at once
@@ -475,19 +462,19 @@ public:
 
 		// If same partition, use single-partition get2
 		if (partition_idx1 == partition_idx2) {
-			return m_partitions[partition_idx1].get2(loc1, loc2, f);
+			return m_partitions[partition_idx1]->get2(loc1, loc2, f);
 		}
 
 		// Different partitions - need to handle separately
 		// Get from partition 1
 		char const *buf1 = nullptr;
-		bool found1 = m_partitions[partition_idx1].get(loc1, [&](char const *b) {
+		bool found1 = m_partitions[partition_idx1]->get(loc1, [&](char const *b) {
 			buf1 = b;
 		});
 
 		// Get from partition 2
 		char const *buf2 = nullptr;
-		bool found2 = m_partitions[partition_idx2].get(loc2, [&](char const *b) {
+		bool found2 = m_partitions[partition_idx2]->get(loc2, [&](char const *b) {
 			buf2 = b;
 		});
 
@@ -505,7 +492,7 @@ public:
 	int get_length(torrent_location const &loc) const
 	{
 		size_t partition_idx = get_partition_index(loc);
-		return m_partitions[partition_idx].get_length(loc);
+		return m_partitions[partition_idx]->get_length(loc);
 	}
 
 	// Collect all dirty blocks for a storage
@@ -553,7 +540,7 @@ public:
 	bool check_watermark(torrent_location const &loc, std::shared_ptr<libtorrent::disk_observer> o)
 	{
 		size_t partition_idx = get_partition_index(loc);
-		return m_partitions[partition_idx].check_watermark(o);
+		return m_partitions[partition_idx]->check_watermark(o);
 	}
 
 	// Check watermark for a specific location (without observer)
@@ -561,14 +548,14 @@ public:
 	bool check_watermark_readonly(torrent_location const &loc) const
 	{
 		size_t partition_idx = get_partition_index(loc);
-		return !m_partitions[partition_idx].is_exceeded();
+		return !m_partitions[partition_idx]->is_exceeded();
 	}
 
 	// Check if any partition is exceeded
 	bool is_any_partition_exceeded() const
 	{
-		for (size_t i = 0; i < NUM_PARTITIONS; ++i) {
-			if (m_partitions[i].is_exceeded()) {
+		for (size_t i = 0; i < m_partitions.size(); ++i) {
+			if (m_partitions[i]->is_exceeded()) {
 				return true;
 			}
 		}
@@ -578,12 +565,13 @@ public:
 private:
 	size_t get_partition_index(torrent_location const &loc) const
 	{
-		// Full hash-based partitioning (better distribution across partitions)
-		size_t hash = std::hash<torrent_location>{}(loc);
-		return (hash >> 32) % NUM_PARTITIONS;
-
-		// Alternative: Simple piece-based partitioning (lower overhead)
-		// return static_cast<size_t>(loc.piece) % NUM_PARTITIONS;
+		// Hash only storage + piece (NOT offset)
+		// This ensures all blocks of same piece go to same partition/thread
+		// Important for: hash operations can access all blocks without cross-partition
+		size_t h = 0;
+		h ^= std::hash<int>{}(static_cast<int>(loc.torrent));
+		h ^= std::hash<int>{}(static_cast<int>(loc.piece));
+		return h % m_partitions.size();
 	}
 };
 

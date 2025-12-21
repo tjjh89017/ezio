@@ -156,25 +156,52 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	m_stats_counters(cnt),
 	m_buffer_pool(ioc),
 	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
-	read_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
-	write_thread_pool_(sett.get_int(libtorrent::settings_pack::aio_threads)),
-	hash_thread_pool_(sett.get_int(libtorrent::settings_pack::hashing_threads))
+	num_io_threads_(sett.get_int(libtorrent::settings_pack::aio_threads))
 {
+	// Calculate entries per partition (cache is divided equally among threads)
+	// NOTE: Don't use reserve() on io_thread_pools_ as thread_pool is not movable
+	size_t cache_entries = calculate_cache_entries(sett);
+	size_t entries_per_partition = cache_entries / num_io_threads_;
+
+	spdlog::info("[raw_disk_io] Initializing {} I/O threads with consistent hashing",
+		num_io_threads_);
+	spdlog::info("[raw_disk_io] Each thread owns {} cache entries ({} MB)",
+		entries_per_partition,
+		entries_per_partition * DEFAULT_BLOCK_SIZE / (1024 * 1024));
+
+	// Initialize cache partitions
+	m_cache.resize_partitions(num_io_threads_, entries_per_partition);
+
+	// Create each thread pool with 1 thread
+	for (size_t i = 0; i < num_io_threads_; ++i) {
+		io_thread_pools_.emplace_back(std::make_unique<boost::asio::thread_pool>(1));  // 1 thread per pool
+		spdlog::debug("[raw_disk_io] I/O thread pool {} created", i);
+	}
+
+	spdlog::info("[raw_disk_io] All {} I/O thread pools started successfully", num_io_threads_);
+
 	// Start stats reporting thread (temporary for debugging)
 	m_stats_thread = std::thread(&raw_disk_io::stats_report_loop, this);
 }
 
 raw_disk_io::~raw_disk_io()
 {
-	// Stop stats reporting thread
+	spdlog::info("[raw_disk_io] Shutting down: waiting for all I/O to complete...");
+
+	// Stop stats reporting thread first
 	m_shutdown = true;
 	if (m_stats_thread.joinable()) {
 		m_stats_thread.join();
 	}
 
-	read_thread_pool_.join();
-	write_thread_pool_.join();
-	hash_thread_pool_.join();
+	// Join all thread pools (waits for all pending work to complete)
+	for (size_t i = 0; i < num_io_threads_; ++i) {
+		spdlog::debug("[raw_disk_io] Joining I/O thread pool {}...", i);
+		io_thread_pools_[i]->join();  // Blocks until all work done
+		spdlog::debug("[raw_disk_io] I/O thread pool {} joined", i);
+	}
+
+	spdlog::info("[raw_disk_io] All I/O threads stopped, shutdown complete");
 }
 
 libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params const &p,
@@ -268,7 +295,9 @@ void raw_disk_io::async_read(
 		auto len = (ret == 0) ? r.length : ((ret & 2) ? (r.length - len1) : len1);
 		auto buf_offset = (ret == 0) ? 0 : ((ret & 2) ? len1 : 0);
 
-		boost::asio::post(read_thread_pool_,
+		// Use consistent hashing to select thread (based on storage + piece)
+		size_t thread_idx = get_thread_index(idx, r.piece);
+		boost::asio::post((*io_thread_pools_[thread_idx]),
 			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 				libtorrent::storage_error error;
 
@@ -302,7 +331,8 @@ void raw_disk_io::async_read(
 		}
 
 		// Cache miss - post disk read to worker thread
-		boost::asio::post(read_thread_pool_,
+		size_t thread_idx = get_thread_index(idx, r.piece);
+		boost::asio::post((*io_thread_pools_[thread_idx]),
 			[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 				libtorrent::storage_error error;
 
@@ -354,7 +384,8 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 		if (cache_buf) {
 			// Write-through: immediately write to disk using cache buffer
-			boost::asio::post(write_thread_pool_,
+			size_t thread_idx = get_thread_index(storage, r.piece);
+			boost::asio::post((*io_thread_pools_[thread_idx]),
 				[=, this, handler = std::move(handler)]() {
 					libtorrent::storage_error error;
 
@@ -429,7 +460,10 @@ void raw_disk_io::async_hash(
 
 	auto buffer = libtorrent::disk_buffer_holder(m_buffer_pool, buf, DEFAULT_BLOCK_SIZE);
 
-	boost::asio::post(hash_thread_pool_,
+	// Use consistent hashing: hash operations use same thread as I/O for this piece
+	// Since all blocks of a piece go to same partition, no cross-partition access needed
+	size_t thread_idx = get_thread_index(storage, piece);
+	boost::asio::post((*io_thread_pools_[thread_idx]),
 		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
 			libtorrent::storage_error error;
 			libtorrent::hasher ph;
