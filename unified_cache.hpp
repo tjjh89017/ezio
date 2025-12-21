@@ -182,6 +182,7 @@ private:
 	std::list<torrent_location> m_read_lru2;  // clean blocks, frequent (read_lru2 state)
 
 	size_t m_max_entries;
+	libtorrent::io_context *m_ioc;	// For posting watermark callbacks (can be nullptr)
 	cache_partition_stats_internal m_stats;	 // Performance statistics (atomic)
 
 	// Per-LRU-list statistics
@@ -198,14 +199,17 @@ private:
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> m_observers;
 
 	// Watermark thresholds (configurable)
-	static constexpr float DIRTY_HIGH_WATERMARK = 0.90f;  // 90% dirty = stop writes
-	static constexpr float DIRTY_LOW_WATERMARK = 0.70f;	 // 70% dirty = resume writes
+	static constexpr float DIRTY_HIGH_WATERMARK = 0.875f;  // 87.5% dirty = stop writes
+	static constexpr float DIRTY_LOW_WATERMARK = 0.50f;	 // 50% dirty = resume writes
 
 public:
-	cache_partition() : m_max_entries(0)
+	cache_partition() : m_max_entries(0), m_ioc(nullptr)
 	{
 	}
-	explicit cache_partition(size_t max_entries);
+	cache_partition(size_t max_entries, libtorrent::io_context *ioc) :
+		m_max_entries(max_entries), m_ioc(ioc)
+	{
+	}
 
 	// Insert or update cache entry
 	// If dirty=true, marks as needs writeback
@@ -495,26 +499,10 @@ public:
 		return static_cast<float>(m_num_dirty) / m_max_entries;
 	}
 
-	// Check watermark recovery and notify observers
-	// Called after mark_clean or eviction (caller must hold mutex)
-	// Returns list of observers to notify (caller should notify without holding lock)
-	std::vector<std::weak_ptr<libtorrent::disk_observer>> check_watermark_recovery()
-	{
-		std::vector<std::weak_ptr<libtorrent::disk_observer>> observers_to_notify;
-
-		if (!m_exceeded || m_max_entries == 0)
-			return observers_to_notify;
-
-		float dirty_ratio = static_cast<float>(m_num_dirty) / m_max_entries;
-
-		if (dirty_ratio < DIRTY_LOW_WATERMARK) {
-			// Recovered! Notify all observers
-			m_exceeded = false;
-			m_observers.swap(observers_to_notify);
-		}
-
-		return observers_to_notify;
-	}
+	// Check watermark recovery (called after mark_clean or eviction)
+	// Similar to buffer_pool::check_buffer_level
+	// Caller must hold mutex (lock will be released before posting callbacks)
+	void check_buffer_level(std::unique_lock<std::mutex> &l);
 
 private:
 	// LRU eviction (O(1) with multi-LRU design)
@@ -535,11 +523,12 @@ private:
 	static constexpr size_t NUM_PARTITIONS = 32;
 	std::array<cache_partition, NUM_PARTITIONS> m_partitions;
 	size_t m_max_entries;  // Total capacity across all partitions
+	libtorrent::io_context &m_ioc;	// For posting observer callbacks
 
 public:
 	// Constructor: max_entries = total cache size / 16KB
 	// Example: 512MB = (512 * 1024 * 1024) / 16384 = 32768 entries
-	explicit unified_cache(size_t max_entries);
+	explicit unified_cache(size_t max_entries, libtorrent::io_context &ioc);
 
 	// Write operation: insert and mark dirty
 	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
