@@ -334,10 +334,13 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 {
 	BOOST_ASSERT(DEFAULT_BLOCK_SIZE >= r.length);
 
+	torrent_location loc{storage, r.piece, r.start};
+
 	// Insert into cache (cache allocates buffer and copies data)
 	// Marked as dirty to prevent eviction during write
-	torrent_location loc{storage, r.piece, r.start};
-	bool cache_inserted = m_cache.insert_write(loc, buf, r.length);
+	// libtorrent 2.x design: always insert, but check watermark and return exceeded status
+	bool exceeded = false;
+	bool cache_inserted = m_cache.insert_write(loc, buf, r.length, exceeded);
 
 	if (cache_inserted) {
 		// Get buffer pointer from cache
@@ -373,7 +376,9 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 					});
 				});
 
-			return false;  // No buffer pool, so never exceeded
+			// Return exceeded status (like libtorrent 2.x)
+			// If exceeded, libtorrent will pause this peer until cache recovers
+			return exceeded;
 		}
 		// Cache get failed - fall through to sync write
 	}

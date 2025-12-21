@@ -16,6 +16,13 @@
 namespace ezio
 {
 
+// Cache state enum: which LRU list does this entry belong to
+enum class cache_state : uint8_t {
+	write_lru = 0,	// dirty blocks, in write_lru list
+	read_lru1 = 1,	// clean blocks, in read_lru1 list (accessed once)
+	read_lru2 = 2  // clean blocks, in read_lru2 list (accessed 2+ times)
+};
+
 // Per-partition statistics snapshot (non-atomic for copying)
 struct cache_partition_stats {
 	uint64_t hits = 0;
@@ -24,6 +31,15 @@ struct cache_partition_stats {
 	uint64_t evictions = 0;
 	uint64_t lock_contentions = 0;
 	uint64_t total_lock_wait_us = 0;  // Microseconds spent waiting for lock
+};
+
+// Per-LRU-list statistics snapshot
+struct lru_stats_snapshot {
+	uint64_t size = 0;	// current number of entries
+	uint64_t inserts = 0;  // blocks inserted into this list
+	uint64_t hits = 0;	// cache hits in this list
+	uint64_t promotions = 0;  // moves to higher priority list
+	uint64_t evictions = 0;	 // blocks evicted from this list
 };
 
 // Internal atomic statistics (not copyable)
@@ -59,14 +75,43 @@ struct cache_partition_stats_internal {
 	}
 };
 
+// Per-LRU-list atomic statistics
+struct lru_stats_internal {
+	std::atomic<uint64_t> inserts{0};
+	std::atomic<uint64_t> hits{0};
+	std::atomic<uint64_t> promotions{0};
+	std::atomic<uint64_t> evictions{0};
+
+	void reset()
+	{
+		inserts = 0;
+		hits = 0;
+		promotions = 0;
+		evictions = 0;
+	}
+
+	lru_stats_snapshot snapshot(size_t current_size) const
+	{
+		lru_stats_snapshot s;
+		s.size = current_size;
+		s.inserts = inserts.load();
+		s.hits = hits.load();
+		s.promotions = promotions.load();
+		s.evictions = evictions.load();
+		return s;
+	}
+};
+
 // Cache entry: 16KB fixed size block (buffer always allocated as 16KB, but actual data size may vary)
 struct cache_entry {
 	torrent_location loc;  // (storage, piece, offset)
 	char *buffer;  // 16KB buffer, malloc'ed by cache
 	int length;	 // Actual data size in buffer (can be < 16KB for last block)
 	bool dirty;	 // Needs writeback to disk?
+	cache_state state;	// Which LRU list this entry belongs to
 
-	// LRU metadata
+	// LRU metadata: iterator pointing to this entry's position in the LRU list
+	// (write_lru, read_lru1, or read_lru2 depending on state)
 	std::list<torrent_location>::iterator lru_iter;
 
 	// Default constructor with zero-initialized location
@@ -74,7 +119,8 @@ struct cache_entry {
 		loc(libtorrent::storage_index_t(0), libtorrent::piece_index_t(0), 0),
 		buffer(nullptr),
 		length(0),
-		dirty(false)
+		dirty(false),
+		state(cache_state::read_lru1)
 	{
 	}
 
@@ -92,6 +138,7 @@ struct cache_entry {
 		buffer(other.buffer),
 		length(other.length),
 		dirty(other.dirty),
+		state(other.state),
 		lru_iter(other.lru_iter)
 	{
 		other.buffer = nullptr;	 // Transfer ownership
@@ -109,6 +156,7 @@ struct cache_entry {
 			buffer = other.buffer;
 			length = other.length;
 			dirty = other.dirty;
+			state = other.state;
 			lru_iter = other.lru_iter;
 			other.buffer = nullptr;	 // Transfer ownership
 			other.length = 0;
@@ -127,9 +175,28 @@ class cache_partition
 private:
 	mutable std::mutex m_mutex;	 // mutable for const methods
 	std::unordered_map<torrent_location, cache_entry> m_entries;
-	std::list<torrent_location> m_lru_list;	 // MRU at front, LRU at back
+
+	// Three separate LRU lists (multi-LRU design)
+	std::list<torrent_location> m_write_lru;  // dirty blocks (write_lru state)
+	std::list<torrent_location> m_read_lru1;  // clean blocks, read once (read_lru1 state)
+	std::list<torrent_location> m_read_lru2;  // clean blocks, frequent (read_lru2 state)
+
 	size_t m_max_entries;
 	cache_partition_stats_internal m_stats;	 // Performance statistics (atomic)
+
+	// Per-LRU-list statistics
+	lru_stats_internal m_write_lru_stats;
+	lru_stats_internal m_read_lru1_stats;
+	lru_stats_internal m_read_lru2_stats;
+
+	// Watermark tracking (for backpressure)
+	size_t m_num_dirty{0};	// count of dirty blocks (in write_lru)
+	size_t m_num_clean{0};	// count of clean blocks (in read_lru1 + read_lru2)
+	std::atomic<bool> m_exceeded{false};  // true = cache under pressure
+
+	// Watermark thresholds (configurable)
+	static constexpr float DIRTY_HIGH_WATERMARK = 0.90f;  // 90% dirty = stop writes
+	static constexpr float DIRTY_LOW_WATERMARK = 0.70f;	 // 70% dirty = resume writes
 
 public:
 	cache_partition() : m_max_entries(0)
@@ -140,11 +207,15 @@ public:
 	// Insert or update cache entry
 	// If dirty=true, marks as needs writeback
 	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
+	// Returns true on success, false if failed to allocate buffer
+	// Note: Even if watermark is exceeded, insert will succeed (allows over-allocation)
+	// Caller should check watermark separately via check_watermark()
 	bool insert(torrent_location const &loc, char const *data, int length, bool dirty);
 
 	// Try to get from cache
 	// Calls function f with buffer pointer if found
 	// Similar to store_buffer::get()
+	// Multi-LRU design: implements adaptive promotion
 	template<typename Fun>
 	bool get(torrent_location const &loc, Fun f)
 	{
@@ -167,10 +238,36 @@ public:
 			// Cache hit
 			m_stats.hits++;
 
-			// Move to front of LRU (most recently used)
-			m_lru_list.erase(it->second.lru_iter);
-			m_lru_list.push_front(loc);
-			it->second.lru_iter = m_lru_list.begin();
+			// Multi-LRU adaptive promotion logic
+			if (it->second.state == cache_state::read_lru1) {
+				// First repeat access - promote to read_lru2 (frequent)
+				move_to_list(it->second, cache_state::read_lru2);
+			} else {
+				// Already in write_lru or read_lru2 - just touch (move to front)
+				std::list<torrent_location> *target_list = nullptr;
+				lru_stats_internal *target_stats = nullptr;
+
+				switch (it->second.state) {
+				case cache_state::write_lru:
+					target_list = &m_write_lru;
+					target_stats = &m_write_lru_stats;
+					break;
+				case cache_state::read_lru2:
+					target_list = &m_read_lru2;
+					target_stats = &m_read_lru2_stats;
+					break;
+				default:
+					// Should not reach here (read_lru1 handled above)
+					break;
+				}
+
+				if (target_list) {
+					target_list->erase(it->second.lru_iter);
+					target_list->push_front(loc);
+					it->second.lru_iter = target_list->begin();
+					target_stats->hits++;
+				}
+			}
 
 			// Call function with buffer pointer
 			f(it->second.buffer);
@@ -221,16 +318,67 @@ public:
 			return 0;
 		}
 
-		// Touch LRU for found entries
+		// Multi-LRU promotion logic for found entries
 		if (buf1) {
-			m_lru_list.erase(it1->second.lru_iter);
-			m_lru_list.push_front(loc1);
-			it1->second.lru_iter = m_lru_list.begin();
+			if (it1->second.state == cache_state::read_lru1) {
+				// Promote to read_lru2
+				move_to_list(it1->second, cache_state::read_lru2);
+			} else {
+				// Touch within current list
+				std::list<torrent_location> *list1 = nullptr;
+				lru_stats_internal *stats1 = nullptr;
+
+				switch (it1->second.state) {
+				case cache_state::write_lru:
+					list1 = &m_write_lru;
+					stats1 = &m_write_lru_stats;
+					break;
+				case cache_state::read_lru2:
+					list1 = &m_read_lru2;
+					stats1 = &m_read_lru2_stats;
+					break;
+				default:
+					break;
+				}
+
+				if (list1) {
+					list1->erase(it1->second.lru_iter);
+					list1->push_front(loc1);
+					it1->second.lru_iter = list1->begin();
+					stats1->hits++;
+				}
+			}
 		}
+
 		if (buf2) {
-			m_lru_list.erase(it2->second.lru_iter);
-			m_lru_list.push_front(loc2);
-			it2->second.lru_iter = m_lru_list.begin();
+			if (it2->second.state == cache_state::read_lru1) {
+				// Promote to read_lru2
+				move_to_list(it2->second, cache_state::read_lru2);
+			} else {
+				// Touch within current list
+				std::list<torrent_location> *list2 = nullptr;
+				lru_stats_internal *stats2 = nullptr;
+
+				switch (it2->second.state) {
+				case cache_state::write_lru:
+					list2 = &m_write_lru;
+					stats2 = &m_write_lru_stats;
+					break;
+				case cache_state::read_lru2:
+					list2 = &m_read_lru2;
+					stats2 = &m_read_lru2_stats;
+					break;
+				default:
+					break;
+				}
+
+				if (list2) {
+					list2->erase(it2->second.lru_iter);
+					list2->push_front(loc2);
+					it2->second.lru_iter = list2->begin();
+					stats2->hits++;
+				}
+			}
 		}
 
 		return f(buf1, buf2);
@@ -274,15 +422,78 @@ public:
 	void reset_stats()
 	{
 		m_stats.reset();
+		m_write_lru_stats.reset();
+		m_read_lru1_stats.reset();
+		m_read_lru2_stats.reset();
+	}
+
+	// Get per-LRU-list statistics snapshots
+	lru_stats_snapshot get_write_lru_stats() const
+	{
+		std::unique_lock<std::mutex> l(m_mutex);
+		return m_write_lru_stats.snapshot(m_write_lru.size());
+	}
+
+	lru_stats_snapshot get_read_lru1_stats() const
+	{
+		std::unique_lock<std::mutex> l(m_mutex);
+		return m_read_lru1_stats.snapshot(m_read_lru1.size());
+	}
+
+	lru_stats_snapshot get_read_lru2_stats() const
+	{
+		std::unique_lock<std::mutex> l(m_mutex);
+		return m_read_lru2_stats.snapshot(m_read_lru2.size());
+	}
+
+	// Watermark checking (for backpressure)
+	// Returns true if cache is OK, false if exceeded (caller should pause writes)
+	bool check_watermark()
+	{
+		if (m_max_entries == 0)
+			return true;
+
+		float dirty_ratio = static_cast<float>(m_num_dirty) / m_max_entries;
+
+		if (!m_exceeded && dirty_ratio > DIRTY_HIGH_WATERMARK) {
+			// Exceeded high watermark - cache under pressure
+			m_exceeded = true;
+			return false;
+		}
+
+		if (m_exceeded && dirty_ratio < DIRTY_LOW_WATERMARK) {
+			// Recovered below low watermark
+			m_exceeded = false;
+			return true;
+		}
+
+		return !m_exceeded;	 // Current state
+	}
+
+	// Get current watermark status
+	bool is_exceeded() const
+	{
+		return m_exceeded;
+	}
+
+	// Get dirty ratio (0.0 to 1.0)
+	float get_dirty_ratio() const
+	{
+		if (m_max_entries == 0)
+			return 0.0f;
+		return static_cast<float>(m_num_dirty) / m_max_entries;
 	}
 
 private:
-	// LRU eviction
+	// LRU eviction (O(1) with multi-LRU design)
 	// Returns false if cannot evict (e.g., all entries are dirty)
 	bool evict_one_lru();
 
 	// Move entry to front of LRU (most recently used)
 	void touch(torrent_location const &loc);
+
+	// Move entry to a different LRU list (for state transitions)
+	void move_to_list(cache_entry &entry, cache_state new_state);
 };
 
 // Unified cache with 32 partitions (sharded for concurrency)
@@ -300,7 +511,9 @@ public:
 
 	// Write operation: insert and mark dirty
 	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
-	bool insert_write(torrent_location const &loc, char const *data, int length);
+	// exceeded: output parameter, set to true if watermark exceeded
+	// Returns true on success, false if failed to allocate buffer
+	bool insert_write(torrent_location const &loc, char const *data, int length, bool &exceeded);
 
 	// Read operation: insert clean entry (from disk read)
 	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
@@ -395,6 +608,26 @@ public:
 
 	// Log detailed statistics (for debugging)
 	void log_stats() const;
+
+	// Check watermark for a specific location
+	// Returns true if OK to insert, false if exceeded (caller should pause writes)
+	// Note: This modifies m_exceeded state in the partition, so it's not const
+	bool check_watermark(torrent_location const &loc)
+	{
+		size_t partition_idx = get_partition_index(loc);
+		return m_partitions[partition_idx].check_watermark();
+	}
+
+	// Check if any partition is exceeded
+	bool is_any_partition_exceeded() const
+	{
+		for (size_t i = 0; i < NUM_PARTITIONS; ++i) {
+			if (m_partitions[i].is_exceeded()) {
+				return true;
+			}
+		}
+		return false;
+	}
 
 private:
 	size_t get_partition_index(torrent_location const &loc) const
