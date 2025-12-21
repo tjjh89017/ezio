@@ -379,10 +379,6 @@ More details about EZIO design and benchmark are in [A Novel Massive Deployment 
 
 ## Future Improvements
 
-### Performance Optimizations (In Progress)
-- **Write coalescing**: Batch multiple writes with `writev()` for better HDD performance
-- **Persistent cache**: Replace temporary store_buffer with sharded persistent cache
-
 ### Integration
 - Integrate in OpenStack Ironic Project, improve Mirantis' works
     - http://web.archive.org/web/20211124125644/https://www.mirantis.com/blog/cut-ironic-provisioning-time-using-torrents/
@@ -394,6 +390,7 @@ More details about EZIO design and benchmark are in [A Novel Massive Deployment 
 - ✅ Event-driven alert handling
 - ✅ Unified buffer pool (256MB)
 - ✅ Configurable thread pools
+- ✅ Lock-free unified cache (512MB default, configurable)
 
 ## Contribute
 

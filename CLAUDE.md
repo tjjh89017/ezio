@@ -98,8 +98,8 @@
 - `docs/SESSION_MEMORY.md` - Complete conversation history (completed work)
 
 **Planning Documents:** (in `docs/plan/`)
-- `docs/plan/PHASE_PLAN_REFORMULATED.md` - Main phase plan (Phase 2+ remaining)
-- `docs/plan/WRITE_COALESCING_DESIGN.md` - Phase 3.2 design (deferred)
+- `docs/plan/PHASE_PLAN_REFORMULATED.md` - Main phase plan (archived)
+- `docs/plan/WRITE_COALESCING_DESIGN.md` - Phase 3.2 design (cancelled)
 - `docs/plan/FUTURE_OPTIMIZATIONS.md` - 25 optimization opportunities
 - `docs/plan/HDD_OPTIMIZATION.md` - HDD-specific strategies
 
@@ -168,9 +168,6 @@ EZIO is a **BitTorrent-based raw disk imaging tool** for fast LAN deployment. Th
 - No store_buffer needed - consistent hashing guarantees async_read executes after async_write for the same piece
 - All cache operations on worker threads (zero main thread access)
 - Lock-free stats reporting (each thread logs its own partition every 30s)
-
-**Next Phase (Optional):**
-- **Phase 3.2**: Write coalescing with pwritev() for HDD optimization
 
 ---
 
@@ -448,15 +445,6 @@ session.apply_settings(pack);
 
 ---
 
-### Future Phases
-
-**Phase 3: Unified Cache + Write Coalescing** (4-6 days)
-- Replace store_buffer with persistent sharded cache
-- Implement write coalescing with writev()
-- Expected: HDD +73%, NVMe +20-30% additional
-
----
-
 ## Implementation Guide
 
 ### Code Style
@@ -509,9 +497,8 @@ find . -maxdepth 1 -name "*.cpp" -o -name "*.hpp" | grep -v "./tmp/" | xargs cla
 **Main Documents:**
 - `CLAUDE.md` - This file (quick reference)
 - `docs/SESSION_MEMORY.md` - Complete conversation history
-- `docs/PHASE_PLAN_REFORMULATED.md` - Remaining phases
+- `docs/PHASE_PLAN_REFORMULATED.md` - Remaining phases (archived)
 - `docs/MUTEX_ANALYSIS.md` - Mutex contention analysis
-- `docs/WRITE_COALESCING_DESIGN.md` - Write optimization design
 
 ### Source Code
 
