@@ -339,8 +339,9 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	// Insert into cache (cache allocates buffer and copies data)
 	// Marked as dirty to prevent eviction during write
 	// libtorrent 2.x design: always insert, but check watermark and return exceeded status
+	// Pass observer for watermark recovery notification
 	bool exceeded = false;
-	bool cache_inserted = m_cache.insert_write(loc, buf, r.length, exceeded);
+	bool cache_inserted = m_cache.insert_write(loc, buf, r.length, exceeded, o);
 
 	if (cache_inserted) {
 		// Get buffer pointer from cache
