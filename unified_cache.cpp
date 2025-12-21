@@ -635,15 +635,15 @@ void unified_cache::log_stats() const
 	double r1_pct = (total_ent > 0) ? (100.0 * total_read_lru1_size / total_ent) : 0.0;
 	double r2_pct = (total_ent > 0) ? (100.0 * total_read_lru2_size / total_ent) : 0.0;
 
-	spdlog::info("[unified_cache]   write_lru: {:6d} entries ({:5.1f}%) | {:6d} inserts | {:6d} hits | {:6d} → lru2 | {:6d} evictions",
+	spdlog::info("[unified_cache]   write_lru: {:6} entries ({:5.1f}%) | {:6} inserts | {:6} hits | {:6} → lru2 | {:6} evictions",
 		total_write_lru_size, w_pct, total_write_lru_inserts, total_write_lru_hits,
 		total_write_lru_promotions, total_write_lru_evictions);
 
-	spdlog::info("[unified_cache]   read_lru1: {:6d} entries ({:5.1f}%) | {:6d} inserts | {:6d} hits | {:6d} promoted | {:6d} evictions",
+	spdlog::info("[unified_cache]   read_lru1: {:6} entries ({:5.1f}%) | {:6} inserts | {:6} hits | {:6} promoted | {:6} evictions",
 		total_read_lru1_size, r1_pct, total_read_lru1_inserts, total_read_lru1_hits,
 		total_read_lru1_promotions, total_read_lru1_evictions);
 
-	spdlog::info("[unified_cache]   read_lru2: {:6d} entries ({:5.1f}%) | {:6d} inserts | {:6d} hits | {:6d} promoted | {:6d} evictions",
+	spdlog::info("[unified_cache]   read_lru2: {:6} entries ({:5.1f}%) | {:6} inserts | {:6} hits | {:6} promoted | {:6} evictions",
 		total_read_lru2_size, r2_pct, total_read_lru2_inserts, total_read_lru2_hits,
 		total_read_lru2_promotions, total_read_lru2_evictions);
 
