@@ -223,6 +223,7 @@ class TorrentWidget(urwid.WidgetWrap):
         # Create widgets
         self.name_text_widget = urwid.Text("")
         self.name_attr_map = urwid.AttrMap(self.name_text_widget, 'state_default')
+        self.total_done_text = urwid.Text("", align="right")
         self.total_text = urwid.Text("", align="right")
         self.progress_bar = urwid.ProgressBar('pg normal', 'pg complete', 0, 1)
 
@@ -251,10 +252,11 @@ class TorrentWidget(urwid.WidgetWrap):
 
     def _build_layout(self):
         """Build the widget layout"""
-        # Line 1: Name and total size
+        # Line 1: Name and size (downloaded / total)
         line1 = urwid.Columns([
-            ('pack', self.name_attr_map),
-            ('pack', urwid.Text(' ')),
+            ('weight', 1, self.name_attr_map),
+            ('pack', self.total_done_text),
+            ('pack', urwid.Text(' / ')),
             ('pack', self.total_text),
         ])
 
@@ -272,7 +274,6 @@ class TorrentWidget(urwid.WidgetWrap):
         # Line 4: Stats
         line4 = urwid.Columns([
             ('weight', 1, urwid.Text('')),
-            ('pack', self.total_done_widget),
             ('pack', self.state_widget),
             ('pack', self.num_peers_widget),
             ('pack', self.active_time_widget),
@@ -318,7 +319,8 @@ class TorrentWidget(urwid.WidgetWrap):
             color = get_state_color(torrent_data)
             self.name_attr_map.set_attr_map({None: color})
 
-        # Update sizes
+        # Update sizes (downloaded / total)
+        self.total_done_text.set_text(to_size(torrent_data.total_done))
         total = torrent_data.total if torrent_data.total > 0 else torrent_data.total_done
         self.total_text.set_text(to_size(total))
 
