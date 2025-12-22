@@ -487,17 +487,21 @@ class TorrentListWidget(urwid.WidgetWrap):
         return filtered
 
     def _sort_torrents(self, data, hashes):
-        """Sort torrents based on current sort mode"""
+        """Sort torrents based on current sort mode
+
+        reverse=False: Ascending (▲) - A→Z, small→large
+        reverse=True:  Descending (▼) - Z→A, large→small
+        """
         if self.sort_mode == SortMode.PATH:
             hashes.sort(key=lambda h: data.torrents[h].save_path, reverse=self.sort_reverse)
         elif self.sort_mode == SortMode.NAME:
             hashes.sort(reverse=self.sort_reverse)
         elif self.sort_mode == SortMode.PROGRESS:
-            hashes.sort(key=lambda h: data.torrents[h].progress, reverse=not self.sort_reverse)
+            hashes.sort(key=lambda h: data.torrents[h].progress, reverse=self.sort_reverse)
         elif self.sort_mode == SortMode.DOWNLOAD:
-            hashes.sort(key=lambda h: data.torrents[h].download_rate, reverse=not self.sort_reverse)
+            hashes.sort(key=lambda h: data.torrents[h].download_rate, reverse=self.sort_reverse)
         elif self.sort_mode == SortMode.UPLOAD:
-            hashes.sort(key=lambda h: data.torrents[h].upload_rate, reverse=not self.sort_reverse)
+            hashes.sort(key=lambda h: data.torrents[h].upload_rate, reverse=self.sort_reverse)
 
         return hashes
 
@@ -508,9 +512,9 @@ class TorrentListWidget(urwid.WidgetWrap):
         else:
             self.sort_mode = mode
             if mode in [SortMode.PROGRESS, SortMode.DOWNLOAD, SortMode.UPLOAD]:
-                self.sort_reverse = False  # Default: high to low
+                self.sort_reverse = True  # Default: descending (large→small) ↓
             else:
-                self.sort_reverse = False  # Default: A to Z
+                self.sort_reverse = False  # Default: ascending (A→Z) ↑
 
     def set_filter_mode(self, mode):
         """Change filter mode"""
@@ -577,10 +581,13 @@ class UIView(urwid.WidgetWrap):
             "Press [h] for help | [q] Quit | Arrow/PgUp/PgDn: Scroll",
             align="center"
         )
-        self.sort_text = urwid.Text("Sort: Path ↓ | Filter: All | Verbose: OFF", align="center")
+        self.sort_text = urwid.Text("", align="center")
 
         self.summary = SummaryWidget()
         self.torrent_list = TorrentListWidget()
+
+        # Initialize status text with default values
+        self._update_status_text()
 
         # Build main layout
         layout = self._build_main_layout()
@@ -662,7 +669,8 @@ class UIView(urwid.WidgetWrap):
     def _update_status_text(self):
         """Update sort/filter/verbose status text"""
         sort_name = self.torrent_list.sort_mode.value.capitalize()
-        sort_arrow = "↑" if self.torrent_list.sort_reverse else "↓"
+        # ▲ Ascending (A→Z, small→large), ▼ Descending (Z→A, large→small)
+        sort_arrow = "▼" if self.torrent_list.sort_reverse else "▲"
         filter_name = self.torrent_list.filter_mode.value.capitalize()
         verbose_status = "ON" if self.torrent_list.verbose else "OFF"
 
