@@ -679,7 +679,7 @@ class UIView(urwid.WidgetWrap):
             "  u - Sort by upload speed",
             "",
             "Filtering:",
-            "  a/0 - Show all torrents",
+            "  0/a - Show all torrents",
             "  1   - Show downloading only",
             "  2   - Show seeding only",
             "  3   - Show finished only",
