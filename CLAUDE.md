@@ -1,7 +1,7 @@
 # EZIO Architecture Analysis & Optimization Guide
 
-**Version:** 6.0 (Phase 0, 1, 2, 3.1 Complete - Lock-Free)
-**Last Updated:** 2025-12-21
+**Version:** 7.0 (Phase 0, 1, 2, 3.1, 4 Complete - Lock-Free + UI Refactored)
+**Last Updated:** 2025-12-22
 **Reference:** libtorrent-2.0.10 source in `tmp/libtorrent-2.0.10/`
 **Complete Memory:** See `docs/SESSION_MEMORY.md` for full conversation history
 
@@ -11,7 +11,7 @@
 
 **If you are a new AI session, please read this section to quickly understand the current state:**
 
-### Current Status (2025-12-21)
+### Current Status (2025-12-22)
 
 **✅ Completed Phases:**
 - ✅ **Phase 0: Logging & Debugging** (commits: df30a4a, bccea62)
@@ -49,17 +49,22 @@
   - **Performance: 2.8x improvement** (270 MB/s → 766 MB/s in 1-on-1)
   - **Cache hit rate: 98-100%** with excellent locality
 
-**Recent Improvements (2025-12-21) - Lock-Free Cache:**
-- 🚀 **Zero-Mutex Design**: True lock-free with 1:1 thread:partition mapping
-- 🎯 **Consistent Hashing**: Same piece always on same thread (storage + piece hash)
-- ⚡ **Performance Boost**: 2.8x improvement (270→766 MB/s in 1-on-1)
-- 📊 **Lock-Free Stats**: Each thread logs its own partition every 30s
-- 🧹 **Code Cleanup**: Removed 189 lines (watermark, mutexes, obsolete functions)
-- ✅ **No store_buffer**: Consistent hashing guarantees execution order
-- 📈 **Cache Hit Rate**: 98-100% with excellent locality
-- 🔧 **Config Simplified**: Removed obsolete options (cache-partitions-multiplier, hashing-threads)
+**🎉 All Phases Complete - Ready for Production!**
 
-**🎉 Phase 3.1 Complete - Ready for Production!**
+- ✅ **Phase 4: UI Refactoring** (branch: refactor_ui, commits: 82242a5 → 7a83aa7, 2025-12-22)
+  - Component-based architecture with TorrentWidget, SummaryWidget, TorrentListWidget
+  - Sorting: by path, name, progress, download/upload speed (press again to reverse)
+  - Filtering: all/downloading/seeding/finished (keys: 0/a, 1, 2, 3)
+  - Color highlighting for speeds (dark green >100 MB/s, dark blue 10-100 MB/s)
+  - State colors: dark green (finished), dark cyan (seeding), dark blue (downloading)
+  - Scrollbar support for torrent list
+  - Verbose mode toggle (v key): shows full state names and expanded labels
+  - Scrollable help dialog (h key, close with q/h/Esc)
+  - Consistent light gray background with semantic color palette definitions
+  - Display format: `name    downloaded / total` (first line shows progress)
+  - Unified sort logic: ▲ ascending (A→Z, small→large), ▼ descending (Z→A, large→small)
+  - Replaced ezio_ui.py with refactored version, removed obsolete files
+  - Net result: -743 lines of code with more features
 
 ### Critical Architecture Facts
 
