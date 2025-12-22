@@ -361,8 +361,8 @@ class SummaryWidget(urwid.WidgetWrap):
 
     def __init__(self):
         self.progress_bar = urwid.ProgressBar('pg normal', 'pg complete', 0, 1)
-        self.download_text = urwid.Text('D:   0.00GB/min,    0.00MB/s', align="right")
-        self.upload_text = urwid.Text('U:   0.00GB/min,    0.00MB/s', align="right")
+        self.download_widget = SpeedWidget('D')
+        self.upload_widget = SpeedWidget('U')
         self.eta_text = urwid.Text('ETA: 00:00:00', align="right")
 
         layout = self._build_layout()
@@ -372,9 +372,9 @@ class SummaryWidget(urwid.WidgetWrap):
         """Build the summary layout"""
         speeds = urwid.Columns([
             ('weight', 1, urwid.Text('')),
-            ('pack', self.download_text),
+            ('pack', self.download_widget),
             ('pack', urwid.Text(' | ')),
-            ('pack', self.upload_text),
+            ('pack', self.upload_widget),
             ('pack', urwid.Text(' | ')),
             ('pack', self.eta_text),
         ])
@@ -395,8 +395,8 @@ class SummaryWidget(urwid.WidgetWrap):
             self.progress_bar.set_completion(0)
 
         # Update speeds
-        self.download_text.set_text(format_speed(sum_download, 'D'))
-        self.upload_text.set_text(format_speed(sum_upload, 'U'))
+        self.download_widget.set_speed(sum_download)
+        self.upload_widget.set_speed(sum_upload)
 
         # Update ETA
         if sum_download > 0:
