@@ -1,6 +1,6 @@
 # EZIO Architecture Analysis & Optimization Guide
 
-**Version:** 7.0 (Phase 0, 1, 2, 3.1, 4 Complete - Lock-Free + UI Refactored)
+**Version:** 7.1 (Phase 0-4 Complete, Phase 5 Planning)
 **Last Updated:** 2025-12-22
 **Reference:** libtorrent-2.0.10 source in `tmp/libtorrent-2.0.10/`
 **Complete Memory:** See `docs/SESSION_MEMORY.md` for full conversation history
@@ -49,8 +49,6 @@
   - **Performance: 2.8x improvement** (270 MB/s → 766 MB/s in 1-on-1)
   - **Cache hit rate: 98-100%** with excellent locality
 
-**🎉 All Phases Complete - Ready for Production!**
-
 - ✅ **Phase 4: UI Refactoring** (branch: refactor_ui, commits: 82242a5 → 7a83aa7, 2025-12-22)
   - Component-based architecture with TorrentWidget, SummaryWidget, TorrentListWidget
   - Sorting: by path, name, progress, download/upload speed (press again to reverse)
@@ -65,6 +63,20 @@
   - Unified sort logic: ▲ ascending (A→Z, small→large), ▼ descending (Z→A, large→small)
   - Replaced ezio_ui.py with refactored version, removed obsolete files
   - Net result: -743 lines of code with more features
+
+**🔄 In Progress:**
+- 🔄 **Phase 5: Chain Topology** (Planning, commit: 86ba953, 2025-12-22)
+  - Design document: `docs/plan/CHAIN_TOPOLOGY_DESIGN.md`
+  - Transform BitTorrent mesh into linear chain: Node1 → Node2 → Node3
+  - Sequential data flow for LAN bandwidth optimization
+  - Dynamic node ordering via coordinator service
+  - Automatic chain repair when nodes fail
+  - Global chain shared across all torrents
+  - gRPC API for runtime control
+  - **Critical challenge:** Enforce directional flow (prev→download, next→upload)
+  - **Solution:** 4-layer approach (sequential download, connection limits, IP filtering, validation)
+  - 6-phase implementation plan (~1,920 lines of new code)
+  - Related: GitHub Issue #44
 
 ### Critical Architecture Facts
 
@@ -103,6 +115,7 @@
 - `docs/SESSION_MEMORY.md` - Complete conversation history (completed work)
 
 **Planning Documents:** (in `docs/plan/`)
+- `docs/plan/CHAIN_TOPOLOGY_DESIGN.md` - Phase 5: Chain topology design (in progress)
 - `docs/plan/PHASE_PLAN_REFORMULATED.md` - Main phase plan (archived)
 - `docs/plan/WRITE_COALESCING_DESIGN.md` - Phase 3.2 design (cancelled)
 - `docs/plan/FUTURE_OPTIMIZATIONS.md` - 25 optimization opportunities
