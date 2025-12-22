@@ -2,8 +2,12 @@
 
 **Version:** 1.0
 **Date:** 2025-12-22
-**Status:** Design Phase
+**Status:** DRAFT - Not scheduled for implementation
 **Related Issue:** #44
+
+> **Note:** This is a draft design document created for future reference.
+> It will NOT be implemented unless specifically requested by the user.
+> This document is archived here for planning purposes only.
 
 ---
 
@@ -1065,6 +1069,6 @@ Measure time from peer_disconnected_alert to new peer connection established.
 
 ---
 
-**Document Status:** DRAFT - Awaiting User Review
-**Next Action:** User review and approval, then proceed to Phase 1 implementation
-**Estimated Total Effort:** 6 weeks (1 week per phase)
+**Document Status:** DRAFT - Archived for future reference
+**Implementation:** NOT SCHEDULED - Will only proceed if explicitly requested by user
+**Estimated Total Effort:** 6 weeks (1 week per phase) if implemented

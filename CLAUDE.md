@@ -64,8 +64,9 @@
   - Replaced ezio_ui.py with refactored version, removed obsolete files
   - Net result: -743 lines of code with more features
 
-**🔄 In Progress:**
-- 🔄 **Phase 5: Chain Topology** (Planning, commit: 86ba953, 2025-12-22)
+**📋 Future/Draft Features:**
+- 📋 **Chain Topology** (DRAFT design, commit: 86ba953, 2025-12-22)
+  - Status: **Design archived for future reference, NOT scheduled for implementation**
   - Design document: `docs/plan/CHAIN_TOPOLOGY_DESIGN.md`
   - Transform BitTorrent mesh into linear chain: Node1 → Node2 → Node3
   - Sequential data flow for LAN bandwidth optimization
@@ -76,6 +77,7 @@
   - **Critical challenge:** Enforce directional flow (prev→download, next→upload)
   - **Solution:** 4-layer approach (sequential download, connection limits, IP filtering, validation)
   - 6-phase implementation plan (~1,920 lines of new code)
+  - Will only be implemented if explicitly requested by user
   - Related: GitHub Issue #44
 
 ### Critical Architecture Facts
@@ -115,11 +117,14 @@
 - `docs/SESSION_MEMORY.md` - Complete conversation history (completed work)
 
 **Planning Documents:** (in `docs/plan/`)
-- `docs/plan/CHAIN_TOPOLOGY_DESIGN.md` - Phase 5: Chain topology design (in progress)
+- `docs/plan/CHAIN_TOPOLOGY_DESIGN.md` - Chain topology design (draft, archived)
 - `docs/plan/PHASE_PLAN_REFORMULATED.md` - Main phase plan (archived)
 - `docs/plan/WRITE_COALESCING_DESIGN.md` - Phase 3.2 design (cancelled)
 - `docs/plan/FUTURE_OPTIMIZATIONS.md` - 25 optimization opportunities
 - `docs/plan/HDD_OPTIMIZATION.md` - HDD-specific strategies
+
+**External References:**
+- [murder](https://github.com/lg/murder) - Twitter's BitTorrent deployment tool with chain mode
 
 **Architecture Analysis:** (in `docs/plan/`)
 - `docs/plan/MUTEX_ANALYSIS.md` - Mutex contention analysis
