@@ -1,7 +1,6 @@
 #include "service.hpp"
 #include <spdlog/spdlog.h>
 #include "daemon.hpp"
-#include "version.hpp"
 
 namespace ezio
 {
@@ -126,7 +125,7 @@ Status gRPCService::GetVersion(ServerContext *context, const Empty *e, VersionRe
 {
 	spdlog::info("GetVersion");
 
-	response->set_version(EZIO_VERSION);
+	response->set_version(daemon_.get_version());
 	return Status::OK;
 }
 
