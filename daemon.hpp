@@ -6,7 +6,6 @@
 #include <vector>
 #include <libtorrent/libtorrent.hpp>
 #include <boost/core/noncopyable.hpp>
-#include "service.hpp"
 
 namespace ezio
 {

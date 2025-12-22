@@ -1,6 +1,7 @@
 #include "service.hpp"
 #include <spdlog/spdlog.h>
 #include "daemon.hpp"
+#include "version.hpp"
 
 namespace ezio
 {

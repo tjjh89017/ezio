@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 #include <vector>
 #include "daemon.hpp"
+#include "version.hpp"
 
 namespace ezio
 {

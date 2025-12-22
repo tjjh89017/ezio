@@ -14,6 +14,7 @@
 #include "config.hpp"
 #include "raw_disk_io.hpp"
 #include "log.hpp"
+#include "version.hpp"
 
 int main(int argc, char **argv)
 {

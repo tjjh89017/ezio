@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include "version.hpp"
 
 namespace ezio
 {
