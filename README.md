@@ -50,7 +50,7 @@ By implementing the transfer layer on top of BitTorrent, EZIO transforms these w
 - **gRPC control interface**: Programmatic control for automation and integration
 - **Runtime log level control**: Adjust logging verbosity without recompilation via `SPDLOG_LEVEL` environment variable
 - **Event-driven alerts**: Instant notification of errors and state changes using libtorrent's alert system
-- **Configurable thread pools**: Tune disk I/O and hashing threads for different storage types (HDD/SSD/NVMe)
+- **Configurable thread pools**: Tune disk I/O thread count for different storage types (HDD/SSD/NVMe)
 - **Lock-free unified cache**: 512MB configurable persistent cache with zero-mutex design for maximum performance
 - **Unified buffer pool**: 256MB temporary I/O buffer pool for efficient resource utilization 
 
@@ -146,13 +146,11 @@ EZIO's disk I/O and hashing performance can be tuned via thread pool settings. T
 
 **Command Line Options:**
 ```shell
-./ezio --aio-threads <num>       # Disk I/O threads (default: 16)
-./ezio --hashing-threads <num>   # Hashing threads (default: 8)
+./ezio --aio-threads <num>       # Disk I/O and hashing threads (default: 16)
 ```
 
 **Default Settings:**
-- `aio_threads`: 16 (disk I/O operations: read, write)
-- `hashing_threads`: 8 (SHA-1 piece verification)
+- `aio_threads`: 16 (disk I/O operations and SHA-1 piece hashing)
 
 These settings can now be adjusted at runtime without recompilation.
 
@@ -179,23 +177,23 @@ For optimal performance, consider your storage hardware:
 
 **HDD (Traditional Hard Disk):**
 - Lower thread count recommended to reduce seek overhead
-- Example: `./ezio --aio-threads 2 --hashing-threads 4`
+- Example: `./ezio --aio-threads 2`
 - Sequential access performs better than parallel
 
 **SATA SSD:**
 - Moderate parallelism
 - Default settings work well: `./ezio` (16 threads)
-- Or explicit: `./ezio --aio-threads 16 --hashing-threads 8`
+- Or explicit: `./ezio --aio-threads 16`
 
 **NVMe SSD:**
 - High parallelism for maximum throughput
-- Example: `./ezio --aio-threads 32 --hashing-threads 8`
+- Example: `./ezio --aio-threads 32`
 - Can saturate 10Gbps network with proper configuration
 
-**Hashing Threads:**
-- CPU-bound operation
-- Default 8 threads matches typical server cores
-- Adjust based on available CPU cores and workload
+**Thread Count Notes:**
+- Single thread pool handles both disk I/O and hashing operations
+- Adjust based on storage type and available CPU cores
+- Higher thread count benefits NVMe drives and multi-core systems
 
 ### Testing Different Configurations
 
@@ -203,13 +201,13 @@ You can easily test different thread pool configurations without recompilation:
 
 ```shell
 # Test with minimal threads (HDD)
-./ezio --aio-threads 2 --hashing-threads 2
+./ezio --aio-threads 2
 
 # Test with default threads (SATA SSD)
 ./ezio
 
 # Test with high parallelism (NVMe)
-./ezio --aio-threads 32 --hashing-threads 8
+./ezio --aio-threads 32
 
 # Combined with other options
 ./ezio --aio-threads 32 --cache-size 1024 --listen 0.0.0.0:50051
@@ -262,8 +260,7 @@ Allowed Options:
   -F [ --file ]              read data from file rather than raw disk
   --listen arg               gRPC service listen address and port, default is 127.0.0.1:50051
   --cache-size arg           unified cache size in MB, default is 512
-  --aio-threads arg          number of threads for disk I/O, default is 16
-  --hashing-threads arg      number of threads for hashing, default is 8
+  --aio-threads arg          number of threads for disk I/O and hashing, default is 16
   -v [ --version ]           show version
 ```
 
