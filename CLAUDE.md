@@ -26,13 +26,13 @@
 
 - ✅ **Phase 1.2: Settings Infrastructure** (commit: c69c69a)
   - Constructor receives settings_interface and counters
-  - Thread pools configured from settings (aio_threads, hashing_threads)
+  - Thread pools configured from settings (aio_threads)
   - settings_updated() interface implemented
 
 - ✅ **Phase 2: Configurable Thread Pools** (commits: bbaf786 → 34ae63c)
-  - Command line options: `--aio-threads` and `--hashing-threads`
+  - Command line option: `--aio-threads` (handles both I/O and hashing)
   - Runtime tuning without recompilation
-  - Defaults: aio_threads=16, hashing_threads=8
+  - Default: aio_threads=16 (unified for disk I/O and hashing)
   - Enables easy testing for NVMe optimization
   - Updated README with usage examples
 
@@ -382,15 +382,20 @@ raw_disk_io::raw_disk_io(io_context& ioc,
     : ioc_(ioc),
       m_settings(&sett),                                             // Save reference
       m_stats_counters(cnt),                                         // Save reference
-      m_buffer_pool(ioc),                                            // Only io_context
-      read_thread_pool_(sett.get_int(settings_pack::aio_threads)),  // From settings!
-      write_thread_pool_(sett.get_int(settings_pack::aio_threads)), // From settings!
-      hash_thread_pool_(sett.get_int(settings_pack::hashing_threads)) // From settings!
+      m_buffer_pool(ioc),                                            // Temporary I/O buffers
+      m_cache(calculate_cache_entries(sett)),                        // Lock-free cache
+      num_io_threads_(sett.get_int(settings_pack::aio_threads))     // From settings!
 {
+    // Create per-thread pools (Phase 3.1: 1:1 thread:partition mapping)
+    for (size_t i = 0; i < num_io_threads_; ++i) {
+        io_thread_pools_.emplace_back(
+            std::make_unique<boost::asio::thread_pool>(1)  // 1 thread per pool
+        );
+    }
 }
 
 void raw_disk_io::settings_updated() {
-    // Reserved for future cache configuration
+    // Reserved for future dynamic cache resizing
 }
 ```
 
@@ -425,11 +430,19 @@ buffer_pool m_buffer_pool;  // 256 MB unified
 raw_disk_io(io_context& ioc, settings_interface const& sett, counters& cnt)
     : m_settings(&sett),
       m_stats_counters(cnt),
-      read_thread_pool_(sett.get_int(settings_pack::aio_threads)),   // From settings!
-      write_thread_pool_(sett.get_int(settings_pack::aio_threads)),  // From settings!
-      hash_thread_pool_(sett.get_int(settings_pack::hashing_threads)) { }
+      m_buffer_pool(ioc),
+      m_cache(calculate_cache_entries(sett)),
+      num_io_threads_(sett.get_int(settings_pack::aio_threads))  // Unified: I/O + hashing
+{
+    // Create per-thread pools for lock-free cache (Phase 3.1)
+    for (size_t i = 0; i < num_io_threads_; ++i) {
+        io_thread_pools_.emplace_back(
+            std::make_unique<boost::asio::thread_pool>(1)
+        );
+    }
+}
 
-// Implemented settings handler (reserved for future cache)
+// Implemented settings handler (reserved for dynamic cache resizing)
 void settings_updated() {
 }
 ```
