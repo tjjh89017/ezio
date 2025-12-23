@@ -51,25 +51,29 @@ By implementing the transfer layer on top of BitTorrent, EZIO transforms these w
 - **Runtime log level control**: Adjust logging verbosity without recompilation via `SPDLOG_LEVEL` environment variable
 - **Event-driven alerts**: Instant notification of errors and state changes using libtorrent's alert system
 - **Configurable thread pools**: Tune disk I/O and hashing threads for different storage types (HDD/SSD/NVMe)
-- **Unified buffer pool**: 256MB shared memory pool for efficient resource utilization 
+- **Lock-free unified cache**: 512MB configurable persistent cache with zero-mutex design for maximum performance
+- **Unified buffer pool**: 256MB temporary I/O buffer pool for efficient resource utilization 
 
 
 # Installation
 
 ### Minimum System Requirements
 
-- 64bit
-- 1GB RAM
+- 64-bit Linux system
+- 1GB RAM (768MB for EZIO + OS overhead)
+- Root privileges or appropriate permissions for raw disk access
 
 ### Dependencies
 - Debian 11 or above
-- libtorrent-rasterbar>=2.0.8
-- libboost>=1.74
-- cmake>=3.16
-- spdlog
-- gRPC
+- libtorrent-rasterbar >= 2.0.8
+- libboost >= 1.74
+- cmake >= 3.16
+- spdlog (logging)
+- gRPC (control interface)
+- clang-format (for code formatting, development only)
+
 ```shell
-sudo apt install build-essential cmake libboost-all-dev libtorrent-rasterbar-dev libgrpc-dev libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc libspdlog-dev
+sudo apt install build-essential cmake libboost-all-dev libtorrent-rasterbar-dev libgrpc-dev libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc libspdlog-dev clang-format
 ```
 
 ### Build and Install
@@ -80,6 +84,12 @@ cd build
 cmake ../
 make
 sudo make install
+```
+
+**For Developers:** Before committing code changes, run clang-format:
+```shell
+# Format all source files
+find . -maxdepth 1 -name "*.cpp" -o -name "*.hpp" | grep -v "./tmp/" | xargs clang-format -i
 ```
 
 We also provide a Dockerfile for the ease of installation and CI testing.
@@ -148,10 +158,20 @@ These settings can now be adjusted at runtime without recompilation.
 
 ### Memory Configuration
 
+**Lock-Free Unified Cache:**
+- Default size: 512 MB (configurable via `--cache-size`)
+- Persistent read/write cache with zero-mutex design
+- Divided into N partitions (N = `aio_threads`)
+- Each partition managed by exactly one dedicated thread
+
 **Buffer Pool:**
 - Fixed size: 256 MB
-- Unified pool for all I/O operations (read, write, hash)
+- Temporary I/O buffer pool for intermediate operations
 - Dynamic allocation with watermarks (50% low, 87.5% high)
+
+**Total Memory Usage:**
+- Default: 768 MB (512 MB cache + 256 MB buffer pool)
+- Configurable: Adjust cache size with `--cache-size` option
 
 ### Recommendations by Storage Type
 
@@ -206,7 +226,7 @@ Monitor EZIO performance with:
 
 - **Homogeneous deployments** (all same disk type) work best with current design
 - **Heterogeneous setups** (mixed HDD/SSD) may need per-disk tuning in future versions
-- Buffer pool size is fixed; future versions may support dynamic sizing
+- Cache size is configurable via `--cache-size`, buffer pool size is fixed at 256 MB
 
 ## Usage
 
@@ -295,8 +315,9 @@ EZIO implements a custom `libtorrent` [disk I/O interface](http://libtorrent.org
 
 **Key features:**
 - **Direct disk access**: Writes received blocks directly to `/dev/sdX` partitions
-- **Unified buffer pool**: 256MB shared memory pool for all I/O operations
-- **Configurable thread pools**: Separate pools for disk I/O and hashing
+- **Lock-free unified cache**: 512MB configurable persistent cache with per-thread partitioning
+- **Unified buffer pool**: 256MB temporary I/O buffer pool
+- **Configurable thread pools**: Tunable disk I/O and hashing threads
 - **Event-driven alerts**: Instant notification via `set_alert_notify()`
 
 ### Lock-Free Cache Architecture
