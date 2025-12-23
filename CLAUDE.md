@@ -142,8 +142,13 @@
 - Use libtorrent's `m_` prefix for member variables
 - Code comments in English, no emojis
 - **Always run clang-format before committing code changes**
-- **Always use `git commit -s -m` to add Signed-off-by**
-- **Do NOT add Co-Authored-By lines to commits**
+
+**Git Commit Guidelines:**
+- **Always use `git commit -s -m "message"` to add Signed-off-by**
+- **Do NOT add "Generated with [Claude Code]" footer**
+- **Do NOT add "Co-Authored-By: Claude" lines**
+- Keep commit messages clear and descriptive
+- Use conventional commit format: `type: subject` (e.g., `docs:`, `feat:`, `fix:`)
 
 **Ready to start implementation? Jump to [Next Steps](#next-steps) section.**
 
