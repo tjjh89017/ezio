@@ -154,7 +154,8 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	ioc_(ioc),
 	m_settings(&sett),
 	m_stats_counters(cnt),
-	m_buffer_pool(ioc),
+	m_read_buffer_pool(ioc, 128ULL * 1024 * 1024),   // 128 MB for read + hash
+	m_write_buffer_pool(ioc, 256ULL * 1024 * 1024),  // 256 MB for write
 	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
 	num_io_threads_(sett.get_int(libtorrent::settings_pack::aio_threads))
 {
@@ -163,6 +164,9 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	size_t cache_entries = calculate_cache_entries(sett);
 	size_t entries_per_partition = cache_entries / num_io_threads_;
 
+	spdlog::info("[raw_disk_io] Buffer pools initialized:");
+	spdlog::info("  Read pool:  128 MB (8192 buffers)");
+	spdlog::info("  Write pool: 256 MB (16384 buffers)");
 	spdlog::info("[raw_disk_io] Initializing {} I/O threads with consistent hashing",
 		num_io_threads_);
 	spdlog::info("[raw_disk_io] Each thread owns {} cache entries ({} MB)",
@@ -248,9 +252,10 @@ void raw_disk_io::async_read(
 		return;
 	}
 
-	char *buf = m_buffer_pool.allocate_buffer();
-	libtorrent::disk_buffer_holder buffer(m_buffer_pool, buf, DEFAULT_BLOCK_SIZE);
+	char *buf = m_read_buffer_pool.allocate_buffer();
+	libtorrent::disk_buffer_holder buffer(m_read_buffer_pool, buf, DEFAULT_BLOCK_SIZE);
 	if (!buf) {
+		spdlog::error("[async_read] Read pool exhausted! No buffer available");
 		error.ec = libtorrent::errors::no_memory;
 		error.operation = libtorrent::operation_t::alloc_cache_piece;
 		handler(libtorrent::disk_buffer_holder{}, error);
@@ -340,8 +345,9 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 {
 	BOOST_ASSERT(DEFAULT_BLOCK_SIZE >= r.length);
 
-	char *temp_buf = m_buffer_pool.allocate_buffer();
-	libtorrent::disk_buffer_holder buffer(m_buffer_pool, temp_buf, DEFAULT_BLOCK_SIZE);
+	bool exceeded = false;
+	char *temp_buf = m_write_buffer_pool.allocate_buffer(exceeded, o);
+	libtorrent::disk_buffer_holder buffer(m_write_buffer_pool, temp_buf, DEFAULT_BLOCK_SIZE);
 	// Note: No store_buffer needed. With consistent hashing (get_thread_index), all operations
 	// on the same piece are posted to the same thread, guaranteeing execution order.
 	// async_read for a piece will always execute after any pending async_write for that piece,
@@ -363,8 +369,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 				// Insert into cache (cache allocates buffer and copies data)
 				// All cache operations happen HERE on worker thread
-				bool exceeded = false;
-				bool cache_inserted = m_cache.insert_write(loc, temp_buf, r.length, exceeded, o);
+				bool cache_inserted = m_cache.insert_write(loc, temp_buf, r.length);
 
 				// Write-through: always write to disk using temp buffer
 				libtorrent::storage_error error;
@@ -391,11 +396,12 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 					h(error);
 				});
 			});
-		return false;  // Successfully queued
+		return exceeded;  // Return true if pool exceeded (triggers backpressure)
 	}
 
-	// Fallback: buffer pool exhausted - do sync write without cache
-	spdlog::debug("[async_write] Buffer pool exhausted, doing sync write (storage={}, piece={}, offset={})",
+	// Fallback: write pool exhausted - do sync write without cache
+	spdlog::debug("[async_write] Write pool exhausted! No buffer available");
+	spdlog::debug("[async_write] Doing sync write fallback (storage={}, piece={}, offset={})",
 		static_cast<int>(storage), static_cast<int>(r.piece), r.start);
 
 	libtorrent::storage_error error;
@@ -413,7 +419,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		h(error);
 	});
 
-	return false;
+	return true;  // Pool exhausted - trigger backpressure
 }
 
 void raw_disk_io::async_hash(
@@ -423,9 +429,10 @@ void raw_disk_io::async_hash(
 		handler)
 {
 	libtorrent::storage_error error;
-	char *buf = m_buffer_pool.allocate_buffer();
+	char *buf = m_read_buffer_pool.allocate_buffer();
 
 	if (!buf) {
+		spdlog::error("[async_hash] Read pool exhausted! No buffer available");
 		error.ec = libtorrent::errors::no_memory;
 		error.operation = libtorrent::operation_t::alloc_cache_piece;
 		post(ioc_, [=, h = std::move(handler)] {
@@ -434,7 +441,7 @@ void raw_disk_io::async_hash(
 		return;
 	}
 
-	auto buffer = libtorrent::disk_buffer_holder(m_buffer_pool, buf, DEFAULT_BLOCK_SIZE);
+	auto buffer = libtorrent::disk_buffer_holder(m_read_buffer_pool, buf, DEFAULT_BLOCK_SIZE);
 
 	// Use consistent hashing: hash operations use same thread as I/O for this piece
 	// Since all blocks of a piece go to same partition, no cross-partition access needed
@@ -576,8 +583,9 @@ void raw_disk_io::async_clear_piece(libtorrent::storage_index_t storage,
 
 void raw_disk_io::update_stats_counters(libtorrent::counters &c) const
 {
-	// Update buffer pool usage (gauge)
-	c.set_value(libtorrent::counters::disk_blocks_in_use, m_buffer_pool.in_use());
+	// Update buffer pool usage (gauge) - sum both pools
+	int total_in_use = m_read_buffer_pool.in_use() + m_write_buffer_pool.in_use();
+	c.set_value(libtorrent::counters::disk_blocks_in_use, total_in_use);
 
 	// Update cache statistics (gauges)
 	// Note: Could add custom cache metrics here if libtorrent adds counters for them
@@ -621,6 +629,26 @@ void raw_disk_io::stats_report_loop()
 
 		if (m_shutdown) {
 			break;
+		}
+
+		// Buffer pool usage stats (split pools)
+		int read_in_use = m_read_buffer_pool.in_use();
+		int write_in_use = m_write_buffer_pool.in_use();
+		int read_max = 128 * 1024 * 1024 / DEFAULT_BLOCK_SIZE;   // 8192 buffers
+		int write_max = 256 * 1024 * 1024 / DEFAULT_BLOCK_SIZE;  // 16384 buffers
+
+		spdlog::info("[buffer_pools] Usage: READ={}/{} ({:.1f}%) WRITE={}/{} ({:.1f}%)",
+			read_in_use, read_max, (read_in_use * 100.0) / read_max,
+			write_in_use, write_max, (write_in_use * 100.0) / write_max);
+
+		// Warning if high usage
+		if (read_in_use > read_max * 0.8) {
+			spdlog::warn("[buffer_pools] READ pool high usage: {}/{} ({:.1f}%)",
+				read_in_use, read_max, (read_in_use * 100.0) / read_max);
+		}
+		if (write_in_use > write_max * 0.8) {
+			spdlog::warn("[buffer_pools] WRITE pool high usage: {}/{} ({:.1f}%)",
+				write_in_use, write_max, (write_in_use * 100.0) / write_max);
 		}
 
 		// Post stats logging task to each io thread

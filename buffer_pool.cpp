@@ -15,12 +15,12 @@ void watermark_callback(std::vector<std::weak_ptr<libtorrent::disk_observer>> co
 	}
 }
 
-buffer_pool::buffer_pool(libtorrent::io_context &ioc) :
+buffer_pool::buffer_pool(libtorrent::io_context &ioc, size_t pool_size_bytes) :
 	m_ios(ioc),
 	m_size(0),
-	m_max_use(BUFFER_COUNT),
-	m_low_watermark(LOW_WATERMARK),
-	m_high_watermark(HIGH_WATERMARK),
+	m_max_use(pool_size_bytes / DEFAULT_BLOCK_SIZE),
+	m_low_watermark((pool_size_bytes / DEFAULT_BLOCK_SIZE) / 2),
+	m_high_watermark((pool_size_bytes / DEFAULT_BLOCK_SIZE) / 8 * 7),
 	m_exceeded_max_size(false)
 {
 }
@@ -34,19 +34,19 @@ char *buffer_pool::allocate_buffer_impl(std::unique_lock<std::mutex> &l)
 	// no memory
 	if (m_size >= m_max_use) {
 		m_exceeded_max_size = true;
-		spdlog::warn("buffer pool reach max buffer count");
+		spdlog::debug("buffer pool reach max buffer count");
 		return nullptr;
 	}
 
 	// reach high watermark, but still has some buffer to use
 	if (m_size > m_high_watermark) {
-		spdlog::warn("buffer pool reach high watermark, mem usage: {}", m_size);
+		spdlog::debug("buffer pool reach high watermark, mem usage: {}", m_size);
 		m_exceeded_max_size = true;
 	}
 
 	char *buf = (char *)malloc(DEFAULT_BLOCK_SIZE);
 	if (!buf) {
-		spdlog::warn("buffer pool malloc failed");
+		spdlog::debug("buffer pool malloc failed");
 		m_exceeded_max_size = true;
 		return nullptr;
 	}
@@ -91,7 +91,7 @@ void buffer_pool::check_buffer_level(std::unique_lock<std::mutex> &l)
 	}
 
 	// lower than LOW_WATERMARK, reopen
-	spdlog::info("buffer pool lower than low watermark, reopen");
+	spdlog::debug("buffer pool lower than low watermark, reopen");
 	m_exceeded_max_size = false;
 
 	std::vector<std::weak_ptr<libtorrent::disk_observer>> cbs;

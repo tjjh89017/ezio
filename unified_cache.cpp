@@ -234,19 +234,13 @@ void unified_cache::resize_partitions(size_t num_partitions, size_t entries_per_
 		m_max_entries, (m_max_entries * 16) / 1024);
 }
 
-bool unified_cache::insert_write(torrent_location const &loc, char const *data, int length, bool &exceeded,
-	std::shared_ptr<libtorrent::disk_observer> o)
+bool unified_cache::insert_write(torrent_location const &loc, char const *data, int length)
 {
 	size_t partition_idx = get_partition_index(loc);
 
 	// Try to insert (allows over-allocation like libtorrent 2.x)
-	bool success = m_partitions[partition_idx]->insert(loc, data, length, true);  // dirty=true
-
-	// Watermark checking disabled - if insert fails (cache full), caller does sync_write
-	exceeded = false;
-	// exceeded = !m_partitions[partition_idx]->check_watermark(o);
-
-	return success;
+	// If insert fails (cache full), caller should handle it
+	return m_partitions[partition_idx]->insert(loc, data, length, true);  // dirty=true
 }
 
 bool unified_cache::insert_read(torrent_location const &loc, char const *data, int length)
