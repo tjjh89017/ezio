@@ -28,7 +28,9 @@ raw_disk_io *get_raw_disk_io_instance();
 class raw_disk_io final : public libtorrent::disk_interface
 {
 private:
-	buffer_pool m_buffer_pool;	// Unified pool (256MB, temporary I/O buffers)
+	// Split buffer pools (128MB each, no over-allocation)
+	buffer_pool m_read_buffer_pool;	 // Read + hash operations
+	buffer_pool m_write_buffer_pool;  // Write operations
 
 	unified_cache m_cache;	// Persistent cache (512MB, delayed write + read cache)
 

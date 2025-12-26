@@ -324,11 +324,8 @@ public:
 
 	// Write operation: insert and mark dirty
 	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)
-	// exceeded: output parameter, set to true if watermark exceeded
-	// o: disk_observer to notify when cache recovers (optional)
 	// Returns true on success, false if failed to allocate buffer
-	bool insert_write(torrent_location const &loc, char const *data, int length, bool &exceeded,
-		std::shared_ptr<libtorrent::disk_observer> o = nullptr);
+	bool insert_write(torrent_location const &loc, char const *data, int length);
 
 	// Read operation: insert clean entry (from disk read)
 	// length: actual data size (can be < DEFAULT_BLOCK_SIZE for last block)

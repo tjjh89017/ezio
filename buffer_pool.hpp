@@ -23,7 +23,7 @@ namespace ezio
 class buffer_pool : public libtorrent::buffer_allocator_interface, boost::noncopyable
 {
 public:
-	buffer_pool(libtorrent::io_context &ioc);
+	buffer_pool(libtorrent::io_context &ioc, size_t pool_size_bytes);
 	~buffer_pool();
 
 	char *allocate_buffer_impl(std::unique_lock<std::mutex> &l);
