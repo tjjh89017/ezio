@@ -57,7 +57,7 @@ fs.set_piece_length(16 * 1024 * 1024) # 16MiB
 for o, l in zip(offset, length):
     fs.add_file(partition_name + "/" + o, int(l, 16))
 
-torrent = lt.create_torrent(fs, 16 * 1024 * 1024, flags=lt.v1_only)
+torrent = lt.create_torrent(fs, 16 * 1024 * 1024, flags=lt.create_torrent_flags_t.v1_only)
 torrent.set_creator(creator_name)
 
 if tracker:
