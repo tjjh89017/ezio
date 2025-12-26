@@ -113,6 +113,7 @@ def check_stop(data):
             raise ValueError("No Data")
 
         for info_hash in data.hashes:
+            need_stop = False
             t_stat = data.torrents[info_hash]
             if t_stat.is_paused:
                 continue
