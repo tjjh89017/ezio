@@ -154,8 +154,8 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	ioc_(ioc),
 	m_settings(&sett),
 	m_stats_counters(cnt),
-	m_read_buffer_pool(ioc, 128ULL * 1024 * 1024),   // 128 MB for read + hash
-	m_write_buffer_pool(ioc, 256ULL * 1024 * 1024),  // 256 MB for write
+	m_read_buffer_pool(ioc, 128ULL * 1024 * 1024),	// 128 MB for read + hash
+	m_write_buffer_pool(ioc, 256ULL * 1024 * 1024),	 // 256 MB for write
 	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
 	num_io_threads_(sett.get_int(libtorrent::settings_pack::aio_threads))
 {
@@ -270,7 +270,7 @@ void raw_disk_io::async_read(
 
 	// Post all work to worker thread (lock-free: single thread per partition)
 	boost::asio::post((*io_thread_pools_[thread_idx]),
-		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
+		[=, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
 
 			if (read_offset + r.length > DEFAULT_BLOCK_SIZE) {
@@ -361,7 +361,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 		// Post all work to worker thread (lock-free: single thread per partition)
 		boost::asio::post((*io_thread_pools_[thread_idx]),
-			[=, this, o = std::move(o), handler = std::move(handler), buffer = std::move(buffer)]() mutable {
+			[=, o = std::move(o), handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 				torrent_location loc{storage, r.piece, r.start};
 
 				// Get temp buffer pointer
@@ -447,7 +447,7 @@ void raw_disk_io::async_hash(
 	// Since all blocks of a piece go to same partition, no cross-partition access needed
 	size_t thread_idx = get_thread_index(storage, piece);
 	boost::asio::post((*io_thread_pools_[thread_idx]),
-		[=, this, handler = std::move(handler), buffer = std::move(buffer)]() {
+		[=, handler = std::move(handler), buffer = std::move(buffer)]() {
 			libtorrent::storage_error error;
 			libtorrent::hasher ph;
 			partition_storage *st = storages_[storage].get();
@@ -634,8 +634,8 @@ void raw_disk_io::stats_report_loop()
 		// Buffer pool usage stats (split pools)
 		int read_in_use = m_read_buffer_pool.in_use();
 		int write_in_use = m_write_buffer_pool.in_use();
-		int read_max = 128 * 1024 * 1024 / DEFAULT_BLOCK_SIZE;   // 8192 buffers
-		int write_max = 256 * 1024 * 1024 / DEFAULT_BLOCK_SIZE;  // 16384 buffers
+		int read_max = 128 * 1024 * 1024 / DEFAULT_BLOCK_SIZE;	// 8192 buffers
+		int write_max = 256 * 1024 * 1024 / DEFAULT_BLOCK_SIZE;	 // 16384 buffers
 
 		spdlog::info("[buffer_pools] Usage: READ={}/{} ({:.1f}%) WRITE={}/{} ({:.1f}%)",
 			read_in_use, read_max, (read_in_use * 100.0) / read_max,
