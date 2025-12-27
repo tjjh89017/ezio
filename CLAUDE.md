@@ -1,7 +1,7 @@
 # EZIO Architecture Analysis & Optimization Guide
 
-**Version:** 7.1 (Phase 0-4 Complete, Phase 5 Planning)
-**Last Updated:** 2025-12-22
+**Version:** 7.2 (Phase 0-4 Complete, Maintenance Updates)
+**Last Updated:** 2025-12-27
 **Reference:** libtorrent-2.0.10 source in `tmp/libtorrent-2.0.10/`
 **Complete Memory:** See `docs/SESSION_MEMORY.md` for full conversation history
 
@@ -11,7 +11,7 @@
 
 **If you are a new AI session, please read this section to quickly understand the current state:**
 
-### Current Status (2025-12-22)
+### Current Status (2025-12-27)
 
 **✅ Completed Phases:**
 - ✅ **Phase 0: Logging & Debugging** (commits: df30a4a, bccea62)
@@ -63,6 +63,18 @@
   - Unified sort logic: ▲ ascending (A→Z, small→large), ▼ descending (Z→A, large→small)
   - Replaced ezio_ui.py with refactored version, removed obsolete files
   - Net result: -743 lines of code with more features
+
+**🔧 Recent Maintenance & Fixes (2025-12-27):**
+- 🔧 **Lambda Capture Fix** (commit: 3a5dd32)
+  - Removed redundant 'this' capture in lambda expressions
+  - Fixed compiler warnings about explicit capture matching default
+  - Affected: async_read, async_write, async_hash functions in raw_disk_io.cpp
+
+- 🔧 **CMake Modernization** (commit: ebeaf07)
+  - Set CMP0167 policy to NEW for CMake 3.30+ compatibility
+  - Use CONFIG mode for find_package(Boost) with native BoostConfig.cmake
+  - Removed redundant PARENT_SCOPE in Version.cmake (file is included, not called)
+  - Eliminated all CMake policy warnings
 
 **📋 Future/Draft Features:**
 - 📋 **Chain Topology** (DRAFT design, commit: 86ba953, 2025-12-22)
@@ -582,9 +594,9 @@ find . -maxdepth 1 -name "*.cpp" -o -name "*.hpp" | grep -v "./tmp/" | xargs cla
 
 ---
 
-**Document Version:** 4.0
-**Last Updated:** 2025-12-15
-**Status:** Phase 0, 1.1, 1.2 complete - Ready for Phase 2
+**Document Version:** 7.2
+**Last Updated:** 2025-12-27
+**Status:** Phase 0-4 complete, maintenance updates applied
 
 **Communication Guidelines:**
 - Use Traditional Chinese (Taiwan) for conversations with users
