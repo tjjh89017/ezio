@@ -55,6 +55,3 @@ else()
 	set(EZIO_VERSION "unknown")
 	message(WARNING "Version detection failed, using fallback: ${EZIO_VERSION}")
 endif()
-
-# Export EZIO_VERSION to parent scope
-set(EZIO_VERSION "${EZIO_VERSION}" PARENT_SCOPE)

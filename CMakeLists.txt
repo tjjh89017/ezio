@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 
+# Set policy for Boost package finding (CMake 3.30+)
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 project(ezio CXX)
@@ -32,7 +37,7 @@ set(Boost_USE_MULTITHREADED ON)
 
 # depends
 find_package(LibtorrentRasterbar 2.0 REQUIRED CONFIG)
-find_package(Boost 1.74 REQUIRED COMPONENTS system program_options)
+find_package(Boost 1.74 REQUIRED CONFIG COMPONENTS system program_options)
 #find_package(Protobuf 3 REQUIRED)
 find_package(gRPC REQUIRED CONFIG)
 find_package(spdlog REQUIRED CONFIG)
