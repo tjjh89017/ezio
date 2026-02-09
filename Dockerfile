@@ -1,4 +1,4 @@
-FROM debian:sid as builder
+FROM debian:sid AS builder
 
 COPY . /usr/src/ezio
 
@@ -31,6 +31,6 @@ RUN apt-get -y update && \
     libprotobuf32 \
     libtorrent-rasterbar2.0
 
-copy --from=builder /usr/local/sbin/ezio .
+COPY --from=builder /usr/local/sbin/ezio .
 
 CMD ["/app/ezio"]
