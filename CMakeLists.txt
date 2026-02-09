@@ -37,8 +37,8 @@ set(Boost_USE_MULTITHREADED ON)
 
 # depends
 find_package(LibtorrentRasterbar 2.0 REQUIRED CONFIG)
-find_package(Boost 1.74 REQUIRED CONFIG COMPONENTS system program_options)
-#find_package(Protobuf 3 REQUIRED)
+find_package(Boost 1.74 REQUIRED CONFIG COMPONENTS program_options)
+#find_package(Protobuf 3 REQUIRED CONFIG)
 find_package(gRPC REQUIRED CONFIG)
 find_package(spdlog REQUIRED CONFIG)
 
@@ -66,14 +66,29 @@ add_executable(${EZIO}
 	${protos}
 )
 
-get_target_property(grpc_cpp_plugin_location gRPC::grpc_cpp_plugin LOCATION)
-protobuf_generate(TARGET ${EZIO} LANGUAGE cpp)
-protobuf_generate(TARGET ${EZIO} LANGUAGE grpc GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc PLUGIN "protoc-gen-grpc=${grpc_cpp_plugin_location}")
+# Define protobuf/gRPC generated files output directory
+set(PROTO_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${PROTO_BINARY_DIR}")
+
+# Generate protobuf files
+protobuf_generate(
+	TARGET ${EZIO}
+	LANGUAGE cpp
+	PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+)
+
+# Generate gRPC files
+protobuf_generate(
+	TARGET ${EZIO}
+	LANGUAGE grpc
+	GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+	PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
+	PROTOC_OUT_DIR "${PROTO_BINARY_DIR}"
+)
 
 target_compile_definitions(${EZIO} PUBLIC
 	EZIO_VERSION="${EZIO_VERSION}"
 
-	${GRPC_DEFINE}
 	_LARGEFILE64_SOURCE
 	_FILE_OFFSET_BITS=64
 
@@ -82,14 +97,13 @@ target_compile_definitions(${EZIO} PUBLIC
 
 target_include_directories(${EZIO} PUBLIC
 	${CMAKE_CURRENT_SOURCE_DIR}
-	${CMAKE_CURRENT_BINARY_DIR}
+	"$<BUILD_INTERFACE:${PROTO_BINARY_DIR}>"
 )
 
 target_link_libraries(${EZIO} PRIVATE
 	spdlog
 	fmt
 	Boost::boost
-	Boost::system
 	Boost::program_options
 	LibtorrentRasterbar::torrent-rasterbar
 
