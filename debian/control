@@ -1,0 +1,35 @@
+Source: ezio
+Section: utils
+Priority: optional
+Maintainer: Steven Shiau <steven@clonezilla.org>
+# Using debhelper-compat 13 and dh-python for better automation in Sid
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3-all,
+               dh-autoreconf,
+               libssl-dev,
+               libtorrent-rasterbar-dev (>= 2.0.7),
+               libboost-chrono-dev (>=1.74),
+               libboost-random-dev (>=1.74),
+               libboost-program-options-dev (>=1.74),
+               pkg-config,
+               cmake (>=3.16),
+               libgrpc-dev, 
+               libgrpc++-dev, 
+               libprotobuf-dev, 
+               protobuf-compiler-grpc, 
+               libspdlog-dev, 
+               python3-grpc-tools, 
+               python3-grpcio, 
+               python3-urwid, 
+               python3-libtorrent
+Standards-Version: 4.7.0
+Homepage: https://github.com/tjjh89017/ezio.git
+
+Package: ezio
+Architecture: any
+# ${python3:Depends} is vital for Sid to resolve python3-grpcio dependencies automatically
+Depends: ${misc:Depends}, ${shlibs:Depends}, ${python3:Depends}, python3-grpc-tools, python3-grpcio, python3-urwid
+Description: Bittorrent-based Disk Cloner
+ Ezio is a Bittorrent-based Disk Cloner. 
+ It is currently under heavy development.
