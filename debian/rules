@@ -1,0 +1,28 @@
+#!/usr/bin/make -f
+
+# Use the python3 sequence to automate script handling
+%:
+	dh $@ --with python3
+
+override_dh_auto_clean:
+	dh_auto_clean
+	# Remove generated gRPC files to keep the source tree clean
+	rm -f utils/ezio_pb2.py utils/ezio_pb2_grpc.py
+
+override_dh_auto_configure:
+	# Generate gRPC Python modules before compilation
+	cd $(CURDIR)/utils/ && ./ezio_create_proto_py.sh
+	# Run standard CMake configuration
+	dh_auto_configure -- -Dstrip=OFF -DCMAKE_INSTALL_PREFIX=/usr/
+
+override_dh_auto_install:
+	# Install compiled binaries to debian/tmp first
+	dh_auto_install -- DESTDIR=$(CURDIR)/debian/tmp
+	
+	# Manually install Python utilities to debian/tmp
+	install -d $(CURDIR)/debian/tmp/usr/sbin/
+	install -m 755 utils/*.py $(CURDIR)/debian/tmp/usr/sbin/
+	install -m 755 utils/ezio_pb2.py utils/ezio_pb2_grpc.py $(CURDIR)/debian/tmp/usr/sbin/
+
+override_dh_missing:
+	dh_missing --exclude=clear_test_disk.py
