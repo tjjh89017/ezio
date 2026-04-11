@@ -169,7 +169,8 @@ private:
 	size_t m_num_dirty{0};	// count of dirty blocks
 
 public:
-	cache_partition() : m_max_entries(0)
+	cache_partition() :
+		m_max_entries(0)
 	{
 	}
 	cache_partition(size_t max_entries) :
