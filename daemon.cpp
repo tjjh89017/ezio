@@ -21,16 +21,18 @@ void ezio::stop()
 
 void ezio::wait(int interval_second)
 {
+	constexpr int reannounce_interval = 60;
+	int elapsed = 0;
+
 	while (!shutdown_) {
 		std::this_thread::sleep_for(std::chrono::seconds(interval_second));
+		elapsed += interval_second;
 
-		/*
-		std::vector<libtorrent::alert*> alerts;
-		session_.pop_alerts(&alerts);
-		for (auto a : alerts) {
-			spdlog::info("alert: {} {}", a->what(), a->message());
+		if (elapsed >= reannounce_interval) {
+			force_reannounce_all();
+			spdlog::debug("periodic force reannounce done");
+			elapsed = 0;
 		}
-		*/
 	}
 }
 
@@ -168,6 +170,15 @@ void ezio::pop_alerts(std::vector<lt::alert *> *alerts)
 void ezio::set_alert_notify(std::function<void()> const &callback)
 {
 	session_.set_alert_notify(callback);
+}
+
+void ezio::force_reannounce_all()
+{
+	for (auto const &h : session_.get_torrents()) {
+		if (h.is_valid()) {
+			h.force_reannounce(0, -1, lt::torrent_handle::ignore_min_interval);
+		}
+	}
 }
 
 std::string ezio::get_version()
