@@ -9,7 +9,7 @@
 
 #include "raw_disk_io.hpp"
 #include "buffer_pool.hpp"
-#include "store_buffer.hpp"
+#include "torrent_location.hpp"
 
 namespace ezio
 {

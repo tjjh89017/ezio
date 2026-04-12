@@ -13,7 +13,7 @@
 #include <libtorrent/libtorrent.hpp>
 #include <spdlog/spdlog.h>
 
-#include "store_buffer.hpp"	 // For torrent_location
+#include "torrent_location.hpp"
 
 namespace ezio
 {
