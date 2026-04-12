@@ -43,6 +43,7 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 		return true;
 	}
 
+	evict_one_lru();
 	// New entry - try to evict if at capacity
 	// libtorrent 2.x design: allow over-allocation (short-term exceeding max_entries)
 	// This prevents blocking writes when all entries are temporarily dirty
