@@ -38,26 +38,26 @@ class partition_storage
 {
 private:
 	// fd to partition.
-	int fd_{0};
-	void *mapping_addr_{nullptr};
-	size_t mapping_len_{0};
+	int m_fd{0};
+	void *m_mapping_addr{nullptr};
+	size_t m_mapping_len{0};
 
-	libtorrent::file_storage const &fs_;
+	libtorrent::file_storage const &m_fs;
 
 public:
 	partition_storage(const std::string &path, libtorrent::file_storage const &fs) :
-		fs_(fs)
+		m_fs(fs)
 	{
-		fd_ = open(path.c_str(), O_RDWR);
-		if (fd_ < 0) {
-			spdlog::critical("failed to open ({}) = {}", path, strerror(fd_));
+		m_fd = open(path.c_str(), O_RDWR);
+		if (m_fd < 0) {
+			spdlog::critical("failed to open ({}) = {}", path, strerror(m_fd));
 			exit(1);
 		}
 	}
 
 	~partition_storage()
 	{
-		int ec = close(fd_);
+		int ec = close(m_fd);
 		if (ec) {
 			spdlog::error("close: {}", strerror(ec));
 		}
@@ -65,7 +65,7 @@ public:
 
 	int piece_size(libtorrent::piece_index_t const piece)
 	{
-		return fs_.piece_size(piece);
+		return m_fs.piece_size(piece);
 	}
 
 	int read(char *buffer, libtorrent::piece_index_t const piece, int const offset,
@@ -73,7 +73,7 @@ public:
 	{
 		BOOST_ASSERT(buffer != nullptr);
 
-		auto file_slices = fs_.map_block(piece, offset, length);
+		auto file_slices = m_fs.map_block(piece, offset, length);
 		int ret = 0;
 
 		for (const auto &file_slice : file_slices) {
@@ -82,7 +82,7 @@ public:
 			int64_t partition_offset = 0;
 
 			// to find partition_offset from file name.
-			std::string file_name(fs_.file_name(file_index));
+			std::string file_name(m_fs.file_name(file_index));
 			try {
 				partition_offset = std::stoll(file_name, 0, 16);
 				partition_offset += file_slice.offset;
@@ -95,7 +95,7 @@ public:
 				return ret;
 			}
 
-			pread(fd_, buffer, file_slice.size, partition_offset);
+			pread(m_fd, buffer, file_slice.size, partition_offset);
 			ret += file_slice.size;
 			buffer += file_slice.size;
 		}
@@ -107,7 +107,7 @@ public:
 	{
 		BOOST_ASSERT(buffer != nullptr);
 
-		auto file_slices = fs_.map_block(piece, offset, length);
+		auto file_slices = m_fs.map_block(piece, offset, length);
 
 		for (const auto &file_slice : file_slices) {
 			const auto &file_index = file_slice.file_index;
@@ -115,7 +115,7 @@ public:
 			int64_t partition_offset = 0;
 
 			// to find partition_offset from file name.
-			std::string file_name(fs_.file_name(file_index));
+			std::string file_name(m_fs.file_name(file_index));
 			try {
 				partition_offset = std::stoll(file_name, 0, 16);
 				partition_offset += file_slice.offset;
@@ -128,7 +128,7 @@ public:
 				return;
 			}
 
-			pwrite(fd_, buffer, file_slice.size, partition_offset);
+			pwrite(m_fd, buffer, file_slice.size, partition_offset);
 			buffer += file_slice.size;
 		}
 	}
@@ -151,38 +151,38 @@ raw_disk_io *get_raw_disk_io_instance()
 raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	libtorrent::settings_interface const &sett,
 	libtorrent::counters &cnt) :
-	ioc_(ioc),
+	m_ioc(ioc),
 	m_settings(&sett),
 	m_stats_counters(cnt),
 	m_read_buffer_pool(ioc, 128ULL * 1024 * 1024),	// 128 MB for read + hash
 	m_write_buffer_pool(ioc, 256ULL * 1024 * 1024),	 // 256 MB for write
 	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
-	num_io_threads_(sett.get_int(libtorrent::settings_pack::aio_threads))
+	m_num_io_threads(sett.get_int(libtorrent::settings_pack::aio_threads))
 {
 	// Calculate entries per partition (cache is divided equally among threads)
-	// NOTE: Don't use reserve() on io_thread_pools_ as thread_pool is not movable
+	// NOTE: Don't use reserve() on m_io_thread_pools as thread_pool is not movable
 	size_t cache_entries = calculate_cache_entries(sett);
-	size_t entries_per_partition = cache_entries / num_io_threads_;
+	size_t entries_per_partition = cache_entries / m_num_io_threads;
 
 	spdlog::info("[raw_disk_io] Buffer pools initialized:");
 	spdlog::info("  Read pool:  128 MB (8192 buffers)");
 	spdlog::info("  Write pool: 256 MB (16384 buffers)");
 	spdlog::info("[raw_disk_io] Initializing {} I/O threads with consistent hashing",
-		num_io_threads_);
+		m_num_io_threads);
 	spdlog::info("[raw_disk_io] Each thread owns {} cache entries ({} MB)",
 		entries_per_partition,
 		entries_per_partition * DEFAULT_BLOCK_SIZE / (1024 * 1024));
 
 	// Initialize cache partitions
-	m_cache.resize_partitions(num_io_threads_, entries_per_partition);
+	m_cache.resize_partitions(m_num_io_threads, entries_per_partition);
 
 	// Create each thread pool with 1 thread
-	for (size_t i = 0; i < num_io_threads_; ++i) {
-		io_thread_pools_.emplace_back(std::make_unique<boost::asio::thread_pool>(1));  // 1 thread per pool
+	for (size_t i = 0; i < m_num_io_threads; ++i) {
+		m_io_thread_pools.emplace_back(std::make_unique<boost::asio::thread_pool>(1));  // 1 thread per pool
 		spdlog::debug("[raw_disk_io] I/O thread pool {} created", i);
 	}
 
-	spdlog::info("[raw_disk_io] All {} I/O thread pools started successfully", num_io_threads_);
+	spdlog::info("[raw_disk_io] All {} I/O thread pools started successfully", m_num_io_threads);
 
 	// Start stats reporting thread (posts tasks to each io thread - lock-free!)
 	m_stats_thread = std::thread(&raw_disk_io::stats_report_loop, this);
@@ -199,9 +199,9 @@ raw_disk_io::~raw_disk_io()
 	}
 
 	// Join all thread pools (waits for all pending work to complete)
-	for (size_t i = 0; i < num_io_threads_; ++i) {
+	for (size_t i = 0; i < m_num_io_threads; ++i) {
 		spdlog::debug("[raw_disk_io] Joining I/O thread pool {}...", i);
-		io_thread_pools_[i]->join();  // Blocks until all work done
+		m_io_thread_pools[i]->join();  // Blocks until all work done
 		spdlog::debug("[raw_disk_io] I/O thread pool {} joined", i);
 	}
 
@@ -213,15 +213,15 @@ libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params c
 {
 	const std::string &target_partition = p.path;
 
-	int idx = storages_.size();
-	if (!free_slots_.empty()) {
+	int idx = m_storages.size();
+	if (!m_free_slots.empty()) {
 		// TODO need a lock
-		idx = free_slots_.front();
-		free_slots_.pop_front();
+		idx = m_free_slots.front();
+		m_free_slots.pop_front();
 	}
 
 	auto storage = std::make_unique<partition_storage>(target_partition, p.files);
-	storages_.emplace(idx, std::move(storage));
+	m_storages.emplace(idx, std::move(storage));
 
 	if (idx > 0) {
 		spdlog::warn("new_torrent current idx => {}, should be 0", idx);
@@ -233,8 +233,8 @@ libtorrent::storage_holder raw_disk_io::new_torrent(libtorrent::storage_params c
 void raw_disk_io::remove_torrent(libtorrent::storage_index_t idx)
 {
 	// TODO need a lock
-	storages_.erase(idx);
-	free_slots_.push_back(idx);
+	m_storages.erase(idx);
+	m_free_slots.push_back(idx);
 }
 
 void raw_disk_io::async_read(
@@ -269,7 +269,7 @@ void raw_disk_io::async_read(
 	size_t thread_idx = get_thread_index(idx, r.piece);
 
 	// Post all work to worker thread (lock-free: single thread per partition)
-	boost::asio::post((*io_thread_pools_[thread_idx]),
+	boost::asio::post((*m_io_thread_pools[thread_idx]),
 		[=, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
 
@@ -297,7 +297,7 @@ void raw_disk_io::async_read(
 					auto buf_offset = (ret == 0) ? 0 : ((ret & 2) ? len1 : 0);
 
 					auto const start_time = libtorrent::clock_type::now();
-					storages_[idx]->read(buf + buf_offset, r.piece, offset, len, error);
+					m_storages[idx]->read(buf + buf_offset, r.piece, offset, len, error);
 					auto const read_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
 
 					m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
@@ -315,7 +315,7 @@ void raw_disk_io::async_read(
 				if (!cache_hit) {
 					// Cache miss - read from disk
 					auto const start_time = libtorrent::clock_type::now();
-					storages_[idx]->read(buf, r.piece, r.start, r.length, error);
+					m_storages[idx]->read(buf, r.piece, r.start, r.length, error);
 					auto const read_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
 
 					m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
@@ -332,7 +332,7 @@ void raw_disk_io::async_read(
 			}
 
 			// Post result back to main thread
-			post(ioc_, [h = std::move(handler), b = std::move(buffer), error]() mutable {
+			post(m_ioc, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 				h(std::move(b), error);
 			});
 		});
@@ -360,7 +360,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		size_t thread_idx = get_thread_index(storage, r.piece);
 
 		// Post all work to worker thread (lock-free: single thread per partition)
-		boost::asio::post((*io_thread_pools_[thread_idx]),
+		boost::asio::post((*m_io_thread_pools[thread_idx]),
 			[=, o = std::move(o), handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 				torrent_location loc{storage, r.piece, r.start};
 
@@ -374,7 +374,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 				// Write-through: always write to disk using temp buffer
 				libtorrent::storage_error error;
 				auto const start_time = libtorrent::clock_type::now();
-				storages_[storage]->write(temp_buf, r.piece, r.start, r.length, error);
+				m_storages[storage]->write(temp_buf, r.piece, r.start, r.length, error);
 
 				// If cache insert succeeded, mark entry as clean (write completed)
 				if (cache_inserted) {
@@ -392,7 +392,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 				// buffer destructor will return buffer to pool
 
 				// Call handler
-				post(ioc_, [=, h = std::move(handler)] {
+				post(m_ioc, [=, h = std::move(handler)] {
 					h(error);
 				});
 			});
@@ -406,7 +406,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 	libtorrent::storage_error error;
 	auto const start_time = libtorrent::clock_type::now();
-	storages_[storage]->write(const_cast<char *>(buf), r.piece, r.start, r.length, error);
+	m_storages[storage]->write(const_cast<char *>(buf), r.piece, r.start, r.length, error);
 	auto const write_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
 
 	// Update counters
@@ -415,7 +415,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 	m_stats_counters.inc_stats_counter(libtorrent::counters::disk_write_time, write_time);
 	m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, write_time);
 
-	post(ioc_, [=, h = std::move(handler)] {
+	post(m_ioc, [=, h = std::move(handler)] {
 		h(error);
 	});
 
@@ -435,7 +435,7 @@ void raw_disk_io::async_hash(
 		spdlog::error("[async_hash] Read pool exhausted! No buffer available");
 		error.ec = libtorrent::errors::no_memory;
 		error.operation = libtorrent::operation_t::alloc_cache_piece;
-		post(ioc_, [=, h = std::move(handler)] {
+		post(m_ioc, [=, h = std::move(handler)] {
 			h(piece, libtorrent::sha1_hash{}, error);
 		});
 		return;
@@ -446,11 +446,11 @@ void raw_disk_io::async_hash(
 	// Use consistent hashing: hash operations use same thread as I/O for this piece
 	// Since all blocks of a piece go to same partition, no cross-partition access needed
 	size_t thread_idx = get_thread_index(storage, piece);
-	boost::asio::post((*io_thread_pools_[thread_idx]),
+	boost::asio::post((*m_io_thread_pools[thread_idx]),
 		[=, handler = std::move(handler), buffer = std::move(buffer)]() {
 			libtorrent::storage_error error;
 			libtorrent::hasher ph;
-			partition_storage *st = storages_[storage].get();
+			partition_storage *st = m_storages[storage].get();
 
 			auto const start_time = libtorrent::clock_type::now();
 
@@ -495,7 +495,7 @@ void raw_disk_io::async_hash(
 
 			// buffer destructor will return buffer to pool
 
-			post(ioc_, [=, h = std::move(handler)] {
+			post(m_ioc, [=, h = std::move(handler)] {
 				h(piece, hash, error);
 			});
 		});
@@ -514,7 +514,7 @@ void raw_disk_io::async_move_storage(
 	std::function<void(libtorrent::status_t, std::string const &, libtorrent::storage_error const &)>
 		handler)
 {
-	post(ioc_, [=] {
+	post(m_ioc, [=] {
 		handler(libtorrent::status_t::fatal_disk_error, p,
 			libtorrent::storage_error(
 				libtorrent::error_code(boost::system::errc::operation_not_supported, libtorrent::system_category())));
@@ -531,7 +531,7 @@ void raw_disk_io::async_check_files(
 	libtorrent::aux::vector<std::string, libtorrent::file_index_t> links,
 	std::function<void(libtorrent::status_t, libtorrent::storage_error const &)> handler)
 {
-	post(ioc_, [=] {
+	post(m_ioc, [=] {
 		handler(libtorrent::status_t::no_error, libtorrent::storage_error());
 	});
 }
@@ -539,7 +539,7 @@ void raw_disk_io::async_check_files(
 void raw_disk_io::async_stop_torrent(libtorrent::storage_index_t storage,
 	std::function<void()> handler)
 {
-	post(ioc_, handler);
+	post(m_ioc, handler);
 }
 
 void raw_disk_io::async_rename_file(
@@ -547,7 +547,7 @@ void raw_disk_io::async_rename_file(
 	std::function<void(std::string const &, libtorrent::file_index_t, libtorrent::storage_error const &)>
 		handler)
 {
-	post(ioc_, [=] {
+	post(m_ioc, [=] {
 		handler(name, index, libtorrent::storage_error());
 	});
 }
@@ -556,7 +556,7 @@ void raw_disk_io::async_delete_files(
 	libtorrent::storage_index_t storage, libtorrent::remove_flags_t options,
 	std::function<void(libtorrent::storage_error const &)> handler)
 {
-	post(ioc_, [=] {
+	post(m_ioc, [=] {
 		handler(libtorrent::storage_error());
 	});
 }
@@ -567,7 +567,7 @@ void raw_disk_io::async_set_file_priority(
 		libtorrent::aux::vector<libtorrent::download_priority_t, libtorrent::file_index_t>)>
 		handler)
 {
-	post(ioc_, [=] {
+	post(m_ioc, [=] {
 		handler(libtorrent::storage_error(libtorrent::error_code(
 					boost::system::errc::operation_not_supported, libtorrent::system_category())),
 			std::move(prio));
@@ -578,7 +578,7 @@ void raw_disk_io::async_clear_piece(libtorrent::storage_index_t storage,
 	libtorrent::piece_index_t index,
 	std::function<void(libtorrent::piece_index_t)> handler)
 {
-	post(ioc_, [=] {
+	post(m_ioc, [=] {
 		handler(index);
 	});
 }
@@ -658,8 +658,8 @@ void raw_disk_io::stats_report_loop()
 		// Each thread logs its own partition only (lock-free!)
 		spdlog::info("[unified_cache] === Lock-Free Cache Performance Statistics ===");
 
-		for (size_t i = 0; i < num_io_threads_; ++i) {
-			boost::asio::post((*io_thread_pools_[i]), [this, i]() {
+		for (size_t i = 0; i < m_num_io_threads; ++i) {
+			boost::asio::post((*m_io_thread_pools[i]), [this, i]() {
 				// Each io thread reads its own partition only (lock-free!)
 				auto p_stats = m_cache.get_partition_stats(i);	// Single partition
 				size_t entries = m_cache.get_partition_size(i);
