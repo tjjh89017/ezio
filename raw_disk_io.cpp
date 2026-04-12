@@ -493,6 +493,8 @@ void raw_disk_io::async_hash(
 			m_stats_counters.inc_stats_counter(libtorrent::counters::disk_hash_time, hash_time);
 			m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, hash_time);
 
+			// buffer destructor will return buffer to pool
+
 			post(ioc_, [=, h = std::move(handler)] {
 				h(piece, hash, error);
 			});
