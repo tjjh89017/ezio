@@ -48,3 +48,7 @@
 # Python
 __pycache__/
 *.py[cod]
+
+# VS Code
+/.vscode/
+/build/
