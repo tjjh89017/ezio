@@ -159,6 +159,7 @@
 - Planning documents in `docs/plan/`, completed work in `docs/SESSION_MEMORY.md`
 - Use libtorrent's `m_` prefix for member variables
 - Code comments in English, no emojis
+- Use ASCII arrows (`->`, `<-`) in code comments and documentation; unicode is OK in Python TUI as part of UI display
 - **Always run clang-format before committing code changes**
 
 **Git Commit Guidelines:**

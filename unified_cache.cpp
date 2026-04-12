@@ -28,10 +28,10 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 		it->second.dirty = dirty;
 
 		if (dirty && !was_dirty) {
-			// Clean → dirty transition
+			// Clean -> dirty transition
 			m_num_dirty++;
 		} else if (!dirty && was_dirty) {
-			// Dirty → clean transition
+			// Dirty -> clean transition
 			m_num_dirty--;
 		}
 
