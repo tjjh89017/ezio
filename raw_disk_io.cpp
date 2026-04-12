@@ -607,7 +607,8 @@ void raw_disk_io::submit_jobs()
 
 void raw_disk_io::settings_updated()
 {
-	// Update cache size from settings
+	// Called from libtorrent session network thread when settings change.
+	// Update cache size limit; actual eviction is deferred to worker threads.
 	size_t new_cache_entries = calculate_cache_entries(*m_settings);
 	if (new_cache_entries != m_cache.max_entries()) {
 		spdlog::info("[raw_disk_io] Updating cache size from {} to {} entries ({} MB -> {} MB)",

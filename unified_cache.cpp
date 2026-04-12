@@ -44,6 +44,9 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 	}
 
 	// New entry - try to evict if at capacity
+	// This is the PRIMARY eviction point: runs on the owning worker thread (1:1 mapping),
+	// so no locking is needed. set_max_entries() only updates m_max_entries without evicting,
+	// relying on this path to gradually shrink the partition on subsequent inserts.
 	// libtorrent 2.x design: allow over-allocation (short-term exceeding max_entries)
 	// This prevents blocking writes when all entries are temporarily dirty
 	bool did_evict = false;
@@ -170,15 +173,12 @@ size_t cache_partition::dirty_count() const
 
 void cache_partition::set_max_entries(size_t new_max)
 {
+	// Called from libtorrent session network thread via settings_updated().
+	// Only update the limit here; do NOT evict, because m_entries/m_lru are owned
+	// by the worker thread (1:1 mapping) and evicting here would race with
+	// concurrent insert/lookup on the worker thread.
+	// Eviction happens naturally in insert() on the owning worker thread.
 	m_max_entries = new_max;
-
-	// If shrinking, evict entries until size <= new_max
-	while (m_entries.size() > m_max_entries) {
-		if (!evict_one_lru()) {
-			spdlog::warn("[cache_partition] Cannot shrink: too many dirty entries");
-			break;
-		}
-	}
 }
 
 bool cache_partition::evict_one_lru()
@@ -306,10 +306,12 @@ size_t unified_cache::get_dirty_count(libtorrent::storage_index_t storage)
 
 void unified_cache::set_max_entries(size_t new_max)
 {
+	// Called from libtorrent session network thread via settings_updated().
+	// Each partition's set_max_entries() only updates the limit without evicting.
+	// Actual eviction is deferred to insert() on the owning worker thread.
 	m_max_entries = new_max;
 	size_t entries_per_partition = new_max / m_partitions.size();
 
-	// Resize each partition
 	for (size_t i = 0; i < m_partitions.size(); ++i) {
 		m_partitions[i]->set_max_entries(entries_per_partition);
 	}
