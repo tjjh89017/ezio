@@ -20,7 +20,7 @@
   - 5000x faster alert response (<1ms vs 0-5s)
 
 - ✅ **Phase 1.1: Buffer Pool Merger** (commit: b018516)
-  - Unified buffer pool: 128MB+128MB → 256MB
+  - Unified buffer pool: 128MB+128MB -> 256MB
   - +48% memory efficiency for unbalanced workloads
   - Aligned with libtorrent 2.x design
 
@@ -29,27 +29,27 @@
   - Thread pools configured from settings (aio_threads)
   - settings_updated() interface implemented
 
-- ✅ **Phase 2: Configurable Thread Pools** (commits: bbaf786 → 34ae63c)
+- ✅ **Phase 2: Configurable Thread Pools** (commits: bbaf786 -> 34ae63c)
   - Command line option: `--aio-threads` (handles both I/O and hashing)
   - Runtime tuning without recompilation
   - Default: aio_threads=16 (unified for disk I/O and hashing)
   - Enables easy testing for NVMe optimization
   - Updated README with usage examples
 
-- ✅ **Phase 3.1: Lock-Free Unified Cache** (commits: 78cd7ee → 0a6c48c, merged 2025-12-21)
+- ✅ **Phase 3.1: Lock-Free Unified Cache** (commits: 78cd7ee -> 0a6c48c, merged 2025-12-21)
   - **True lock-free cache** with 1:1 thread:partition mapping
   - Per-thread pools (each with 1 thread) for deterministic partition ownership
-  - Consistent hashing (storage + piece) ensures same piece → same thread
+  - Consistent hashing (storage + piece) ensures same piece -> same thread
   - Write-through cache replacing temporary store_buffer
   - LRU eviction with dirty block pinning
   - Configurable cache size via `--cache-size` option (default 512MB)
   - Lock-free stats reporting (each thread logs its own partition)
   - All cache operations on worker threads (zero main thread access)
   - Removed 189 lines of obsolete code (watermark, mutexes, handlers)
-  - **Performance: 2.8x improvement** (270 MB/s → 766 MB/s in 1-on-1)
+  - **Performance: 2.8x improvement** (270 MB/s -> 766 MB/s in 1-on-1)
   - **Cache hit rate: 98-100%** with excellent locality
 
-- ✅ **Phase 4: UI Refactoring** (branch: refactor_ui, commits: 82242a5 → 7a83aa7, 2025-12-22)
+- ✅ **Phase 4: UI Refactoring** (branch: refactor_ui, commits: 82242a5 -> 7a83aa7, 2025-12-22)
   - Component-based architecture with TorrentWidget, SummaryWidget, TorrentListWidget
   - Sorting: by path, name, progress, download/upload speed (press again to reverse)
   - Filtering: all/downloading/seeding/finished (keys: 0/a, 1, 2, 3)
@@ -60,7 +60,7 @@
   - Scrollable help dialog (h key, close with q/h/Esc)
   - Consistent light gray background with semantic color palette definitions
   - Display format: `name    downloaded / total` (first line shows progress)
-  - Unified sort logic: ▲ ascending (A→Z, small→large), ▼ descending (Z→A, large→small)
+  - Unified sort logic: ▲ ascending (A->Z, small->large), ▼ descending (Z->A, large->small)
   - Replaced ezio_ui.py with refactored version, removed obsolete files
   - Net result: -743 lines of code with more features
 
@@ -80,13 +80,13 @@
 - 📋 **Chain Topology** (DRAFT design, commit: 86ba953, 2025-12-22)
   - Status: **Design archived for future reference, NOT scheduled for implementation**
   - Design document: `docs/plan/CHAIN_TOPOLOGY_DESIGN.md`
-  - Transform BitTorrent mesh into linear chain: Node1 → Node2 → Node3
+  - Transform BitTorrent mesh into linear chain: Node1 -> Node2 -> Node3
   - Sequential data flow for LAN bandwidth optimization
   - Dynamic node ordering via coordinator service
   - Automatic chain repair when nodes fail
   - Global chain shared across all torrents
   - gRPC API for runtime control
-  - **Critical challenge:** Enforce directional flow (prev→download, next→upload)
+  - **Critical challenge:** Enforce directional flow (prev->download, next->upload)
   - **Solution:** 4-layer approach (sequential download, connection limits, IP filtering, validation)
   - 6-phase implementation plan (~1,920 lines of new code)
   - Will only be implemented if explicitly requested by user
@@ -108,10 +108,11 @@
    - Write-through cache (default 512MB, configurable via `--cache-size`)
    - Dynamic partitions (= aio_threads) with 1:1 thread:partition mapping
    - Zero mutexes - true lock-free design with per-thread ownership
-   - Consistent hashing (storage + piece) ensures same piece → same thread
+   - Consistent hashing (storage + piece) ensures same piece -> same thread
    - LRU eviction (dirty blocks pinned during async writes)
    - Replaces temporary store_buffer (ordering guaranteed by consistent hashing)
    - Lock-free stats reporting (each thread logs its own partition)
+   - `set_max_entries()` only updates the limit (called from network thread); actual eviction is deferred to `insert()` on the owning worker thread to avoid race conditions
 
 4. **Settings Infrastructure** (after Phase 1.2)
    - Constructor: `raw_disk_io(io_context&, settings_interface&, counters&)`
@@ -185,8 +186,8 @@ EZIO is a **BitTorrent-based raw disk imaging tool** for fast LAN deployment. Th
 | 0.2 | Event-driven alerts | 5000x faster response | bccea62 |
 | 1.1 | Unified buffer pool | +48% memory efficiency | b018516 |
 | 1.2 | Configurable settings | Production tuning | c69c69a |
-| 2 | Configurable thread pools | Runtime tuning for NVMe/HDD | bbaf786→34ae63c |
-| **3.1** | **Lock-Free Unified Cache** | **+184% performance (2.8x)** | **78cd7ee→0a6c48c** |
+| 2 | Configurable thread pools | Runtime tuning for NVMe/HDD | bbaf786->34ae63c |
+| **3.1** | **Lock-Free Unified Cache** | **+184% performance (2.8x)** | **78cd7ee->0a6c48c** |
 
 **Phase 3.1 Details: Lock-Free Unified Cache (Merged 2025-12-21)**
 
@@ -246,14 +247,14 @@ EZIO directly reads/writes RAW DISK (e.g., /dev/sda1)
 ```
 BitTorrent Protocol:
   Peer sends: piece 5, block 0 (16KB data)
-    ↓
+    v
 EZIO Calculation:
   disk_offset = piece_id × piece_size + block_offset
   Example: 5 × 1MB + 0 = 0x500000
-    ↓
+    v
 Write to Raw Disk:
   pwrite(disk_fd, buffer, 16KB, 0x500000)
-    ↓
+    v
 Disk Hardware:
   Write directly to physical sector
 ```
@@ -285,15 +286,15 @@ Disk Hardware:
 struct mmap_disk_io final : disk_interface
 {
     // Single unified buffer pool for ALL operations
-    aux::disk_buffer_pool m_buffer_pool;  // ← ONE pool! (m_ prefix)
+    aux::disk_buffer_pool m_buffer_pool;  // <- ONE pool! (m_ prefix)
 
-    // Store buffer: location → buffer pointer mapping
-    aux::store_buffer m_store_buffer;     // ← m_ prefix
+    // Store buffer: location -> buffer pointer mapping
+    aux::store_buffer m_store_buffer;     // <- m_ prefix
 
     // Other components
-    aux::file_view_pool m_file_pool;      // ← m_ prefix
-    settings_interface const* m_settings; // ← m_ prefix
-    counters& m_stats_counters;           // ← m_ prefix
+    aux::file_view_pool m_file_pool;      // <- m_ prefix
+    settings_interface const* m_settings; // <- m_ prefix
+    counters& m_stats_counters;           // <- m_ prefix
 };
 ```
 
@@ -326,7 +327,7 @@ See [docs/MUTEX_ANALYSIS.md](docs/MUTEX_ANALYSIS.md) for detailed analysis.
 
 **Purpose:**
 - Temporary cache between async_write() return and write completion
-- Maps `(storage_index, piece, offset)` → buffer pointer
+- Maps `(storage_index, piece, offset)` -> buffer pointer
 - Allows async_read() to retrieve data before disk write completes
 
 **Lifecycle:**
@@ -338,7 +339,7 @@ return; // libtorrent knows data is in buffer
 
 // do_write() (worker thread):
 pwrite(fd, buffer, size, offset);
-m_store_buffer.erase({storage, piece, offset});  // ← Removed after write!
+m_store_buffer.erase({storage, piece, offset});  // <- Removed after write!
 ```
 
 ### Component 3: Settings System
@@ -488,12 +489,12 @@ void settings_updated() {
 ```cpp
 // In your application or session
 lt::settings_pack pack;
-pack.set_int(lt::settings_pack::aio_threads, 32);  // ← Increase for NVMe!
+pack.set_int(lt::settings_pack::aio_threads, 32);  // <- Increase for NVMe!
 session.apply_settings(pack);
 ```
 
 **Expected Results:**
-- **NVMe:** +100-150% write throughput (500 MB/s → 1+ GB/s)
+- **NVMe:** +100-150% write throughput (500 MB/s -> 1+ GB/s)
 - **Saturate 10Gbps network:** Achieve full 1.25 GB/s
 - **HDD:** No negative impact (can use lower thread count)
 
@@ -541,7 +542,7 @@ find . -maxdepth 1 -name "*.cpp" -o -name "*.hpp" | grep -v "./tmp/" | xargs cla
 ### Validation Metrics
 
 **Phase 2 Success Criteria:**
-- ✅ NVMe write: 500 MB/s → 1+ GB/s (with 32 threads)
+- ✅ NVMe write: 500 MB/s -> 1+ GB/s (with 32 threads)
 - ✅ Network utilization: 80-100%
 - ✅ HDD: No regression (with 2-4 threads)
 - ✅ Configurable via settings_pack
