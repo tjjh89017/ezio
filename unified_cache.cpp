@@ -46,17 +46,7 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 	// New entry - try to evict if at capacity
 	// libtorrent 2.x design: allow over-allocation (short-term exceeding max_entries)
 	// This prevents blocking writes when all entries are temporarily dirty
-	bool did_evict = false;
-	while (m_entries.size() >= m_max_entries) {
-		if (!evict_one_lru()) {
-			// Cannot evict (all clean entries exhausted)
-			// Allow over-allocation - insert anyway
-			spdlog::debug("[cache_partition] Over-allocation: size={}, max={}",
-				m_entries.size() + 1, m_max_entries);
-			break;
-		}
-		did_evict = true;
-	}
+	bool did_evict = m_entries.size() >= m_max_entries;
 
 	// Allocate new buffer (cache manages its own memory)
 	char *buffer = static_cast<char *>(malloc(DEFAULT_BLOCK_SIZE));
