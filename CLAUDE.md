@@ -118,7 +118,12 @@
    - Thread pools read from settings in init list
    - Cache size configurable: `./ezio --cache-size 1024` (1GB)
 
-5. **Naming Convention**
+5. **disk_interface callback contract** (libtorrent requirement)
+   - All async callbacks **must be posted back** to `ioc_` (network thread) via `post(ioc_, ...)`
+   - Cannot call handler directly from worker thread — session internals are not thread-safe
+   - Source: `disk_interface.hpp:154-156` — "The callbacks must be posted back onto the network thread via the io_context object passed into the constructor."
+
+6. **Naming Convention**
    - Member variables use `m_` prefix (libtorrent style)
    - E.g., `m_buffer_pool`, `m_cache`, `m_settings`
 
