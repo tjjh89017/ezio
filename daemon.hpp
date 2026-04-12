@@ -51,9 +51,9 @@ public:
 	std::string get_version();
 
 private:
-	lt::session &session_;
+	lt::session &m_session;
 
-	std::atomic_bool shutdown_;
+	std::atomic_bool m_shutdown;
 };
 
 }  // namespace ezio

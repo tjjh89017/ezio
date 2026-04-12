@@ -46,8 +46,8 @@ public:
 	virtual Status GetVersion(ServerContext *context, const Empty *e, VersionResponse *response) override;
 
 private:
-	ezio &daemon_;
-	std::unique_ptr<Server> server_;
+	ezio &m_daemon;
+	std::unique_ptr<Server> m_server;
 };
 
 }  // namespace ezio

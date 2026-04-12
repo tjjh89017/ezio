@@ -10,13 +10,13 @@
 namespace ezio
 {
 ezio::ezio(lt::session &session) :
-	session_(session), shutdown_(false)
+	m_session(session), m_shutdown(false)
 {
 }
 
 void ezio::stop()
 {
-	shutdown_ = true;
+	m_shutdown = true;
 }
 
 void ezio::wait(int interval_second)
@@ -24,7 +24,7 @@ void ezio::wait(int interval_second)
 	constexpr int reannounce_interval = 60;
 	int elapsed = 0;
 
-	while (!shutdown_) {
+	while (!m_shutdown) {
 		std::this_thread::sleep_for(std::chrono::seconds(interval_second));
 		elapsed += interval_second;
 
@@ -70,7 +70,7 @@ void ezio::add_torrent(std::string torrent_body, std::string save_path, bool see
 		throw std::invalid_argument("failed to save path");
 	}
 
-	lt::torrent_handle handle = session_.add_torrent(std::move(atp));
+	lt::torrent_handle handle = m_session.add_torrent(std::move(atp));
 
 	spdlog::info("torrent added. save_path({})", save_path);
 }
@@ -87,7 +87,7 @@ std::map<std::string, torrent_status> ezio::get_torrent_status(std::vector<std::
 
 	auto now = std::chrono::high_resolution_clock::now();
 
-	std::vector<lt::torrent_handle> torrents = session_.get_torrents();
+	std::vector<lt::torrent_handle> torrents = m_session.get_torrents();
 	for (lt::torrent_handle const &h : torrents) {
 		std::stringstream ss;
 		ss << h.info_hash();
@@ -139,7 +139,7 @@ void ezio::pause_torrent(std::string hash)
 	std::stringstream ss(hash);
 	libtorrent::sha1_hash info_hash;
 	ss >> info_hash;
-	auto h = session_.find_torrent(info_hash);
+	auto h = m_session.find_torrent(info_hash);
 	if (h.is_valid()) {
 		h.pause();
 	}
@@ -151,7 +151,7 @@ void ezio::resume_torrent(std::string hash)
 	std::stringstream ss(hash);
 	libtorrent::sha1_hash info_hash;
 	ss >> info_hash;
-	auto h = session_.find_torrent(info_hash);
+	auto h = m_session.find_torrent(info_hash);
 	if (h.is_valid()) {
 		h.resume();
 	}
@@ -159,22 +159,22 @@ void ezio::resume_torrent(std::string hash)
 
 bool ezio::get_shutdown()
 {
-	return shutdown_;
+	return m_shutdown;
 }
 
 void ezio::pop_alerts(std::vector<lt::alert *> *alerts)
 {
-	session_.pop_alerts(alerts);
+	m_session.pop_alerts(alerts);
 }
 
 void ezio::set_alert_notify(std::function<void()> const &callback)
 {
-	session_.set_alert_notify(callback);
+	m_session.set_alert_notify(callback);
 }
 
 void ezio::force_reannounce_all()
 {
-	for (auto const &h : session_.get_torrents()) {
+	for (auto const &h : m_session.get_torrents()) {
 		if (h.is_valid()) {
 			h.force_reannounce(0, -1, lt::torrent_handle::ignore_min_interval);
 		}

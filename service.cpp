@@ -5,7 +5,7 @@
 namespace ezio
 {
 gRPCService::gRPCService(ezio &daemon) :
-	daemon_(daemon)
+	m_daemon(daemon)
 {
 }
 
@@ -16,17 +16,17 @@ void gRPCService::start(std::string listen_address)
 	// set recv unlimit
 	builder.SetMaxReceiveMessageSize(-1);
 	builder.RegisterService(this);
-	server_ = builder.BuildAndStart();
+	m_server = builder.BuildAndStart();
 }
 
 void gRPCService::stop()
 {
-	server_->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(10));
+	m_server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(10));
 }
 
 void gRPCService::wait()
 {
-	server_->Wait();
+	m_server->Wait();
 }
 
 Status gRPCService::Shutdown(ServerContext *context, const Empty *e1,
@@ -34,7 +34,7 @@ Status gRPCService::Shutdown(ServerContext *context, const Empty *e1,
 {
 	spdlog::info("shutdown");
 
-	daemon_.stop();
+	m_daemon.stop();
 	return Status::OK;
 }
 
@@ -45,7 +45,7 @@ Status gRPCService::GetTorrentStatus(ServerContext *context,
 	spdlog::debug("GetTorrentStatus request: {}", request->DebugString());
 
 	std::vector<std::string> hashes(request->hashes().begin(), request->hashes().end());
-	auto result = daemon_.get_torrent_status(hashes);
+	auto result = m_daemon.get_torrent_status(hashes);
 	for (const auto &iter : result) {
 		const auto &hash = iter.first;
 		const auto &t_stat = iter.second;
@@ -87,7 +87,7 @@ Status gRPCService::AddTorrent(ServerContext *context,
 	spdlog::info("AddTorrent");
 
 	try {
-		daemon_.add_torrent(request->torrent(), request->save_path(), request->seeding_mode(), request->max_uploads(), request->max_connections(), request->sequential_download());
+		m_daemon.add_torrent(request->torrent(), request->save_path(), request->seeding_mode(), request->max_uploads(), request->max_connections(), request->sequential_download());
 	} catch (const std::exception &e) {
 		return Status(grpc::StatusCode::UNAVAILABLE, e.what());
 	}
@@ -100,7 +100,7 @@ Status gRPCService::PauseTorrent(ServerContext *context, const PauseTorrentReque
 	spdlog::info("PauseTorrent");
 
 	try {
-		daemon_.pause_torrent(request->hash());
+		m_daemon.pause_torrent(request->hash());
 	} catch (const std::exception &e) {
 		return Status(grpc::StatusCode::UNAVAILABLE, e.what());
 	}
@@ -113,7 +113,7 @@ Status gRPCService::ResumeTorrent(ServerContext *context, const ResumeTorrentReq
 	spdlog::info("ResumeTorrent");
 
 	try {
-		daemon_.resume_torrent(request->hash());
+		m_daemon.resume_torrent(request->hash());
 	} catch (const std::exception &e) {
 		return Status(grpc::StatusCode::UNAVAILABLE, e.what());
 	}
@@ -125,7 +125,7 @@ Status gRPCService::GetVersion(ServerContext *context, const Empty *e, VersionRe
 {
 	spdlog::info("GetVersion");
 
-	response->set_version(daemon_.get_version());
+	response->set_version(m_daemon.get_version());
 	return Status::OK;
 }
 
