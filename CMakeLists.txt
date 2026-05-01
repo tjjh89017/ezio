@@ -17,6 +17,7 @@ set(sources
 	daemon.cpp
 	buffer_pool.cpp
 	unified_cache.cpp
+	partition_storage.cpp
 	raw_disk_io.cpp
 	service.cpp
 	log.cpp
