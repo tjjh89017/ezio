@@ -1,5 +1,4 @@
 #include <string>
-#include <sys/mman.h>
 #include <thread>
 #include <chrono>
 
@@ -33,106 +32,6 @@ static size_t calculate_cache_entries(libtorrent::settings_interface const &sett
 
 	return entries;
 }
-
-class partition_storage
-{
-private:
-	// fd to partition.
-	int m_fd{0};
-	void *m_mapping_addr{nullptr};
-	size_t m_mapping_len{0};
-
-	libtorrent::file_storage const &m_fs;
-
-public:
-	partition_storage(const std::string &path, libtorrent::file_storage const &fs) :
-		m_fs(fs)
-	{
-		m_fd = open(path.c_str(), O_RDWR);
-		if (m_fd < 0) {
-			spdlog::critical("failed to open ({}) = {}", path, strerror(m_fd));
-			exit(1);
-		}
-	}
-
-	~partition_storage()
-	{
-		int ec = close(m_fd);
-		if (ec) {
-			spdlog::error("close: {}", strerror(ec));
-		}
-	}
-
-	int piece_size(libtorrent::piece_index_t const piece)
-	{
-		return m_fs.piece_size(piece);
-	}
-
-	int read(char *buffer, libtorrent::piece_index_t const piece, int const offset,
-		int const length, libtorrent::storage_error &error)
-	{
-		BOOST_ASSERT(buffer != nullptr);
-
-		auto file_slices = m_fs.map_block(piece, offset, length);
-		int ret = 0;
-
-		for (const auto &file_slice : file_slices) {
-			const auto &file_index = file_slice.file_index;
-
-			int64_t partition_offset = 0;
-
-			// to find partition_offset from file name.
-			std::string file_name(m_fs.file_name(file_index));
-			try {
-				partition_offset = std::stoll(file_name, 0, 16);
-				partition_offset += file_slice.offset;
-			} catch (const std::exception &e) {
-				spdlog::critical("failed to parse file_name({}) at ({}): {}",
-					file_name, static_cast<std::int32_t>(file_index), e.what());
-				error.file(file_index);
-				error.ec = libtorrent::errors::parse_failed;
-				error.operation = libtorrent::operation_t::file_read;
-				return ret;
-			}
-
-			pread(m_fd, buffer, file_slice.size, partition_offset);
-			ret += file_slice.size;
-			buffer += file_slice.size;
-		}
-		return ret;
-	}
-
-	void write(char *buffer, libtorrent::piece_index_t const piece, int const offset,
-		int const length, libtorrent::storage_error &error)
-	{
-		BOOST_ASSERT(buffer != nullptr);
-
-		auto file_slices = m_fs.map_block(piece, offset, length);
-
-		for (const auto &file_slice : file_slices) {
-			const auto &file_index = file_slice.file_index;
-
-			int64_t partition_offset = 0;
-
-			// to find partition_offset from file name.
-			std::string file_name(m_fs.file_name(file_index));
-			try {
-				partition_offset = std::stoll(file_name, 0, 16);
-				partition_offset += file_slice.offset;
-			} catch (const std::exception &e) {
-				spdlog::critical("failed to parse file_name({}) at ({}): {}",
-					file_name, static_cast<std::int32_t>(file_index), e.what());
-				error.file(file_index);
-				error.ec = libtorrent::errors::parse_failed;
-				error.operation = libtorrent::operation_t::file_write;
-				return;
-			}
-
-			pwrite(m_fd, buffer, file_slice.size, partition_offset);
-			buffer += file_slice.size;
-		}
-	}
-};
 
 std::unique_ptr<libtorrent::disk_interface> raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::settings_interface const &s,

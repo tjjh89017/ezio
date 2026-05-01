@@ -10,10 +10,10 @@
 #include <boost/asio.hpp>
 #include "buffer_pool.hpp"
 #include "unified_cache.hpp"
+#include "partition_storage.hpp"
 
 namespace ezio
 {
-class partition_storage;
 class raw_disk_io;
 
 std::unique_ptr<libtorrent::disk_interface>
