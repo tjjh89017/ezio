@@ -385,9 +385,12 @@ Time in second
 | 24 | 11376 | 1048 | 1992 | 0.526 |
 | 32 | 15168 | 1143 | 2203 | 0.519 |
 
-## Open Access Journal
+## Publications
 
-More details about EZIO design and benchmark are in [A Novel Massive Deployment Solution Based on the Peer-to-Peer Protocol](https://www.mdpi.com/2076-3417/9/2/296).
+More details about EZIO design and benchmark can be found in the following papers:
+
+- "A BitTorrent Mechanism-Based Solution for Massive System Deployment," *IEEE Access*, 2021. [IEEE Xplore](https://ieeexplore.ieee.org/document/9328243)
+- "A Novel Massive Deployment Solution Based on the Peer-to-Peer Protocol," *Applied Sciences*, 2019. [MDPI](https://www.mdpi.com/2076-3417/9/2/296)
 
 ## Limitation
 
