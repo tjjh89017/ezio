@@ -294,11 +294,10 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 				m_stats_counters.inc_stats_counter(libtorrent::counters::disk_write_time, write_time);
 				m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, write_time);
 
-				// buffer destructor will return buffer to pool
-
-				// Call handler
-				post(m_ioc, [=, h = std::move(handler)] {
+				// Call handler on main thread
+				post(m_ioc, [h = std::move(handler), b = std::move(buffer), error]() mutable {
 					h(error);
+					// buffer destructor returns buffer to pool on the network thread
 				});
 			});
 		return exceeded;  // Return true if pool exceeded (triggers backpressure)
