@@ -38,7 +38,7 @@ private:
 	// Each thread owns its cache partition exclusively (lock-free!)
 	std::vector<std::unique_ptr<boost::asio::thread_pool>> m_io_thread_pools;
 
-	const size_t m_num_io_threads;  // Fixed at startup (from aio_threads setting)
+	const size_t m_num_io_threads;	// Fixed at startup (from aio_threads setting)
 
 	// Cache statistics reporting (temporary for debugging)
 	std::thread m_stats_thread;

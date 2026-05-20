@@ -541,8 +541,8 @@ void raw_disk_io::stats_report_loop()
 		// Buffer pool usage stats (split pools)
 		int read_in_use = m_read_buffer_pool.in_use();
 		int write_in_use = m_write_buffer_pool.in_use();
-		int read_max = 128 * 1024 * 1024 / DEFAULT_BLOCK_SIZE;	// 8192 buffers
-		int write_max = 256 * 1024 * 1024 / DEFAULT_BLOCK_SIZE;	 // 16384 buffers
+		int read_max = READ_POOL_SIZE / DEFAULT_BLOCK_SIZE;
+		int write_max = WRITE_POOL_SIZE / DEFAULT_BLOCK_SIZE;
 
 		spdlog::info("[buffer_pools] Usage: READ={}/{} ({:.1f}%) WRITE={}/{} ({:.1f}%)",
 			read_in_use, read_max, (read_in_use * 100.0) / read_max,
