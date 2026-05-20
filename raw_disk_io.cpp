@@ -13,6 +13,10 @@
 namespace ezio
 {
 
+// Buffer pool sizes (bytes)
+constexpr size_t READ_POOL_SIZE = 512ULL * 1024 * 1024;
+constexpr size_t WRITE_POOL_SIZE = 512ULL * 1024 * 1024;
+
 // Global pointer to raw_disk_io instance for stats reporting
 // Set by raw_disk_io_constructor, accessed by log thread
 static raw_disk_io *g_raw_disk_io_instance = nullptr;
@@ -53,8 +57,8 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	m_ioc(ioc),
 	m_settings(&sett),
 	m_stats_counters(cnt),
-	m_read_buffer_pool(ioc, 128ULL * 1024 * 1024),	// 128 MB for read + hash
-	m_write_buffer_pool(ioc, 256ULL * 1024 * 1024),	 // 256 MB for write
+	m_read_buffer_pool(ioc, READ_POOL_SIZE),
+	m_write_buffer_pool(ioc, WRITE_POOL_SIZE),
 	m_cache(calculate_cache_entries(sett)),	 // Initialize from settings_pack::cache_size
 	m_num_io_threads(sett.get_int(libtorrent::settings_pack::aio_threads))
 {
@@ -64,8 +68,10 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	size_t entries_per_partition = cache_entries / m_num_io_threads;
 
 	spdlog::info("[raw_disk_io] Buffer pools initialized:");
-	spdlog::info("  Read pool:  128 MB (8192 buffers)");
-	spdlog::info("  Write pool: 256 MB (16384 buffers)");
+	spdlog::info("  Read pool:  {} MB ({} buffers)",
+		READ_POOL_SIZE / (1024 * 1024), READ_POOL_SIZE / DEFAULT_BLOCK_SIZE);
+	spdlog::info("  Write pool: {} MB ({} buffers)",
+		WRITE_POOL_SIZE / (1024 * 1024), WRITE_POOL_SIZE / DEFAULT_BLOCK_SIZE);
 	spdlog::info("[raw_disk_io] Initializing {} I/O threads with consistent hashing",
 		m_num_io_threads);
 	spdlog::info("[raw_disk_io] Each thread owns {} cache entries ({} MB)",
@@ -77,7 +83,7 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 
 	// Create each thread pool with 1 thread
 	for (size_t i = 0; i < m_num_io_threads; ++i) {
-		m_io_thread_pools.emplace_back(std::make_unique<boost::asio::thread_pool>(1));  // 1 thread per pool
+		m_io_thread_pools.emplace_back(std::make_unique<boost::asio::thread_pool>(1));	// 1 thread per pool
 		spdlog::debug("[raw_disk_io] I/O thread pool {} created", i);
 	}
 
