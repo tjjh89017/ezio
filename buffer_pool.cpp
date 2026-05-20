@@ -31,19 +31,9 @@ buffer_pool::~buffer_pool()
 
 char *buffer_pool::allocate_buffer_impl(std::unique_lock<std::mutex> &l)
 {
-	// no memory
-	if (m_size >= m_max_use) {
-		m_exceeded_max_size = true;
-		spdlog::debug("buffer pool reach max buffer count");
-		return nullptr;
-	}
-
-	// reach high watermark, but still has some buffer to use
-	if (m_size > m_high_watermark) {
-		spdlog::debug("buffer pool reach high watermark, mem usage: {}", m_size);
-		m_exceeded_max_size = true;
-	}
-
+	// Soft limit: m_max_use is a backpressure signal, not a hard cap.
+	// We always try to allocate; only real malloc failure returns nullptr.
+	// This matches libtorrent's disk_buffer_pool::allocate_buffer_impl().
 	char *buf = (char *)malloc(DEFAULT_BLOCK_SIZE);
 	if (!buf) {
 		spdlog::debug("buffer pool malloc failed");
@@ -51,6 +41,13 @@ char *buffer_pool::allocate_buffer_impl(std::unique_lock<std::mutex> &l)
 		return nullptr;
 	}
 	m_size++;
+
+	// Trigger exceeded flag at the high watermark (soft limit signal for backpressure).
+	if (m_size >= m_high_watermark && !m_exceeded_max_size) {
+		spdlog::debug("buffer pool reached high watermark, mem usage: {}", m_size);
+		m_exceeded_max_size = true;
+	}
+
 	return buf;
 }
 
