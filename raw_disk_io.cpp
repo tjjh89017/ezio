@@ -493,9 +493,16 @@ void raw_disk_io::async_clear_piece(libtorrent::storage_index_t storage,
 	libtorrent::piece_index_t index,
 	std::function<void(libtorrent::piece_index_t)> handler)
 {
-	post(m_ioc, [=] {
-		handler(index);
-	});
+	size_t thread_idx = get_thread_index(storage, index);
+	boost::asio::post((*m_io_thread_pools[thread_idx]),
+		[this, storage, index, handler = std::move(handler)]() mutable {
+			size_t removed = m_cache.clear_piece(storage, index);
+			spdlog::debug("[async_clear_piece] storage={} piece={} cleared {} entries",
+				static_cast<int>(storage), static_cast<int>(index), removed);
+			post(m_ioc, [index, h = std::move(handler)]() mutable {
+				h(index);
+			});
+		});
 }
 
 void raw_disk_io::update_stats_counters(libtorrent::counters &c) const
