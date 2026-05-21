@@ -18,6 +18,11 @@ partition_storage::partition_storage(const std::string &path, libtorrent::file_s
 		spdlog::critical("failed to open ({}) = {}", path, strerror(m_fd));
 		exit(1);
 	}
+
+	int rc = posix_fadvise(m_fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+	if (rc != 0) {
+		spdlog::warn("posix_fadvise(SEQUENTIAL) failed on {}: {}", path, strerror(rc));
+	}
 }
 
 partition_storage::~partition_storage()
