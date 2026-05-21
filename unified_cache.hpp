@@ -215,6 +215,15 @@ public:
 		return false;
 	}
 
+	// Existence probe — does NOT touch LRU or hit/miss stats.
+	// Use for cheap "is this block cached?" checks (e.g. prefetch chunk probing)
+	// where finding the block does not constitute a real read access.
+	// Lock-free: 1:1 thread:partition mapping ensures single-threaded access.
+	bool has(torrent_location const &loc) const
+	{
+		return m_entries.find(loc) != m_entries.end();
+	}
+
 	// Get two entries at once
 	// Similar to store_buffer::get2()
 	// Lock-free: 1:1 thread:partition mapping ensures single-threaded access
@@ -342,6 +351,14 @@ public:
 	{
 		size_t partition_idx = get_partition_index(loc);
 		return m_partitions[partition_idx]->get(loc, f);
+	}
+
+	// Existence probe — does NOT touch LRU or hit/miss stats.
+	// Forwards to the owning partition's cache_partition::has().
+	bool has(torrent_location const &loc) const
+	{
+		size_t partition_idx = get_partition_index(loc);
+		return m_partitions[partition_idx]->has(loc);
 	}
 
 	// Get two entries at once
