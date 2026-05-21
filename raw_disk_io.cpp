@@ -68,15 +68,15 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	size_t cache_entries = calculate_cache_entries(sett);
 	size_t entries_per_partition = cache_entries / m_num_io_threads;
 
-	// Derive prefetch chunk size from cache partition size
-	constexpr size_t PREFETCH_DIVISOR = 4;
-	constexpr size_t MIN_PREFETCH_BLOCKS = 16;
-	m_prefetch_blocks = std::max(MIN_PREFETCH_BLOCKS,
-		entries_per_partition / PREFETCH_DIVISOR);
-	spdlog::info("[raw_disk_io] Prefetch: {} blocks ({} KB) per chunk "
-				 "(derived from {} entries/partition / {})",
-		m_prefetch_blocks, m_prefetch_blocks * 16,
-		entries_per_partition, PREFETCH_DIVISOR);
+	// Prefetch chunk size: fixed at 16 blocks (256 KiB).
+	// A 256 KiB chunk roughly matches a libtorrent peer's per-piece request
+	// pipeline depth, amortises the pread syscall cost without polluting the
+	// cache. Sweeps across cache sizes 512 MB..8 GB showed 16 to be the
+	// best or tied-for-best value (and the only value that is never the
+	// worst); larger chunks degrade hit rate via partition eviction.
+	m_prefetch_blocks = 16;
+	spdlog::info("[raw_disk_io] Prefetch: {} blocks ({} KB) per chunk",
+		m_prefetch_blocks, m_prefetch_blocks * 16);
 
 	spdlog::info("[raw_disk_io] Buffer pools initialized:");
 	spdlog::info("  Read pool:  {} MB ({} buffers)",
