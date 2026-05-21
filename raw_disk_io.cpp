@@ -242,8 +242,7 @@ void raw_disk_io::async_read(
 					int missing = 0;
 					for (int i = chunk_start_idx; i < chunk_end_idx; ++i) {
 						int off = i * DEFAULT_BLOCK_SIZE;
-						if (!m_cache.get({idx, r.piece, off}, [](char const *) {
-							})) {
+						if (!m_cache.has({idx, r.piece, off})) {
 							++missing;
 						}
 					}
@@ -279,8 +278,7 @@ void raw_disk_io::async_read(
 							for (int i = chunk_start_idx; i < chunk_end_idx; ++i) {
 								int const off = i * DEFAULT_BLOCK_SIZE;
 								torrent_location loc{idx, r.piece, off};
-								if (m_cache.get(loc, [](char const *) {
-									}))
+								if (m_cache.has(loc))
 									continue;
 								int const block_bytes_into_chunk =
 									(i - chunk_start_idx) * DEFAULT_BLOCK_SIZE;
