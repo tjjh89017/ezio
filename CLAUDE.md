@@ -64,6 +64,54 @@
   - Replaced ezio_ui.py with refactored version, removed obsolete files
   - Net result: -743 lines of code with more features
 
+**📊 Prefetch Chunk Size Investigation (2026-05-22)**
+
+Branch: `feat/seeder-prefetch`. Investigated whether the seeder-side
+chunk-aligned read prefetch (`raw_disk_io.cpp` `async_read` chunk path,
+introduced by `f809ae8`) should derive its chunk size from cache size, or
+use a fixed value. Final answer: **fixed `m_prefetch_blocks = 16`** (commit
+`e2324f8`).
+
+Method: distributed benchmark, 1 seeder + 3 leechers, 60.6 GiB partclone
+torrent on raw NVMe (SX8200 Pro, SLC > 100 GB), `blkdiscard` between runs
+to remove SLC noise. Scripts kept in `tests/distrib_test/` (working tree
+only, not committed); raw logs in `tmp/distrib_test_results/`.
+
+Key findings:
+
+- The previous formula `entries_per_partition / 4` scaled chunk size with
+  cache memory, which is **wrong**. Right size is set by libtorrent's
+  per-piece peer-request pipeline depth (~16 outstanding blocks), not by
+  how much cache memory there is.
+
+- At cache=512 MB the derived formula gave chunk=512 blocks (8 MiB),
+  which crashed `actual_dl` to 289s and dropped leecher cache hit to
+  ~94% via partition eviction (each chunk insert evicts 25% of partition
+  entries). Fixed chunk=16 brought it back to 173s with 99-100% hit rate.
+
+- 2D sweep across cache sizes 512 MB / 2 / 4 / 8 GB and chunk sizes
+  1 / 4 / 8 / 16 / 32 / 64 / 256 / 512 / 2048 / 4096 / 8192 confirmed
+  `chunk=16` is the best or tied-for-best in every cell, and is the
+  smallest chunk that is never the worst.
+
+- async_hash cache warming (commit `57c3b7e`) is responsible for the
+  bulk of the seeder cache hit rate jump (16% on raw master -> 60% with
+  warming). Pure chunk-prefetch alone (no async_hash warming) gets
+  seeder hit to 53% (chunk=1) / 97% (chunk=16) / 99.5% (chunk=512) but
+  requires `disable_hash_checks=true` and so trades BT integrity for
+  speed.
+
+- Considered but rejected: deeper refactors of async_hash (chunk-batch
+  the inner read loop using a 16 MiB thread_local piece buffer; offload
+  SHA1 to a 2-4 thread hash pool). Both would shave another ~5-15s off
+  the 170s baseline, but the maintenance cost (three probe-and-decide
+  paths, thread_local memory, two-pool coordination) was judged too
+  high for the gain. Sticking with the simple constant chunk size.
+
+- Side: `partition_storage` could in principle batch its per-`file_slice`
+  preads via `preadv(2)`; analysis (Issue #136) showed <2% syscall win
+  for the current torrent profile and the issue is closed.
+
 **🔧 Recent Maintenance & Fixes (2025-12-27):**
 - 🔧 **Lambda Capture Fix** (commit: 3a5dd32)
   - Removed redundant 'this' capture in lambda expressions
