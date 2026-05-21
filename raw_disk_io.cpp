@@ -229,22 +229,100 @@ void raw_disk_io::async_read(
 				});
 
 				if (!cache_hit) {
-					// Cache miss - read from disk
-					auto const start_time = libtorrent::clock_type::now();
-					m_storages[idx]->read(buf, r.piece, r.start, r.length, error);
-					auto const read_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+					// Determine piece geometry for chunk-aligned prefetch
+					int const piece_size = m_storages[idx]->piece_size(r.piece);
+					int const blocks_in_piece = (piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
+					int const this_block_idx = block_offset / DEFAULT_BLOCK_SIZE;
 
-					m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
-					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_read_time, read_time);
-					m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, read_time);
+					int const n = std::min<int>(static_cast<int>(m_prefetch_blocks), blocks_in_piece);
+					int const chunk_start_idx = (this_block_idx / n) * n;
+					int const chunk_end_idx = std::min(chunk_start_idx + n, blocks_in_piece);
 
-					// Insert into cache (clean) for future reads
-					if (!error) {
-						m_cache.insert_read({idx, r.piece, block_offset}, buf, r.length);
+					// Probe how many blocks in the chunk are missing from cache
+					int missing = 0;
+					for (int i = chunk_start_idx; i < chunk_end_idx; ++i) {
+						int off = i * DEFAULT_BLOCK_SIZE;
+						if (!m_cache.get({idx, r.piece, off}, [](char const *) {
+							})) {
+							++missing;
+						}
 					}
-				}
+					int const chunk_blocks = chunk_end_idx - chunk_start_idx;
 
-				m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read);
+					if (missing * 4 >= chunk_blocks * 3) {
+						// >= 75% of chunk is missing: whole-chunk pread + bulk insert
+						thread_local std::vector<char> tls_chunk_buf;
+						size_t const need = size_t(n) * DEFAULT_BLOCK_SIZE;
+						if (tls_chunk_buf.size() < need)
+							tls_chunk_buf.resize(need);
+
+						int const chunk_offset_bytes = chunk_start_idx * DEFAULT_BLOCK_SIZE;
+						int const chunk_size_bytes = std::min<int>(
+							chunk_blocks * DEFAULT_BLOCK_SIZE,
+							piece_size - chunk_offset_bytes);
+
+						auto const start_time = libtorrent::clock_type::now();
+						int chunk_ret = m_storages[idx]->read(
+							tls_chunk_buf.data(), r.piece,
+							chunk_offset_bytes, chunk_size_bytes, error);
+						auto const read_time =
+							libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+						m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
+						m_stats_counters.inc_stats_counter(libtorrent::counters::disk_read_time, read_time);
+						m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, read_time);
+						m_stats_counters.inc_stats_counter(
+							libtorrent::counters::num_blocks_read, chunk_blocks);
+
+						if (chunk_ret > 0 && !error) {
+							// Bulk insert each block, skipping already-cached entries
+							for (int i = chunk_start_idx; i < chunk_end_idx; ++i) {
+								int const off = i * DEFAULT_BLOCK_SIZE;
+								torrent_location loc{idx, r.piece, off};
+								if (m_cache.get(loc, [](char const *) {
+									}))
+									continue;
+								int const block_bytes_into_chunk =
+									(i - chunk_start_idx) * DEFAULT_BLOCK_SIZE;
+								int const this_block_len = std::min<int>(
+									DEFAULT_BLOCK_SIZE,
+									chunk_size_bytes - block_bytes_into_chunk);
+								if (this_block_len <= 0)
+									break;
+								m_cache.insert_read(
+									loc,
+									tls_chunk_buf.data() + block_bytes_into_chunk,
+									this_block_len);
+							}
+
+							// Copy requested block out of chunk buffer
+							int const offset_within_chunk =
+								(this_block_idx - chunk_start_idx) * DEFAULT_BLOCK_SIZE +
+								read_offset;
+							std::memcpy(buf, tls_chunk_buf.data() + offset_within_chunk,
+								std::size_t(r.length));
+						}
+					} else {
+						// < 75% missing: fall back to original single-block pread
+						auto const start_time = libtorrent::clock_type::now();
+						m_storages[idx]->read(buf, r.piece, r.start, r.length, error);
+						auto const read_time =
+							libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
+
+						m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
+						m_stats_counters.inc_stats_counter(libtorrent::counters::disk_read_time, read_time);
+						m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, read_time);
+
+						// Insert into cache (clean) for future reads
+						if (!error) {
+							m_cache.insert_read({idx, r.piece, block_offset}, buf, r.length);
+						}
+
+						m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read);
+					}
+				} else {
+					m_stats_counters.inc_stats_counter(libtorrent::counters::num_blocks_read);
+				}
 			}
 
 			// Post result back to main thread
