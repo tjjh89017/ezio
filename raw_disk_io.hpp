@@ -39,6 +39,7 @@ private:
 	std::vector<std::unique_ptr<boost::asio::thread_pool>> m_io_thread_pools;
 
 	const size_t m_num_io_threads;	// Fixed at startup (from aio_threads setting)
+	size_t m_prefetch_blocks;  // Initial chunk size in blocks, clamped to piece at runtime
 
 	// Cache statistics reporting (temporary for debugging)
 	std::thread m_stats_thread;

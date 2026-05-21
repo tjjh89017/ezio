@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <string>
 #include <thread>
 #include <chrono>
@@ -66,6 +67,16 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	// NOTE: Don't use reserve() on m_io_thread_pools as thread_pool is not movable
 	size_t cache_entries = calculate_cache_entries(sett);
 	size_t entries_per_partition = cache_entries / m_num_io_threads;
+
+	// Derive prefetch chunk size from cache partition size
+	constexpr size_t PREFETCH_DIVISOR = 4;
+	constexpr size_t MIN_PREFETCH_BLOCKS = 16;
+	m_prefetch_blocks = std::max(MIN_PREFETCH_BLOCKS,
+		entries_per_partition / PREFETCH_DIVISOR);
+	spdlog::info("[raw_disk_io] Prefetch: {} blocks ({} KB) per chunk "
+				 "(derived from {} entries/partition / {})",
+		m_prefetch_blocks, m_prefetch_blocks * 16,
+		entries_per_partition, PREFETCH_DIVISOR);
 
 	spdlog::info("[raw_disk_io] Buffer pools initialized:");
 	spdlog::info("  Read pool:  {} MB ({} buffers)",
