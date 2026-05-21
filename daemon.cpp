@@ -60,6 +60,14 @@ void ezio::add_torrent(std::string torrent_body, std::string save_path, bool see
 
 	if (seeding_mode) {
 		atp.flags |= libtorrent::torrent_flags::seed_mode;
+		// Pre-mark every piece as already verified so libtorrent skips the
+		// lazy async_hash that seed_mode normally fires on first peer
+		// request. Our seeder's source is the same raw image the torrent
+		// metadata was generated from (e.g. partclone -> torrent_create),
+		// so re-hashing it on every cold start only catches on-disk
+		// corruption we don't try to detect, and costs significant wall
+		// time (~48s on a 60 GiB torrent in 1-on-1 tests).
+		atp.verified_pieces.resize(atp.ti->num_pieces(), true);
 	}
 
 	if (sequential_download) {
