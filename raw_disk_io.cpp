@@ -390,6 +390,9 @@ void raw_disk_io::async_hash(
 					ret = st->read(buf, piece, offset, len, error);
 					if (ret > 0) {
 						ph.update(buf, ret);
+						// Free pre-warm: cache the block we just hashed.
+						// Safe even if hash later fails — async_clear_piece will drop bad pieces.
+						m_cache.insert_read({storage, piece, offset}, buf, ret);
 					}
 				}
 
