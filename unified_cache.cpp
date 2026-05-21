@@ -154,6 +154,33 @@ std::vector<torrent_location> cache_partition::collect_dirty_blocks_for_storage(
 	return dirty_blocks;
 }
 
+size_t cache_partition::clear_piece(libtorrent::storage_index_t storage,
+	libtorrent::piece_index_t piece)
+{
+	// Lock-free: called only from the owning worker thread (1:1 mapping).
+	size_t removed = 0;
+
+	auto it = m_entries.begin();
+	while (it != m_entries.end()) {
+		if (it->first.torrent == storage && it->first.piece == piece) {
+			// Remove from LRU list first
+			m_lru.erase(it->second.lru_iter);
+
+			// Update dirty counter if this entry was dirty
+			if (it->second.dirty) {
+				m_num_dirty--;
+			}
+
+			it = m_entries.erase(it);
+			++removed;
+		} else {
+			++it;
+		}
+	}
+
+	return removed;
+}
+
 size_t cache_partition::size() const
 {
 	return m_entries.size();
@@ -266,6 +293,17 @@ std::vector<torrent_location> unified_cache::collect_dirty_blocks(libtorrent::st
 	}
 
 	return all_dirty;
+}
+
+size_t unified_cache::clear_piece(libtorrent::storage_index_t storage,
+	libtorrent::piece_index_t piece)
+{
+	// Route to the owning partition via consistent hashing on (storage, piece).
+	// Use offset=0 as a representative location for hashing — get_partition_index
+	// hashes only storage + piece, not offset.
+	torrent_location representative(storage, piece, 0);
+	size_t partition_idx = get_partition_index(representative);
+	return m_partitions[partition_idx]->clear_piece(storage, piece);
 }
 
 size_t unified_cache::total_entries() const
