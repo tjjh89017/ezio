@@ -365,6 +365,15 @@ A larger cache helps the **1-on-1** case most: once the seeder's cache is warm i
 
 ---
 
+## Roadmap
+
+- **OpenStack Ironic integration** — bring peer-to-peer image distribution to
+  bare-metal provisioning, building on and improving Mirantis' earlier work:
+  [Cut Ironic Provisioning Time Using Torrents](https://web.archive.org/web/20211124125644/https://www.mirantis.com/blog/cut-ironic-provisioning-time-using-torrents/)
+  (original blog post is now offline; link points to the Web Archive copy).
+
+---
+
 ## Publications
 
 - "A BitTorrent Mechanism-Based Solution for Massive System Deployment," *IEEE Access*, 2021. [IEEE Xplore](https://ieeexplore.ieee.org/document/9328243)
