@@ -87,7 +87,7 @@ void buffer_pool::check_buffer_level()
 		return;
 	}
 
-	// lower than LOW_WATERMARK, reopen
+	// lower than low watermark, reopen
 	spdlog::debug("buffer pool lower than low watermark, reopen");
 	m_exceeded_max_size = false;
 
