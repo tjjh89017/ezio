@@ -1,381 +1,326 @@
-# EZIO Developer and User Guide
+# EZIO
 
 ![build test](https://github.com/tjjh89017/ezio/actions/workflows/github_actions.yml/badge.svg)
 
-## Introduction
+**EZIO is a high-performance disk imaging tool for rapidly deploying dozens to hundreds of machines over a LAN.** It distributes disk images peer-to-peer with the BitTorrent protocol and writes directly to raw disk partitions, achieving far faster deployment than traditional multicast — and it gets *faster* as you add more clients, because every client also seeds.
 
-EZIO is a high-performance disk imaging tool designed for rapid deployment of dozens to hundreds of machines in local area networks. By leveraging the BitTorrent protocol for peer-to-peer data distribution and direct raw disk I/O, EZIO achieves significantly faster deployment speeds compared to traditional multicast-based solutions. Using `partclone` to capture only used filesystem blocks, EZIO minimizes transfer size while maintaining full system fidelity.
+It uses [`partclone`](http://partclone.org/) to capture only the used filesystem blocks, so images stay small without losing fidelity.
 
-**Note:** Clonezilla has integrated EZIO as its **Lite Server Mode** (available since version 2.6.0-31), making BitTorrent-based deployment accessible through Clonezilla's familiar interface. 
+> **Just want to deploy?** EZIO ships inside **Clonezilla** as its **Lite Server Mode** (since Clonezilla 2.6.0-31). That is the easiest way to use EZIO — no manual build required. See [Easiest Path: Clonezilla](#easiest-path-clonezilla).
 
-## Motivation
+---
 
-EZIO was inspired by Clonezilla for disk imaging and Resilio Sync (formerly BTsync) for peer-to-peer data distribution. While Clonezilla is widely used, its traditional multicast mode faced significant limitations in real-world deployments:
+## Table of Contents
 
-**Traditional Multicast Mode Limitations:**
-- **Synchronization overhead**: All clients must register before deployment begins, causing long wait times
-- **Failure amplification**: When a client fails to receive data correctly, the server must retransmit, consuming significant resources
-- **Broken client problem**: Faulty machines repeatedly request retransmission until retry limits are exceeded, blocking deployment progress
-- **No peer assistance**: Clients cannot help each other; all data flows from the server
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration & Performance Tuning](#configuration--performance-tuning)
+- [How It Works](#how-it-works)
+- [Benchmark](#benchmark)
+- [Limitations](#limitations)
+- [Publications](#publications)
+- [Contributing & Support](#contributing--support)
+- [License](#license)
 
-**EZIO's BitTorrent Approach:**
+---
 
-By implementing the transfer layer on top of BitTorrent, EZIO transforms these weaknesses into strengths. Clients become seeders as they download, distributing load across the network. Failed transfers affect only individual pieces, not the entire deployment. The result is dramatically faster deployment times, especially as client count increases (see Benchmark section). This approach proved so successful that Clonezilla integrated EZIO as its Lite Server Mode. 
+## Quick Start
 
-## Features
+### Easiest Path: Clonezilla
 
-### Core Features
+Use **Clonezilla Live (>= 2.6.0-31)** and pick **Lite Server Mode**. EZIO is built in and driven through Clonezilla's menus — no compilation, no manual torrent handling. Recommended for most users.
 
-- **BitTorrent-powered distribution**: Peer-to-peer architecture scales efficiently with client count. Unlike multicast where adding clients increases load on the server, BitTorrent distributes load across all peers as they seed while downloading.
+### Manual Path (build from source)
 
-- **Block-level transfer**: Unlike file-level sync tools (e.g., Resilio Sync), EZIO transfers data in small blocks (16KB). When corruption occurs, only the affected block needs retransmission, not the entire file.
+The full workflow is: **build EZIO -> capture an image with partclone -> create a torrent -> seed on the source -> download on each target.**
 
-- **Direct raw disk I/O**: Custom libtorrent storage backend writes directly to `/dev/sdX` partitions without filesystem overhead, maximizing write performance.
+```shell
+# 1. Build (see Installation for dependencies)
+mkdir build && cd build && cmake ../ && make && cd ..
 
-- **No RAM or temporary storage constraints**: Unlike other BitTorrent-based imaging solutions, EZIO streams data directly to the target disk without intermediate buffering. Competing solutions typically require either (1) loading the entire image into RAM before writing, limiting image size to available memory, or (2) downloading to temporary storage first (e.g., qcow2 format) then converting to raw disk with tools like `qemu-img convert`, requiring 2× disk space. EZIO eliminates both constraints by calculating block offsets on-the-fly and can deploy images of any size without temporary storage.
+# 2. Capture a partition into a partclone image + torrent.info
+sudo partclone.extfs -c -T -s /dev/sda1 -O image_dir/ --buffer_size 16777216
 
-- **Smart block capture**: Uses `partclone` to capture only used filesystem blocks, dramatically reducing image size and transfer time.
+# 3. Turn it into a torrent
+utils/partclone_create_torrent.py \
+    -c CloneZilla -p sda1 \
+    -i image_dir/torrent.info -o sda1.torrent \
+    -t 'http://<tracker-host>:6969/announce'
 
-- **Broad filesystem support**:
-  - **Linux**: ext2, ext3, ext4, reiserfs, reiser4, xfs, jfs, btrfs, f2fs, nilfs2
-  - **Windows**: FAT12, FAT16, FAT32, NTFS
-  - **macOS**: HFS+
-  - **BSD**: UFS (FreeBSD, NetBSD, OpenBSD)
-  - **Other**: Minix, VMFS3/VMFS5 (VMware ESX), Chrome OS/Chromium OS
-  - Supports both 32-bit (x86) and 64-bit (x86-64) systems
-  - For unsupported filesystems, falls back to sector-by-sector copy via dd
+# 4. Generate the gRPC Python stubs once (needed by the utils/ scripts)
+cd utils && ./ezio_create_proto_py.sh && cd ..
 
-### Operational Features
+# --- On the SOURCE machine: seed the disk ---
+sudo ./build/ezio                                   # start the daemon
+utils/ezio_add_torrent.py -S sda1.torrent /dev/sda1 # -S = seeding mode
 
-- **gRPC control interface**: Programmatic control for automation and integration
-- **Runtime log level control**: Adjust logging verbosity without recompilation via `SPDLOG_LEVEL` environment variable
-- **Event-driven alerts**: Instant notification of errors and state changes using libtorrent's alert system
-- **Configurable thread pools**: Tune disk I/O thread count for different storage types (HDD/SSD/NVMe)
-- **Lock-free unified cache**: 512MB configurable persistent cache with zero-mutex design for maximum performance
-- **Unified buffer pool**: 256MB temporary I/O buffer pool for efficient resource utilization 
+# --- On each TARGET machine: clone to disk ---
+sudo ./build/ezio                                   # start the daemon
+utils/ezio_add_torrent.py sda1.torrent /dev/sda1    # download + write to disk
+```
 
+That's it. As targets download they automatically seed to each other. Monitor progress with `utils/ezio_cli.py` or the TUI `utils/ezio_ui.py`.
 
-# Installation
+> **Note:** `ezio` runs in the foreground and blocks until it is shut down, so the `ezio_add_torrent.py` / monitoring commands must be run from a *separate* terminal. Stop the daemon with `utils/ezio_shutdown.py` (or let `ezio_ui` auto-exit once seeding is done).
 
-### Minimum System Requirements
+> **Tip:** `ezio` writes directly to raw devices, so it needs root (or CAP_DAC_OVERRIDE) for `/dev/sdX` access.
 
-- 64-bit Linux system
-- 1GB RAM (768MB for EZIO + OS overhead)
-- Root privileges or appropriate permissions for raw disk access
+---
+
+## Installation
+
+### Requirements
+
+- 64-bit Linux (Debian 11+ recommended)
+- 2 GB RAM (~1.5 GB for EZIO at default settings + OS overhead)
+- Root privileges for raw disk access
 
 ### Dependencies
-- Debian 11 or above
+
 - libtorrent-rasterbar >= 2.0.8
 - libboost >= 1.74
 - cmake >= 3.16
 - spdlog (logging)
 - gRPC (control interface)
-- clang-format (for code formatting, development only)
+- clang-format (development only)
 
 ```shell
-sudo apt install build-essential cmake libboost-all-dev libtorrent-rasterbar-dev libgrpc-dev libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc libspdlog-dev clang-format
+sudo apt install build-essential cmake libboost-all-dev \
+    libtorrent-rasterbar-dev libgrpc-dev libgrpc++-dev \
+    libprotobuf-dev protobuf-compiler-grpc libspdlog-dev clang-format
 ```
 
-### Build and Install
+Python helper scripts in `utils/` need:
 
 ```shell
-mkdir build
-cd build
+pip install -r utils/requirements.txt
+```
+
+### Build
+
+```shell
+mkdir build && cd build
 cmake ../
 make
-sudo make install
 ```
 
-**For Developers:** Before committing code changes, run clang-format:
-```shell
-# Format all source files
-find . -maxdepth 1 -name "*.cpp" -o -name "*.hpp" | grep -v "./tmp/" | xargs clang-format -i
-```
+This produces the `ezio` binary in `build/`; the examples below run it as `./build/ezio`.
 
-We also provide a Dockerfile for the ease of installation and CI testing.
-To build the image type this:
+### Docker
 
 ```shell
 docker build . -t ezio-latest-img
 ```
 
-## Runtime Configuration
+### For developers
 
-### Log Level Control
-
-EZIO supports runtime log level control via environment variables. You can adjust log verbosity without recompiling:
+Run clang-format before committing:
 
 ```shell
-# Set global log level
-export SPDLOG_LEVEL=debug    # Show all debug messages
-export SPDLOG_LEVEL=info     # Default level
-export SPDLOG_LEVEL=warn     # Only warnings and errors
-export SPDLOG_LEVEL=error    # Only errors
-
-# Component-specific log levels
-export SPDLOG_LEVEL=info,raw_disk_io=debug    # Debug only raw_disk_io
-export SPDLOG_LEVEL=warn,buffer_pool=info     # Different levels per component
+find . -maxdepth 1 -name "*.cpp" -o -name "*.hpp" | grep -v "./tmp/" | xargs clang-format -i
 ```
 
-**Available log levels** (from most to least verbose):
-- `trace` - Very detailed debugging information
-- `debug` - Debugging information
-- `info` - Informational messages (default)
-- `warn` - Warning messages
-- `error` - Error messages
-- `critical` - Critical errors
-- `off` - Disable all logging
-
-**Example usage:**
-```shell
-# Development: Enable debug logs
-SPDLOG_LEVEL=debug ./ezio
-
-# Production: Only show warnings and errors
-SPDLOG_LEVEL=warn ./ezio
-
-# Troubleshooting: Debug specific component
-SPDLOG_LEVEL=info,raw_disk_io=debug ./ezio
-```
-
-## Performance Tuning
-
-EZIO's disk I/O and hashing performance can be tuned via thread pool settings. The default values are optimized for mixed workloads but can be adjusted for specific scenarios.
-
-### Thread Pool Configuration
-
-**Command Line Options:**
-```shell
-./ezio --aio-threads <num>       # Disk I/O and hashing threads (default: 16)
-```
-
-**Default Settings:**
-- `aio_threads`: 16 (disk I/O operations and SHA-1 piece hashing)
-
-These settings can now be adjusted at runtime without recompilation.
-
-### Memory Configuration
-
-**Lock-Free Unified Cache:**
-- Default size: 512 MB (configurable via `--cache-size`)
-- Persistent read/write cache with zero-mutex design
-- Divided into N partitions (N = `aio_threads`)
-- Each partition managed by exactly one dedicated thread
-
-**Buffer Pool:**
-- Fixed size: 256 MB
-- Temporary I/O buffer pool for intermediate operations
-- Dynamic allocation with watermarks (50% low, 87.5% high)
-
-**Total Memory Usage:**
-- Default: 768 MB (512 MB cache + 256 MB buffer pool)
-- Configurable: Adjust cache size with `--cache-size` option
-
-### Recommendations by Storage Type
-
-For optimal performance, consider your storage hardware:
-
-**HDD (Traditional Hard Disk):**
-- Lower thread count recommended to reduce seek overhead
-- Example: `./ezio --aio-threads 2`
-- Sequential access performs better than parallel
-
-**SATA SSD:**
-- Moderate parallelism
-- Default settings work well: `./ezio` (16 threads)
-- Or explicit: `./ezio --aio-threads 16`
-
-**NVMe SSD:**
-- High parallelism for maximum throughput
-- Example: `./ezio --aio-threads 32`
-- Can saturate 10Gbps network with proper configuration
-
-**Thread Count Notes:**
-- Single thread pool handles both disk I/O and hashing operations
-- Adjust based on storage type and available CPU cores
-- Higher thread count benefits NVMe drives and multi-core systems
-
-### Testing Different Configurations
-
-You can easily test different thread pool configurations without recompilation:
-
-```shell
-# Test with minimal threads (HDD)
-./ezio --aio-threads 2
-
-# Test with default threads (SATA SSD)
-./ezio
-
-# Test with high parallelism (NVMe)
-./ezio --aio-threads 32
-
-# Combined with other options
-./ezio --aio-threads 32 --cache-size 1024 --listen 0.0.0.0:50051
-```
-
-### Performance Monitoring
-
-Monitor EZIO performance with:
-- Log level: `SPDLOG_LEVEL=info` shows transfer rates
-- System tools: `iostat`, `iotop` for disk utilization
-- Network: `iftop`, `nload` for bandwidth usage
-
-### Notes
-
-- **Homogeneous deployments** (all same disk type) work best with current design
-- **Heterogeneous setups** (mixed HDD/SSD) may need per-disk tuning in future versions
-- Cache size is configurable via `--cache-size`, buffer pool size is fixed at 256 MB
+---
 
 ## Usage
 
-### Partclone
+### The `ezio` daemon
 
-[Partclone](http://partclone.org/) provides utilities to save and restore used filesystem blocks **(and skips the unused blocks)** from/to a partition.
-
-The newest partclone will support dump your disk to EZIO image, and generate `torrent.info` simultaneously.
-```shell
-sudo partclone.extfs -c -T -s /dev/sda1 -O target/ --buffer_size 16777216
-```
-or you want generate torrent, but don't want BT image.
-```shell
-sudo partclone.extfs -c -t -s /dev/sda1 -O target/ --buffer_size 16777216
-```
-
-When finishing to dump disk, you will see the file like the picture. And using `utils/partclone_create_torrent.py` to generate torrent for deploy.
-![](https://i.imgur.com/8o815PL.png)
-
-```shell
-utils/partclone_create_torrent.py -c CloneZilla -p sda1 -i <some_path>/torrent.info -o sda1.torrent -t 'http://<some tracker>:6969/announce'
-```
-
-### EZIO
-
-When you have a `sda1.torrent` you can deploy or clone your disk via Network.
-
-#### Help
+`ezio` is the disk I/O daemon. It exposes a gRPC control interface; you add and manage torrents through the `utils/` scripts. It runs in the foreground until shut down, so start it in its own terminal and run the scripts below from another.
 
 ```
 Allowed Options:
-  -h [ --help ]              some help
-  -F [ --file ]              read data from file rather than raw disk
-  --listen arg               gRPC service listen address and port, default is 127.0.0.1:50051
-  --cache-size arg           unified cache size in MB, default is 512
-  --aio-threads arg          number of threads for disk I/O and hashing, default is 16
-  -v [ --version ]           show version
+  -h [ --help ]       show help
+  -F [ --file ]       read/write a regular file instead of a raw disk
+  -l [ --listen ] arg gRPC listen address:port (default 127.0.0.1:50051)
+  --cache-size arg    unified cache size in MB (default 512)
+  --aio-threads arg   threads for disk I/O and hashing (default 16)
+  -v [ --version ]    show version
 ```
 
-#### Seeding
+### Generate gRPC stubs (once)
 
-- Seeding from BT image
+The Python scripts need generated protobuf stubs:
+
 ```shell
-./ezio -F
-./utils/create_proto_py.sh
-./utils/add_torrent_seed.py sda1.torrent /some/path/to/sda1
+cd utils && ./ezio_create_proto_py.sh && cd ..
 ```
 
-- Seeding from Disk
+### Creating a torrent
+
+Capture a partition with partclone (this also emits `torrent.info`):
+
 ```shell
-./ezio
-./utils/create_proto_py.sh
-./utils/add_torrent_seed.py sda1.torrent /dev/sda1
+# -T also writes the BT image; use -t if you only want torrent.info
+sudo partclone.extfs -c -T -s /dev/sda1 -O image_dir/ --buffer_size 16777216
 ```
 
-#### Downloading
+Then build the `.torrent`:
 
-- Downloading to Disk
 ```shell
-./ezio
-./utils/create_proto_py.sh
-./utils/add_torrent.py sda1.torrent /dev/sda1
+utils/partclone_create_torrent.py \
+    -c CloneZilla -p sda1 \
+    -i image_dir/torrent.info -o sda1.torrent \
+    -t 'http://<tracker-host>:6969/announce'
 ```
 
-- Proxy or save the image
+### Seeding and downloading
+
+A single script, `ezio_add_torrent.py`, handles both. Add `-S` to seed.
+
 ```shell
-./ezio -F
-./utils/create_proto_py.sh
-./utils/add_torrent.py sda1.torrent /some/path/to/save/sda1
+# Seed an existing disk (source machine)
+sudo ./build/ezio
+utils/ezio_add_torrent.py -S sda1.torrent /dev/sda1
+
+# Seed from a saved image file instead of a raw disk
+sudo ./build/ezio -F
+utils/ezio_add_torrent.py -S sda1.torrent /path/to/sda1.img
+
+# Download and write to disk (target machine)
+sudo ./build/ezio
+utils/ezio_add_torrent.py sda1.torrent /dev/sda1
+
+# Download to a file (proxy / save the image)
+sudo ./build/ezio -F
+utils/ezio_add_torrent.py sda1.torrent /path/to/save/sda1.img
 ```
 
-#### Proxy
+`ezio_add_torrent.py` options:
 
-If you want to deploy over Internet or some bottleneck, you can proxy the torrent via regular BT software like [qBittorrent](https://www.qbittorrent.org/). And don't let internal peer connect outside directly.
+```
+  torrent                 torrent file path
+  path                    destination disk or file
+  -a, --address           gRPC server (default 127.0.0.1:50051)
+  -S, --seeding           start in seeding mode
+  -s, --sequential        sequential download
+  -c, --connections       max total connections (default 3)
+  -u, --uploads           max upload connections (default 2)
+```
 
-## Easy Usage to Deploy Disk or OS via EZIO
+### Monitoring & control
 
-Using CloneZilla Live (version>=testing-2.6.0-31). CloneZilla contains EZIO in its `Lite Server Mode`. It will be most easy way to deploy your disk or OS via BT.
-
-## Design
-
-### Custom Storage Implementation
-
-EZIO implements a custom `libtorrent` [disk I/O interface](http://libtorrent.org/reference-Custom_Storage.html#overview) in `raw_disk_io.cpp/hpp`, allowing direct read/write to raw disk partitions without filesystem overhead.
-
-**Key features:**
-- **Direct disk access**: Writes received blocks directly to `/dev/sdX` partitions
-- **Lock-free unified cache**: 512MB configurable persistent cache with per-thread partitioning
-- **Unified buffer pool**: 256MB temporary I/O buffer pool
-- **Configurable thread pools**: Tunable disk I/O and hashing threads
-- **Event-driven alerts**: Instant notification via `set_alert_notify()`
-
-### Lock-Free Cache Architecture
-
-EZIO implements a lock-free unified cache using consistent hashing and per-thread partitioning:
-
-**Consistent Hashing:**
-- Hash function: `hash(storage_index, piece_index) % num_threads`
-- All operations on the same piece are assigned to the same I/O thread
-- Guarantees execution order: `async_read` for a piece always executes after any pending `async_write` for that piece
-- Eliminates the need for temporary store_buffer (used in standard libtorrent)
-
-**Lock-Free Design:**
-- 1:1 thread-to-partition mapping: Each I/O thread exclusively owns one cache partition
-- No mutex required: Single-threaded access to each partition
-- Per-thread pools: Vector of `thread_pool(1)` for deterministic thread assignment
-- Dynamic partitions: Number of partitions equals `aio_threads` setting
-
-**Cache Configuration:**
 ```shell
-./ezio --cache-size <MB>    # Cache size in MB (default: 512)
+utils/ezio_cli.py       # status / progress in the terminal
+utils/ezio_ui.py        # full TUI (sorting, filtering, color, help via 'h')
+utils/ezio_pause_torrent.py / ezio_resume_torrent.py / ezio_shutdown.py
 ```
 
-The cache is divided into N partitions (where N = `aio_threads`), with each partition managed by exactly one thread. This design achieves true lock-free operation while maintaining cache coherency through consistent hashing.
+### Deploying over the Internet
 
-### Torrent Format
+For WAN or bottlenecked links, proxy the torrent through a regular BitTorrent client such as [qBittorrent](https://www.qbittorrent.org/), and keep internal peers from connecting directly to outside peers.
 
-We store the disk "offset" in hexadecimal as the file path, and "length" as the file attribute. This allows BitTorrent to locate and seek to the exact disk position
+---
+
+## Configuration & Performance Tuning
+
+### Log level
+
+Control verbosity at runtime with `SPDLOG_LEVEL`:
+
+```shell
+SPDLOG_LEVEL=debug ./ezio                    # everything
+SPDLOG_LEVEL=warn ./ezio                     # warnings + errors
+SPDLOG_LEVEL=info,raw_disk_io=debug ./ezio   # per-component
+```
+
+Levels: `trace`, `debug`, `info` (default), `warn`, `error`, `critical`, `off`.
+
+### Threads and cache
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `--aio-threads` | 16 | Threads for disk I/O **and** SHA-1 hashing |
+| `--cache-size` | 512 | Lock-free unified cache size, MB |
+
+Memory budget: cache (`--cache-size`, default 512 MB) + fixed buffer pools (512 MB read + 512 MB write) = ~1.5 GB by default.
+
+### Sizing the cache
+
+A larger cache improves the hit rate (seeders re-serve hot pieces from RAM instead of re-reading the disk), but EZIO must coexist with the OS and the running deployment. A good rule of thumb is to set `--cache-size` to about **1/4 of system RAM**, leaving the rest for buffer pools, the OS page cache, and headroom.
+
+| System RAM | Suggested `--cache-size` |
+|-----------:|-------------------------:|
+| 4 GB | 1024 (1 GB) |
+| 8 GB | 2048 (2 GB) |
+| 16 GB | 4096 (4 GB) |
+| 32 GB | 8192 (8 GB) |
+
+```shell
+./ezio --cache-size 4096   # ~16 GB machine
+```
+
+Remember the two 512 MB buffer pools (~1 GB) are always allocated on top of the cache, so keep total EZIO usage comfortably below available RAM.
+
+### Tuning by storage type
+
+```shell
+./ezio --aio-threads 2     # HDD: fewer threads, less seek thrash
+./ezio                     # SATA SSD: default 16 is fine
+./ezio --aio-threads 32    # NVMe: high parallelism, can saturate 10GbE
+```
+
+Combine options as needed:
+
+```shell
+./ezio --aio-threads 32 --cache-size 1024 --listen 0.0.0.0:50051
+```
+
+Monitor with `iostat`/`iotop` (disk) and `iftop`/`nload` (network). Homogeneous deployments (all the same disk type) perform best.
+
+---
+
+## How It Works
+
+### Direct raw disk I/O
+
+EZIO implements a custom libtorrent [disk I/O interface](http://libtorrent.org/reference-Custom_Storage.html#overview) in `raw_disk_io.cpp/.hpp` that reads/writes `/dev/sdX` partitions directly, skipping the filesystem layer. Block offsets are computed on the fly, so EZIO streams data straight to the target disk — no need to buffer the whole image in RAM or stage it in temporary storage first. Images of any size deploy without extra disk space.
+
+### Lock-free unified cache
+
+A 512 MB (configurable) write-through cache with a **zero-mutex** design:
+
+- **Consistent hashing** `hash(storage_index, piece_index) % aio_threads` routes every operation on a piece to the same I/O thread, guaranteeing a piece's `async_read` runs after any pending `async_write` for it.
+- **1:1 thread-to-partition mapping** — each thread exclusively owns one cache partition, so no locking is needed. This removes the temporary `store_buffer` used by stock libtorrent.
+
+### Torrent format
+
+The disk offset (hex) is stored as the file path and the length as the file size, so BitTorrent can seek directly to the right disk position:
 
 ```
 {
-    'announce': 'http://tracker.site1.com/announce',
-    'info':
-    {
-        'name': 'root',
-        'piece length': 262144,
-        'files':
-        [
-            {'path': ['0000000000000000'], 'length': 4096}, // store offset and length of blocks
-            {'path': ['0000000000020000'], 'length': 8192},
-            ...
-        ],
-        'pieces': 'some piece hash here'
-    }
+  'announce': 'http://tracker.example.com/announce',
+  'info': {
+    'name': 'root',
+    'piece length': 262144,
+    'files': [
+      {'path': ['0000000000000000'], 'length': 4096},   // offset + length
+      {'path': ['0000000000020000'], 'length': 8192},
+      ...
+    ],
+    'pieces': '...'
+  }
 }
 ```
 
+### Why BitTorrent beats multicast
+
+Traditional multicast must synchronize all clients before starting, retransmits to the whole group on any single failure, and lets one broken client stall the deployment. With BitTorrent, clients seed as they download (load spreads across peers), failures cost only a single 16 KB block, and there's no global sync barrier. Supported filesystems include ext2/3/4, xfs, btrfs, f2fs, reiserfs, NTFS, FAT, HFS+, UFS and more; unsupported ones fall back to sector-by-sector `dd`.
+
+---
+
 ## Benchmark
 
-Compare with CloneZilla Multicast Mode with EZIO Mode.
+### Scaling vs. Clonezilla multicast
 
-### Experimental environment
+EZIO vs. Clonezilla multicast. Lower is better; EZIO pulls ahead as clients scale.
+
 - Network: Cisco 3560G
-- Server: Dell T1700 with Intel Xeon E3-1226, 16G ram, 1TB hard disk
-- PC Client: 32 Client, same as Server
-- Image: Ubuntu Linux with 50GB data in disk. Multicast Image is compressed by `pzstd`. BT Image is raw file.
+- Server & clients: Dell T1700, Xeon E3-1226, 16 GB RAM, 1 TB HDD
+- Image: Ubuntu Linux, 50 GB of data (multicast image compressed with `pzstd`, BT image is raw)
 
-### Result
-Time in second
-
-| Number of client | Time (Unicast) | Time (EZIO) | Time (Multicast) | Ratio (BT/Multicast) |
+| Clients | Unicast (s) | EZIO (s) | Multicast (s) | EZIO / Multicast |
 | ---: | ---: | ---: | ---: | ---: |
 | 1 | 474 | 675 | 390 | 1.731 |
 | 2 | 948 | 1273 | 474 | 2.686 |
@@ -385,49 +330,58 @@ Time in second
 | 24 | 11376 | 1048 | 1992 | 0.526 |
 | 32 | 15168 | 1143 | 2203 | 0.519 |
 
-## Publications
+At 16+ clients EZIO is roughly 2x faster than multicast and the gap keeps widening.
 
-More details about EZIO design and benchmark can be found in the following papers:
+### Lab test — raw NVMe
+
+A recent end-to-end run of the current build, deploying a real partclone image directly onto raw NVMe partitions across separate hosts on a LAN.
+
+- 1 seeder + 1 or 3 leechers, each a separate Linux host
+- Storage: ADATA SX8200 Pro NVMe SSD, raw partition `/dev/nvme0n1p1` (source and target)
+- Image: 60.6 GiB partclone image (each leecher writes the full image)
+- Settings: `--aio-threads 16`, prefetch 16 blocks; cache size as noted
+- `blkdiscard` on each target between runs to avoid SLC-cache skew
+
+Two metrics per leecher: **download speed** as reported by `ezio_ui` (network in), and **disk-write average** (bytes written to NVMe / elapsed). Download outruns disk-write because the cache absorbs network bursts ahead of the flush to disk.
+
+| Scenario | Cache | Time | Download speed (median / peak) | Disk-write avg |
+| --- | ---: | ---: | ---: | ---: |
+| 1-on-1 | 512 MB | ~166 s | ~511 / 526 MB/s | ~374 MiB/s |
+| 1-on-1 | 4 GB | ~116 s | ~836 / 874 MB/s | ~536 MiB/s |
+| 1-to-3 | 512 MB | ~219 s | ~370 / 381 MB/s per leecher | ~283 MiB/s per leecher |
+| 1-to-3 | 4 GB | ~210 s | ~375 / 444 MB/s per leecher | ~294 MiB/s per leecher |
+
+A larger cache helps the **1-on-1** case most: once the seeder's cache is warm it serves the whole image from RAM, pushing download to ~840 MB/s and nearly halving the time. With 3 leechers the gain is small — the peers already offload the seeder by sharing pieces with each other, so the seeder reads only ~one image (~63 GiB) from disk per run regardless of leecher count, and aggregate delivered throughput (~1.1 GB/s across 3 leechers) scales with the number of peers.
+
+> **Note:** These are small-scale lab figures and understate EZIO's real advantage. BitTorrent's strength is scale — the more clients you deploy to, the more they seed to each other and the further EZIO pulls ahead of unicast or multicast (see the scaling table above). With only 1-3 nodes you are seeing close to its worst case, not its best.
+
+---
+
+## Limitations
+
+- Creating a torrent is slow: every piece must be SHA-1 hashed.
+- EZIO is inefficient with very few clients — its strength is scale.
+- Unsupported filesystems fall back to slower sector-by-sector `dd` copy.
+
+---
+
+## Publications
 
 - "A BitTorrent Mechanism-Based Solution for Massive System Deployment," *IEEE Access*, 2021. [IEEE Xplore](https://ieeexplore.ieee.org/document/9328243)
 - "A Novel Massive Deployment Solution Based on the Peer-to-Peer Protocol," *Applied Sciences*, 2019. [MDPI](https://www.mdpi.com/2076-3417/9/2/296)
 
-## Limitation
+---
 
-- Making a torrent cost lots of time due to sha-1 hash need to be done on every single piece of data.
-- EZIO will be extremely slow when the number of clients is too small.
-- Due to partclone limitation, for unsupported filesystem, sector-to-sector copy is done by dd in EZIO.
+## Contributing & Support
 
-## Future Improvements
+- Issues: https://github.com/tjjh89017/ezio/issues
+- Source: https://github.com/tjjh89017/ezio
+- Maintainer email: tjjh89017@hotmail.com
 
-### Integration
-- Integrate in OpenStack Ironic Project, improve Mirantis' works
-    - http://web.archive.org/web/20211124125644/https://www.mirantis.com/blog/cut-ironic-provisioning-time-using-torrents/
-    - https://review.opendev.org/c/openstack/ironic-specs/+/311091
+**Special thanks** to the National Center for High-performance Computing (NCHC), Taiwan, for test hardware and support.
 
-### Completed Recent Improvements
-- ✅ gRPC control interface
-- ✅ Runtime log level control
-- ✅ Event-driven alert handling
-- ✅ Unified buffer pool (256MB)
-- ✅ Configurable thread pools
-- ✅ Lock-free unified cache (512MB default, configurable)
-
-## Contribute
-
-- Issue Tracker: https://github.com/tjjh89017/ezio/issues
-- Source Code: https://github.com/tjjh89017/ezio
-
-## Support 
-
-If you are having issues, please let us know.
-EZIO main developer email is located at: tjjh89017@hotmail.com
-
-## Special Thanks
-
-- National Center for High-performance Computing, NCHC, Taiwan
-    - Provide many devices to test stability and knowledge support.
+---
 
 ## License
 
-The project is licensed under the GNU General Public License v2.0 license.
+GNU General Public License v2.0.
