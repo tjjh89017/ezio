@@ -111,7 +111,7 @@ void cache_partition::mark_clean(torrent_location const &loc)
 		// Update counters
 		m_num_dirty--;
 
-		spdlog::debug("[cache_partition] mark_clean: dirty {} -> {}",
+		spdlog::trace("[cache_partition] mark_clean: dirty {} -> {}",
 			m_num_dirty + 1, m_num_dirty);
 
 		// Watermark checking disabled
