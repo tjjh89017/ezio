@@ -164,6 +164,21 @@ these "obviously faster" changes often regress on real hardware.
 
 ---
 
+## Rejected: io_uring (2026-05-27)
+
+Evaluated replacing the blocking `pread`/`pwrite` worker threads with io_uring.
+**Rejected.** It conflicts with the lock-free thread model: completions arrive
+asynchronously, so routing them back to the owning thread (to preserve 1:1
+thread:partition and ordering) adds a queue hop, and the per-thread-ring
+workaround that keeps the model intact discards io_uring's main benefit (fewer
+threads, high QD). EZIO's profile is large contiguous I/O already chunked to
+256 KiB at QD~16 — the regime where blocking `pread` is efficient and io_uring
+gains least. Issue #136 already showed syscalls are not the bottleneck (<2%).
+Revisit only if profiling proves syscall/context-switch cost is real (e.g.
+after an O_DIRECT high-QD path).
+
+---
+
 ## Key Files
 
 **Code:**
