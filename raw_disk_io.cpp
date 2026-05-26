@@ -438,7 +438,7 @@ void raw_disk_io::async_hash(
 	// Since all blocks of a piece go to same partition, no cross-partition access needed
 	size_t thread_idx = get_thread_index(storage, piece);
 	boost::asio::post((*m_io_thread_pools[thread_idx]),
-		[=, handler = std::move(handler), buffer = std::move(buffer)]() {
+		[=, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
 			libtorrent::hasher ph;
 			partition_storage *st = m_storages[storage].get();
@@ -487,10 +487,9 @@ void raw_disk_io::async_hash(
 			m_stats_counters.inc_stats_counter(libtorrent::counters::disk_hash_time, hash_time);
 			m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, hash_time);
 
-			// buffer destructor will return buffer to pool
-
-			post(m_ioc, [=, h = std::move(handler)] {
+			post(m_ioc, [=, h = std::move(handler), b = std::move(buffer)]() mutable {
 				h(piece, hash, error);
+				// buffer destructor returns buffer to pool on the network thread
 			});
 		});
 }
