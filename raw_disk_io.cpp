@@ -339,12 +339,15 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 
 	bool exceeded = false;
 	char *temp_buf = m_write_buffer_pool.allocate_buffer(exceeded, o);
-	libtorrent::disk_buffer_holder buffer(m_write_buffer_pool, temp_buf, DEFAULT_BLOCK_SIZE);
 	// Note: No store_buffer needed. With consistent hashing (get_thread_index), all operations
 	// on the same piece are posted to the same thread, guaranteeing execution order.
 	// async_read for a piece will always execute after any pending async_write for that piece,
 	// preventing race conditions without requiring a temporary store_buffer.
 	if (temp_buf) {
+		// Wrap the buffer in a holder only when we actually own one, so the
+		// pool's free path is never touched on the fallback (null) branch.
+		libtorrent::disk_buffer_holder buffer(m_write_buffer_pool, temp_buf, DEFAULT_BLOCK_SIZE);
+
 		// Copy data to temp buffer (buf may be freed by caller after we return)
 		std::memcpy(temp_buf, buf, r.length);
 
