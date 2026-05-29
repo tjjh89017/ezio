@@ -1,7 +1,7 @@
 # EZIO Architecture Guide
 
-**Last Updated:** 2026-05-23
-**Reference:** libtorrent-2.0.10 source in `tmp/libtorrent-2.0.10/`
+**Last Updated:** 2026-05-29
+**Reference:** libtorrent-2.0.10 source in `tmp/libtorrent/`
 **Full history:** see git log
 
 ---
@@ -76,9 +76,16 @@ EZIO is a **BitTorrent-based raw disk imaging tool** for fast LAN deployment.
 
 Per-phase detail and commit hashes are in the git history.
 
-**Draft / not scheduled:** Chain Topology (linear node chain for LAN
-bandwidth). Design archived in `docs/plan/CHAIN_TOPOLOGY_DESIGN.md`
-(GitHub Issue #44). Implement only if explicitly requested.
+**Topology — decided NOT to build a controlled chain/DAG (2026-05-29).**
+Deploy time is already ~O(1) in N for EZIO's parameters (image pieces
+P ~= 3880 >> N), and the operational model (persistent seeder until all done +
+finished leechers reseed + periodic reannounce) already prevents stalls and
+self-corrects the straggler tail, so a controller-wired chain/DAG buys < 5% for
+large complexity. Reasoning + the cheap settings-level wins instead are in
+`docs/plan/backlog/DECISION_topology_no_controlled_dag.md` (GitHub Issue #44);
+the earlier linear-chain design is archived at
+`docs/plan/backlog/CHAIN_TOPOLOGY_DESIGN.md`. Revisit only if a network fabric
+with an internal (rack/switch) bottleneck is measured.
 
 ---
 
@@ -177,6 +184,53 @@ gains least. Issue #136 already showed syscalls are not the bottleneck (<2%).
 Revisit only if profiling proves syscall/context-switch cost is real (e.g.
 after an O_DIRECT high-QD path).
 
+**Re-evaluated 2026-05-29.** A refined design *does* escape the original
+lock-free objection: one io_uring ring per cache partition, the owner thread as
+the sole SQ producer reaping its own CQ locally (no cross-thread routing, SQ/CQ
+are SPSC lock-free), with read-after-write still guaranteed by the write-through
+cache. But it is gated behind O_DIRECT (its only real payoff is high QD to hide
+synchronous-DMA latency) and the disk is not EZIO's bottleneck, so it is not
+expected to raise throughput. Full design + the O_DIRECT/slab prerequisite are
+in `docs/plan/backlog/ODIRECT_SLAB_DESIGN.md` (§8 for io_uring).
+
+---
+
+## Performance Ceiling Analysis (2026-05-29)
+
+A sweep of "obviously faster" ideas — io_uring, O_DIRECT, controlled chain/DAG,
+kernel TCP tuning — each came out **< 5%** on throughput. The big wins are
+already captured (see Completed Work); what remains is diminishing returns.
+
+**Suspected bottleneck: the single libtorrent network thread (UNCONFIRMED).**
+At ~600 MiB/s neither the disk nor the BT protocol explains the ceiling:
+- Disk (SX8200 Pro) is *random*-access for fragmented partclone images (regions
+  map to scattered disk offsets), so the relevant ceiling is ~1.5-2 GB/s random
+  at QD~16, not the 3 GB/s sequential figure — and EZIO runs at ~30-40% of that.
+- libtorrent's protocol can reach ~2 GB/s (the int32 `download_rate` overflow
+  reports confirm it) — above EZIO.
+- libtorrent has ONE network thread (socket recv + parse + picker), and EZIO
+  loads it further: the disk_interface contract posts every completion handler
+  back to it (~38K/s at 600 MiB/s, 16 KiB blocks).
+
+**The one action that matters next: profile that thread** (`top -H`, `perf top`
+on the io_context thread) to confirm it is single-core bound with disk/NIC idle.
+Everything else is gated on that. Knobs + method in
+`docs/plan/backlog/NETWORK_THREAD_PROFILING.md`.
+
+**Dead settings for EZIO's custom disk_io** (verified against libtorrent
+source): `max_queued_disk_bytes`, `hashing_threads`, `disk_io_write_mode` /
+`disk_io_read_mode`, `coalesce_*` — all only configure the built-in
+mmap_disk_io. Real write backpressure is `WRITE_POOL_SIZE` + buffer_pool
+watermarks via the `async_write` `exceeded` flag. `hashing_threads` would only
+matter under a `force_recheck` (never issued); the seeder skips hashing via
+`atp.verified_pieces`, the leecher does no full-check on a fresh add.
+
+**Real (non-perf) follow-ups:** `daemon.cpp::add_torrent` defaults
+`max_connections = 5`, below the random-graph connectivity threshold ln(N) for
+N >= 100 -> island risk; raise to ~8-10. super-seeding was evaluated and is NOT
+a safe default — its propagation-gating can throttle EZIO's high-bandwidth
+persistent seed; benchmark only, do not assume positive.
+
 ---
 
 ## Key Files
@@ -187,13 +241,17 @@ after an O_DIRECT high-QD path).
 - the lock-free cache (`m_cache`) and `partition_storage`
 
 **Docs:**
-- `docs/plan/` — planning/analysis docs (CHAIN_TOPOLOGY_DESIGN, FUTURE_OPTIMIZATIONS,
-  HDD_OPTIMIZATION, MUTEX_ANALYSIS, CONCURRENCY_ANALYSIS, DESIGN_REVIEW, ...)
+- `docs/plan/` — active/scheduled plans (none currently).
+- `docs/plan/backlog/` — planning/analysis + decision records
+  (ODIRECT_SLAB_DESIGN, NETWORK_THREAD_PROFILING,
+  DECISION_topology_no_controlled_dag, CHAIN_TOPOLOGY_DESIGN,
+  FUTURE_OPTIMIZATIONS, HDD_OPTIMIZATION, MUTEX_ANALYSIS,
+  CONCURRENCY_ANALYSIS, DESIGN_REVIEW, ...).
 
 **libtorrent 2.0.10 reference:**
-- `tmp/libtorrent-2.0.10/src/mmap_disk_io.cpp` — the design EZIO mirrors
-- `tmp/libtorrent-2.0.10/include/libtorrent/aux_/disk_buffer_pool.hpp`
-- `tmp/libtorrent-2.0.10/src/disk_buffer_pool.cpp`
+- `tmp/libtorrent/src/mmap_disk_io.cpp` — the design EZIO mirrors
+- `tmp/libtorrent/include/libtorrent/aux_/disk_buffer_pool.hpp`
+- `tmp/libtorrent/src/disk_buffer_pool.cpp`
 
 **External:** [murder](https://github.com/lg/murder) — Twitter's BitTorrent
 deployment tool with chain mode.
@@ -213,7 +271,8 @@ deployment tool with chain mode.
 
 **Docs:**
 - All documentation in English.
-- Planning docs in `docs/plan/`; record completed work in git commits.
+- Planning/analysis docs and decision records in `docs/plan/backlog/`;
+  active/scheduled plans in `docs/plan/`; record completed work in git commits.
 - Paper references: title + venue + year + link only, no author lists.
 
 **Git commits:**
