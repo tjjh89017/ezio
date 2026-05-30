@@ -14,6 +14,8 @@ void config::parse_from_argv(int argc, char **argv)
 		("listen,l", bpo::value<std::string>(&listen_address), "gRPC service listen address and port, default is 127.0.0.1:50051")
 		("cache-size", bpo::value<int>(&cache_size_mb)->default_value(512), "unified cache size in MB, default is 512")
 		("aio-threads", bpo::value<int>(&aio_threads)->default_value(16), "number of threads for disk I/O and hashing, default is 16")
+		("slow-start", bpo::bool_switch(&slow_start)->default_value(false), "enable session-wide slow-start upload ramp (default off)")
+		("slow-start-period", bpo::value<int>(&slow_start_period)->default_value(10), "slow-start step period in seconds (default 10)")
 		("version,v", "show version")
 	;
 	// clang-format on
