@@ -57,6 +57,15 @@ lt::session_params app::make_session_params(const config &cfg)
 	p.set_int(lt::settings_pack::cache_size, cache_blocks);
 	spdlog::info("Cache size: {} MB ({} blocks)", cfg.cache_size_mb, cache_blocks);
 
+	// BitTorrent peer listen port. Default bt_listen_port == 0 leaves
+	// libtorrent's listen_interfaces untouched (behavior unchanged); a
+	// non-zero value binds the BT peer port on every interface (IPv4 + IPv6).
+	if (cfg.bt_listen_port != 0) {
+		std::string listen_ifaces = "0.0.0.0:" + std::to_string(cfg.bt_listen_port) + ",[::]:" + std::to_string(cfg.bt_listen_port);
+		p.set_str(lt::settings_pack::listen_interfaces, listen_ifaces);
+		spdlog::info("BitTorrent listen port: {}", cfg.bt_listen_port);
+	}
+
 	lt::session_params ses_params(p);
 	if (!cfg.file_flag) {
 		ses_params.disk_io_constructor = raw_disk_io_constructor;

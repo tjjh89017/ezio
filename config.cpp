@@ -16,6 +16,7 @@ void config::parse_from_argv(int argc, char **argv)
 		("aio-threads", bpo::value<int>(&aio_threads)->default_value(16), "number of threads for disk I/O and hashing, default is 16")
 		("slow-start", bpo::bool_switch(&slow_start)->default_value(false), "enable session-wide slow-start upload ramp (default off)")
 		("slow-start-period", bpo::value<int>(&slow_start_period)->default_value(10), "slow-start step period in seconds (default 10)")
+		("port,p", bpo::value<int>(&bt_listen_port)->default_value(0), "BitTorrent peer listen port (default 6881)")
 		("version,v", "show version")
 	;
 	// clang-format on
