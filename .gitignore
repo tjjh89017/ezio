@@ -53,3 +53,6 @@ __pycache__/
 /.vscode/
 /build/
 /compile_commands.json
+
+# powerloop tracking notes
+/.powerloop/
