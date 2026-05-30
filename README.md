@@ -138,6 +138,7 @@ Allowed Options:
   --aio-threads arg        threads for disk I/O and hashing (default 16)
   --slow-start             enable session-wide slow-start upload ramp (default off)
   --slow-start-period arg  slow-start step period in seconds (default 10)
+  -p [ --port ] arg        BitTorrent peer listen port (default 6881)
   -v [ --version ]         show version
 ```
 

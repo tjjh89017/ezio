@@ -29,6 +29,8 @@ public:
 	bool slow_start = false;
 	// slow-start step period in seconds
 	int slow_start_period = 10;	 // default 10 seconds
+	// BitTorrent peer listen port (0 = use libtorrent default, leave unchanged)
+	int bt_listen_port = 0;
 };
 
 }  // namespace ezio
