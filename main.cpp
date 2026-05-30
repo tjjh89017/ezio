@@ -75,13 +75,13 @@ int main(int argc, char **argv)
 	service.start(current_config.listen_address);
 
 	// start log
-	ezio::log log(daemon);
+	ezio::log log(daemon, daemon.get_io_context());
+	log.start();
 
 	std::cout << "Server listening on " << current_config.listen_address << std::endl;
 	daemon.run();
 	std::cout << "shutdown in main" << std::endl;
 
-	log.join();
 	service.stop();
 
 	return 0;

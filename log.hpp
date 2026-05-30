@@ -1,9 +1,8 @@
 #ifndef __LOG_HPP__
 #define __LOG_HPP__
 
-#include <thread>
-#include <mutex>
-#include <condition_variable>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include "daemon.hpp"
 
 namespace ezio
@@ -11,25 +10,18 @@ namespace ezio
 class log
 {
 public:
-	log(ezio &daemon);
-	~log();
+	log(ezio &daemon, lt::io_context &ioc);
 
-	void join();
-
-	// worker function
-	void report_speed();
-	void report_alert();
+	void start();
 
 private:
-	std::thread m_speed;
-	std::thread m_alert;
+	void schedule_speed_report();
+	void process_alerts();
+	void shutdown();
 
 	ezio &m_daemon;
-
-	// Alert notification synchronization
-	std::mutex m_alert_mutex;
-	std::condition_variable m_alert_cv;
-	bool m_alert_ready = false;
+	lt::io_context &m_ioc;
+	boost::asio::steady_timer m_speed_timer;
 };
 
 }  // namespace ezio
