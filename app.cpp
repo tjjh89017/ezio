@@ -55,7 +55,7 @@ lt::session_params app::make_session_params(const config &cfg)
 	return ses_params;
 }
 
-app::app(const config &cfg) : m_config(cfg), m_session(make_session_params(cfg)), m_daemon(m_session), m_service(m_daemon), m_log(m_daemon, m_daemon.get_io_context())
+app::app(const config &cfg) : m_config(cfg), m_session(make_session_params(cfg)), m_daemon(m_session, m_config.slow_start, m_config.slow_start_period), m_service(m_daemon), m_log(m_daemon, m_daemon.get_io_context())
 {
 }
 

@@ -8,14 +8,25 @@
 #include "daemon.hpp"
 #include "version.hpp"
 
+namespace
+{
+constexpr int SLOW_START_INITIAL = 10 * 1024 * 1024;  // 10 MB/s
+constexpr int SLOW_START_STEP = 10 * 1024 * 1024;  // +10 MB/s per period
+constexpr int SLOW_START_CAP = 100 * 1024 * 1024;  // 100 MB/s -> beyond = unlimited
+}  // namespace
+
 namespace ezio
 {
-ezio::ezio(lt::session &session) :
+ezio::ezio(lt::session &session, bool slow_start, int slow_start_period) :
 	m_session(session),
 	m_shutdown(false),
 	m_work_guard(boost::asio::make_work_guard(m_ioc)),
 	m_reannounce_timer(m_ioc),
-	m_signals(m_ioc, SIGINT, SIGTERM)
+	m_signals(m_ioc, SIGINT, SIGTERM),
+	m_slow_start_timer(m_ioc),
+	m_slow_start(slow_start),
+	m_slow_start_period(slow_start_period > 0 ? slow_start_period : 10),
+	m_slow_start_limit(0)
 {
 }
 
@@ -41,7 +52,45 @@ void ezio::run()
 	});
 
 	arm_reannounce();
+
+	if (m_slow_start) {
+		m_slow_start_limit = SLOW_START_INITIAL;
+		apply_session_upload_limit(m_slow_start_limit);
+		schedule_slow_start_step();
+	}
+
 	m_ioc.run();
+}
+
+void ezio::apply_session_upload_limit(int bytes_per_second)
+{
+	lt::settings_pack p;
+	p.set_int(lt::settings_pack::upload_rate_limit, bytes_per_second);
+	m_session.apply_settings(p);
+	if (bytes_per_second == 0) {
+		spdlog::debug("slow-start: upload rate limit cleared (unlimited)");
+	} else {
+		spdlog::info("slow-start: upload limit set to {} MB/s", bytes_per_second / (1024 * 1024));
+	}
+}
+
+void ezio::schedule_slow_start_step()
+{
+	m_slow_start_timer.expires_after(std::chrono::seconds(m_slow_start_period));
+	m_slow_start_timer.async_wait([this](const boost::system::error_code &ec) {
+		if (ec == boost::asio::error::operation_aborted) {
+			return;
+		}
+		int next = m_slow_start_limit + SLOW_START_STEP;
+		if (next >= SLOW_START_CAP) {
+			apply_session_upload_limit(0);
+			spdlog::info("slow-start complete: upload limit removed");
+			return;
+		}
+		m_slow_start_limit = next;
+		apply_session_upload_limit(m_slow_start_limit);
+		schedule_slow_start_step();
+	});
 }
 
 void ezio::arm_reannounce()
@@ -65,6 +114,7 @@ void ezio::request_shutdown()
 	m_shutdown = true;
 	boost::asio::post(m_ioc, [this] {
 		m_reannounce_timer.cancel();
+		m_slow_start_timer.cancel();
 		m_signals.cancel();
 		for (auto &hook : m_shutdown_hooks) {
 			hook();
