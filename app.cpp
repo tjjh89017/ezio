@@ -15,7 +15,7 @@ lt::session_params app::make_session_params(const config &cfg)
 	lt::settings_pack p;
 	// setup alert mask
 	p.set_int(lt::settings_pack::alert_mask,
-		lt::alert_category::error | lt::alert_category::status);
+		lt::alert_category::error | lt::alert_category::status | lt::alert_category::peer);
 
 	// disable all encrypt to avoid bug https://github.com/arvidn/libtorrent/issues/6735#issuecomment-1036675263
 	p.set_int(lt::settings_pack::out_enc_policy, lt::settings_pack::pe_disabled);
