@@ -38,14 +38,16 @@ lt::session_params app::make_session_params(const config &cfg)
 	p.set_int(lt::settings_pack::send_buffer_watermark, 128 * 1024 * 1024);
 	p.set_int(lt::settings_pack::send_buffer_low_watermark, 32 * 1024 * 1024);
 
-	// Make the slow-start ramp actually throttle LAN peers. libtorrent defaults
-	// ignore_limits_on_local_network=true, which routes private-range IPs into the
-	// unthrottled local peer class and bypasses the global upload_rate_limit the
-	// ramp sets -- so without this the ramp is inert on a LAN, EZIO's only
-	// deployment target.
-	if (cfg.slow_start) {
-		p.set_bool(lt::settings_pack::ignore_limits_on_local_network, false);
-	}
+	// Keep the session-wide caps out of the way; the effective limits are enforced
+	// per-torrent (max_connections / max_uploads, set in add_torrent). A high
+	// connections_limit and an unlimited unchoke_slots_limit (-1) let the
+	// per-torrent max_uploads be the sole governor of how many peers the seeder
+	// unchokes. Peers are routed into the global peer class (see
+	// set_peer_class_filter in the app ctor) so the session-wide upload_rate_limit
+	// the slow-start ramp sets reaches LAN peers too -- libtorrent's default would
+	// otherwise exempt them via a local class.
+	p.set_int(lt::settings_pack::connections_limit, 1000);
+	p.set_int(lt::settings_pack::unchoke_slots_limit, -1);
 
 	// unified_cache size from config (default 512MB)
 	// Note: cache_size is deprecated but still used by raw_disk_io
@@ -64,6 +66,20 @@ lt::session_params app::make_session_params(const config &cfg)
 
 app::app(const config &cfg) : m_config(cfg), m_session(make_session_params(cfg)), m_daemon(m_session, m_config.slow_start, m_config.slow_start_period), m_service(m_daemon), m_log(m_daemon, m_daemon.get_io_context())
 {
+	// Route every peer -- including LAN/private addresses -- into the global peer
+	// class. By default libtorrent maps private-range IPs to a separate local
+	// peer class that ignores the session-wide upload_rate_limit (and the unchoke
+	// slot limits). Putting everyone in the global class makes the slow-start
+	// ramp's rate limit apply uniformly and lets the per-torrent max_uploads
+	// govern the unchoke count. This is the non-deprecated equivalent of
+	// ignore_limits_on_local_network=false.
+	lt::ip_filter pc_filter;
+	const std::uint32_t global_class =
+		1u << static_cast<std::uint32_t>(lt::session::global_peer_class_id);
+	pc_filter.add_rule(lt::make_address("0.0.0.0"), lt::make_address("255.255.255.255"), global_class);
+	pc_filter.add_rule(lt::make_address("::"),
+		lt::make_address("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"), global_class);
+	m_session.set_peer_class_filter(pc_filter);
 }
 
 int app::run()
