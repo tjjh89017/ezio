@@ -25,6 +25,10 @@ public:
 	int cache_size_mb = 512;  // default 512MB
 	// thread pool size (used for both I/O and hashing)
 	int aio_threads = 16;  // default 16 threads for disk I/O
+	// enable session-wide slow-start upload ramp
+	bool slow_start = false;
+	// slow-start step period in seconds
+	int slow_start_period = 10;	 // default 10 seconds
 };
 
 }  // namespace ezio
