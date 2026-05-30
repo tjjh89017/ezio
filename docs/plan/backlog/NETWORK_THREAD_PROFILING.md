@@ -255,6 +255,13 @@ node chain — potentially a multiple, not a few percent. Out of scope here; not
 as the real headroom if Section 2 shows the link (not CPU) saturated, or if we
 want to scale past a single seeder's NIC regardless.
 
+**Scaling past the single network CORE** (the confirmed CPU wall, distinct from
+the NIC/link above) is its own analysis: `MULTITHREAD_NETWORK_THREAD.md`.
+Conclusion there: a single session cannot be multi-threaded (libtorrent's
+picker/peer/torrent state is lock-free by design, ~150 single-thread asserts);
+the only fork-free path is multi-session sharding (1 session : 1 io_context :
+1 thread), which EZIO's offset-based torrent model makes unusually clean.
+
 ---
 
 ## 5. The 2 GB/s / `download_rate` int32 note

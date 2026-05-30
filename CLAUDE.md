@@ -257,9 +257,9 @@ persistent seed; benchmark only, do not assume positive.
 - `docs/plan/` — active/scheduled plans (none currently).
 - `docs/plan/backlog/` — planning/analysis + decision records
   (ODIRECT_SLAB_DESIGN, NETWORK_THREAD_PROFILING,
-  DECISION_topology_no_controlled_dag, CHAIN_TOPOLOGY_DESIGN,
-  FUTURE_OPTIMIZATIONS, HDD_OPTIMIZATION, MUTEX_ANALYSIS,
-  CONCURRENCY_ANALYSIS, DESIGN_REVIEW, ...).
+  MULTITHREAD_NETWORK_THREAD, DECISION_topology_no_controlled_dag,
+  CHAIN_TOPOLOGY_DESIGN, FUTURE_OPTIMIZATIONS, HDD_OPTIMIZATION,
+  MUTEX_ANALYSIS, CONCURRENCY_ANALYSIS, DESIGN_REVIEW, ...).
 
 **libtorrent 2.0.10 reference:**
 - `tmp/libtorrent/src/mmap_disk_io.cpp` — the design EZIO mirrors
