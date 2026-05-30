@@ -1,7 +1,5 @@
 #include "app.hpp"
 
-#include <iostream>
-
 #include "spdlog/spdlog.h"
 
 #include <libtorrent/libtorrent.hpp>
@@ -63,9 +61,9 @@ int app::run()
 {
 	m_service.start(m_config.listen_address);
 	m_log.start();
-	std::cout << "Server listening on " << m_config.listen_address << std::endl;
+	spdlog::info("Server listening on {}", m_config.listen_address);
 	m_daemon.run();
-	std::cout << "shutdown in main" << std::endl;
+	spdlog::info("shutdown in main");
 	m_service.stop();
 	return 0;
 }
