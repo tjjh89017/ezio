@@ -1,7 +1,9 @@
 # Network Thread Bottleneck: Profiling Plan + Tuning Backlog
 
-**Status:** Backlog / Draft (not scheduled, not committed)
+**Status:** Hypothesis **CONFIRMED** by distributed profiling (2026-05-30).
+Tuning backlog (Section 4) not yet scheduled.
 **Created:** 2026-05-29
+**Confirmed:** 2026-05-30 (see Section 1a)
 **Context:** follow-up from the O_DIRECT discussion. Established that disk-path
 tuning (O_DIRECT, io_uring) cannot raise steady-state throughput because the
 disk is not the binding constraint. This doc captures the actual suspected
@@ -42,6 +44,72 @@ BT protocol explains a ceiling this low:
   QD lever is gated behind relieving the network thread first.
 
 **This is a hypothesis, not a measured fact.** Section 2 is how we confirm it.
+**As of 2026-05-30 it IS a measured fact — see Section 1a.**
+
+---
+
+## 1a. CONFIRMED by distributed profiling (2026-05-30)
+
+Ran the Section-2 plan on the 4-node test cluster (172.30.0.123 seeder ->
+.124/.125/.126 leechers), `prefetch` binary, `--cache-size 512 --aio-threads
+16`, 60.6 GiB partclone image, `blkdiscard` on leechers between runs. Harness:
+`tests/distrib_test/` (added per-thread `top -bH` + `pidstat -t` monitors to
+`remote_runner.sh` start/stop phases). Raw logs:
+`tmp/distrib_test_results/run_20260530_124042_prefetch/`.
+
+**Environment caveat:** all 4 nodes are QEMU VMs (`QEMU Virtual CPU version
+2.5+`, 8 vCPU, SHA-NI masked — CPUID leaf-7 = 0, software SHA1 ~705 MB/s single
+core / ~5 GB/s across 8). Absolute numbers will differ on bare metal /
+host-passthrough CPUs, but the *bottleneck location* (one network thread pegged,
+disk idle) is structural and carries over.
+
+### Throughput
+
+| Metric | Value |
+|--------|-------|
+| Per-leecher write | 62.06 GiB / 235.6 s = **263 MiB/s** |
+| **Seeder aggregate upload** | 3 x 263 ~= **790 MiB/s** |
+| Seeder disk read (actual) | 63 GiB / 235 s ~= 268 MiB/s (rest served from cache) |
+
+### Smoking gun — seeder per-thread CPU (steady state, ramp excluded)
+
+| Role | Threads | CPU |
+|------|---------|-----|
+| **libtorrent network thread** (TID 3014) | 1 | **mean 84%, peak 101%; 180/214 samples >= 90%** |
+| aio disk workers | 16 | **~9% mean each**, combined ~1.5 cores |
+| `nvme0n1p1` `%util` (iostat) | — | **mean 13%, max 28%** |
+
+One thread sits on a full core ~the entire run (>=90% for 84% of steady-state
+samples) while every disk worker averages 9% and the disk device is 87% idle.
+Textbook single-thread serialization: all async completions funnel back through
+the one `ioc_` thread (disk_interface contract, CLAUDE.md #6) and saturate it.
+
+### Leecher side (control)
+
+| Resource | Value |
+|----------|-------|
+| network thread (recv) | mean 54%, peak 87% — has headroom |
+| `nvme0n1p1` write `%util` | mean 19%, max 100% (only brief write bursts saturate) |
+
+Leecher network + disk both have slack -> leechers are **fed-limited by the
+seeder**, not self-limited.
+
+### Conclusions
+
+1. **Confirmed:** the binding constraint is the seeder's single libtorrent
+   network thread (one core), NOT the disk. Decision gate in Section 2 is met
+   (network thread ~100% one core; disk `%util` 13%).
+2. **Disk has ~6x headroom.** Same SX8200 Pro, isolated `fio` (read-only):
+   256 KiB random QD1 = 1.64 GB/s, QD16 = 3.43 GB/s, seq = 3.38 GB/s — only
+   4 KiB QD1 collapses to 122 MB/s. The seeder's 256 KiB / QD~16 read pattern
+   maps to the ~3.4 GB/s regime. So partclone's ~583 MB/s (35 GiB/min) is
+   partclone's *own* single-thread limit, not this card's read ceiling, and does
+   NOT bound EZIO's seeder read.
+3. **Adding leechers will not raise a single seeder's egress.** ~790 MiB/s is
+   the network thread's cap; more leechers just split it. This is the
+   quantitative basis for the reseed/topology model (CLAUDE.md, Issue #44):
+   finished leechers must reseed because one seeder's upload is single-core
+   bound.
 
 ---
 

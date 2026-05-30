@@ -201,21 +201,34 @@ A sweep of "obviously faster" ideas — io_uring, O_DIRECT, controlled chain/DAG
 kernel TCP tuning — each came out **< 5%** on throughput. The big wins are
 already captured (see Completed Work); what remains is diminishing returns.
 
-**Suspected bottleneck: the single libtorrent network thread (UNCONFIRMED).**
-At ~600 MiB/s neither the disk nor the BT protocol explains the ceiling:
-- Disk (SX8200 Pro) is *random*-access for fragmented partclone images (regions
-  map to scattered disk offsets), so the relevant ceiling is ~1.5-2 GB/s random
-  at QD~16, not the 3 GB/s sequential figure — and EZIO runs at ~30-40% of that.
+**Bottleneck: the single libtorrent network thread (CONFIRMED 2026-05-30).**
+Distributed profiling (1 seeder -> 3 leechers, per-thread `top -bH` + `pidstat
+-t`) showed the seeder's network thread pinned on one core (mean 84%, >= 90% for
+84% of steady-state samples) while the 16 aio workers averaged ~9% each and the
+SX8200 `%util` sat at 13% (max 28%). Per-leecher 263 MiB/s; seeder aggregate
+upload ~790 MiB/s = the network thread's single-core cap. Full data + method in
+`docs/plan/backlog/NETWORK_THREAD_PROFILING.md` §1a; raw logs in
+`tmp/distrib_test_results/run_20260530_124042_prefetch/`.
+
+Why disk is NOT the wall (also settled 2026-05-30):
+- Isolated `fio` on the same SX8200 Pro: 256 KiB random QD1 = 1.64 GB/s,
+  QD16 = 3.43 GB/s (= sequential); only 4 KiB QD1 collapses (122 MB/s). The
+  seeder's 256 KiB / QD~16 read maps to the ~3.4 GB/s regime -> ~6x headroom.
+- partclone making the torrent tops out ~583 MB/s (35 GiB/min), but that is
+  partclone's *own single-thread* limit (software SHA1 ~705 MB/s on the SHA-NI-
+  masked QEMU CPU; multi-core ~5 GB/s), NOT the card's read ceiling. It does not
+  bound EZIO's seeder read.
 - libtorrent's protocol can reach ~2 GB/s (the int32 `download_rate` overflow
   reports confirm it) — above EZIO.
-- libtorrent has ONE network thread (socket recv + parse + picker), and EZIO
-  loads it further: the disk_interface contract posts every completion handler
-  back to it (~38K/s at 600 MiB/s, 16 KiB blocks).
+- The load on the one network thread: the disk_interface contract posts every
+  completion handler back to it (~38K/s at 600 MiB/s, 16 KiB blocks), on the same
+  core that does socket recv + parse + picker.
 
-**The one action that matters next: profile that thread** (`top -H`, `perf top`
-on the io_context thread) to confirm it is single-core bound with disk/NIC idle.
-Everything else is gated on that. Knobs + method in
-`docs/plan/backlog/NETWORK_THREAD_PROFILING.md`.
+Caveat: the cluster is QEMU VMs (8 vCPU, SHA-NI masked). Absolute MB/s differ on
+bare metal, but the bottleneck *location* (one net thread pegged, disk idle) is
+structural. **Next work targets that thread** (NETWORK_THREAD_PROFILING.md §4:
+jumbo frames/offloads first, then batched completion post-back); adding leechers
+will NOT raise a single seeder's egress (motivates the reseed/topology model).
 
 **Dead settings for EZIO's custom disk_io** (verified against libtorrent
 source): `max_queued_disk_bytes`, `hashing_threads`, `disk_io_write_mode` /
