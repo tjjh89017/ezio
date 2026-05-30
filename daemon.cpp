@@ -68,7 +68,7 @@ void ezio::apply_session_upload_limit(int bytes_per_second)
 	p.set_int(lt::settings_pack::upload_rate_limit, bytes_per_second);
 	m_session.apply_settings(p);
 	if (bytes_per_second == 0) {
-		spdlog::debug("slow-start: upload rate limit cleared (unlimited)");
+		spdlog::info("slow-start: upload rate limit cleared (unlimited)");
 	} else {
 		spdlog::info("slow-start: upload limit set to {} MB/s", bytes_per_second / (1024 * 1024));
 	}
