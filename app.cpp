@@ -38,6 +38,15 @@ lt::session_params app::make_session_params(const config &cfg)
 	p.set_int(lt::settings_pack::send_buffer_watermark, 128 * 1024 * 1024);
 	p.set_int(lt::settings_pack::send_buffer_low_watermark, 32 * 1024 * 1024);
 
+	// Make the slow-start ramp actually throttle LAN peers. libtorrent defaults
+	// ignore_limits_on_local_network=true, which routes private-range IPs into the
+	// unthrottled local peer class and bypasses the global upload_rate_limit the
+	// ramp sets -- so without this the ramp is inert on a LAN, EZIO's only
+	// deployment target.
+	if (cfg.slow_start) {
+		p.set_bool(lt::settings_pack::ignore_limits_on_local_network, false);
+	}
+
 	// unified_cache size from config (default 512MB)
 	// Note: cache_size is deprecated but still used by raw_disk_io
 	// cache_size unit: number of 16KiB blocks
