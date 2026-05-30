@@ -41,7 +41,7 @@ struct torrent_status {
 class ezio : boost::noncopyable
 {
 public:
-	ezio(lt::session &);
+	ezio(lt::session &session, bool slow_start = false, int slow_start_period = 10);
 	~ezio() = default;
 
 	void stop();
@@ -61,6 +61,8 @@ public:
 
 private:
 	void arm_reannounce();
+	void apply_session_upload_limit(int bytes_per_second);
+	void schedule_slow_start_step();
 
 	lt::session &m_session;
 	std::atomic_bool m_shutdown;
@@ -68,7 +70,11 @@ private:
 	boost::asio::executor_work_guard<lt::io_context::executor_type> m_work_guard;
 	boost::asio::steady_timer m_reannounce_timer;
 	boost::asio::signal_set m_signals;
+	boost::asio::steady_timer m_slow_start_timer;
 	std::vector<std::function<void()>> m_shutdown_hooks;
+	bool m_slow_start;
+	int m_slow_start_period;
+	int m_slow_start_limit;
 };
 
 }  // namespace ezio
