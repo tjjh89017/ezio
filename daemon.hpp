@@ -2,10 +2,17 @@
 #define __DAEMON_HPP__
 
 #include <atomic>
+#include <csignal>
+#include <functional>
 #include <string>
 #include <vector>
-#include <libtorrent/libtorrent.hpp>
+#include <boost/asio/executor_work_guard.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/asio/signal_set.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/core/noncopyable.hpp>
+#include <libtorrent/libtorrent.hpp>
 
 namespace ezio
 {
@@ -39,7 +46,8 @@ public:
 	~ezio() = default;
 
 	void stop();
-	void wait(int interval_second);
+	void run();
+	void request_shutdown();
 	void add_torrent(std::string torrent_body, std::string save_path, bool seeding_mode, int max_uploads, int max_connections, bool sequential_download);
 	std::map<std::string, torrent_status> get_torrent_status(std::vector<std::string> hashes);
 	void pause_torrent(std::string hash);
@@ -49,11 +57,19 @@ public:
 	void set_alert_notify(std::function<void()> const &callback);
 	void force_reannounce_all();
 	std::string get_version();
+	lt::io_context &get_io_context();
+	void register_shutdown_hook(std::function<void()> hook);
 
 private:
-	lt::session &m_session;
+	void arm_reannounce();
 
+	lt::session &m_session;
 	std::atomic_bool m_shutdown;
+	lt::io_context m_ioc;
+	boost::asio::executor_work_guard<lt::io_context::executor_type> m_work_guard;
+	boost::asio::steady_timer m_reannounce_timer;
+	boost::asio::signal_set m_signals;
+	std::vector<std::function<void()>> m_shutdown_hooks;
 };
 
 }  // namespace ezio

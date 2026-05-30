@@ -78,7 +78,7 @@ int main(int argc, char **argv)
 	ezio::log log(daemon);
 
 	std::cout << "Server listening on " << current_config.listen_address << std::endl;
-	daemon.wait(10);
+	daemon.run();
 	std::cout << "shutdown in main" << std::endl;
 
 	log.join();

@@ -1,39 +1,75 @@
 #include <sstream>
-#include <thread>
 #include <chrono>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
 #include <vector>
+#include <boost/asio/error.hpp>
 #include "daemon.hpp"
 #include "version.hpp"
 
 namespace ezio
 {
 ezio::ezio(lt::session &session) :
-	m_session(session), m_shutdown(false)
+	m_session(session),
+	m_shutdown(false),
+	m_work_guard(boost::asio::make_work_guard(m_ioc)),
+	m_reannounce_timer(m_ioc),
+	m_signals(m_ioc, SIGINT, SIGTERM)
 {
 }
 
 void ezio::stop()
 {
-	m_shutdown = true;
+	request_shutdown();
 }
 
-void ezio::wait(int interval_second)
+void ezio::run()
 {
-	constexpr int reannounce_interval = 60;
-	int elapsed = 0;
-
-	while (!m_shutdown) {
-		std::this_thread::sleep_for(std::chrono::seconds(interval_second));
-		elapsed += interval_second;
-
-		if (elapsed >= reannounce_interval) {
-			force_reannounce_all();
-			spdlog::debug("periodic force reannounce done");
-			elapsed = 0;
+	m_signals.async_wait([this](const boost::system::error_code &ec, int /*signum*/) {
+		if (ec == boost::asio::error::operation_aborted) {
+			return;
 		}
-	}
+		request_shutdown();
+	});
+
+	arm_reannounce();
+	m_ioc.run();
+}
+
+void ezio::arm_reannounce()
+{
+	m_reannounce_timer.expires_after(std::chrono::seconds(60));
+	m_reannounce_timer.async_wait([this](const boost::system::error_code &ec) {
+		if (ec == boost::asio::error::operation_aborted) {
+			return;
+		}
+		force_reannounce_all();
+		spdlog::debug("periodic force reannounce done");
+		arm_reannounce();
+	});
+}
+
+void ezio::request_shutdown()
+{
+	m_shutdown = true;
+	boost::asio::post(m_ioc, [this] {
+		m_reannounce_timer.cancel();
+		m_signals.cancel();
+		for (auto &hook : m_shutdown_hooks) {
+			hook();
+		}
+		m_work_guard.reset();
+	});
+}
+
+lt::io_context &ezio::get_io_context()
+{
+	return m_ioc;
+}
+
+void ezio::register_shutdown_hook(std::function<void()> hook)
+{
+	m_shutdown_hooks.push_back(std::move(hook));
 }
 
 void ezio::add_torrent(std::string torrent_body, std::string save_path, bool seeding_mode = false, int max_uploads = 3, int max_connections = 5, bool sequential_download = false)
