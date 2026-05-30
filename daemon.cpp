@@ -4,6 +4,7 @@
 #include <spdlog/spdlog.h>
 #include <vector>
 #include <boost/asio/error.hpp>
+#include <boost/asio/post.hpp>
 #include "daemon.hpp"
 #include "version.hpp"
 
@@ -29,6 +30,13 @@ void ezio::run()
 		if (ec == boost::asio::error::operation_aborted) {
 			return;
 		}
+		// Re-arm before posting shutdown so a second SIGINT/SIGTERM is not
+		// silently swallowed while the shutdown lambda is still pending.
+		m_signals.async_wait([this](const boost::system::error_code &ec2, int) {
+			if (ec2 != boost::asio::error::operation_aborted) {
+				request_shutdown();
+			}
+		});
 		request_shutdown();
 	});
 
@@ -51,6 +59,9 @@ void ezio::arm_reannounce()
 
 void ezio::request_shutdown()
 {
+	// Set eagerly (before the post) so get_shutdown() readers (log, gRPC)
+	// see the flag immediately, even though the io_context is still running.
+	// Safe cross-thread: m_shutdown is std::atomic_bool.
 	m_shutdown = true;
 	boost::asio::post(m_ioc, [this] {
 		m_reannounce_timer.cancel();
