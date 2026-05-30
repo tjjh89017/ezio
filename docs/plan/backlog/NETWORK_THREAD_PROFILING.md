@@ -113,6 +113,71 @@ seeder**, not self-limited.
 
 ---
 
+## 1b. RE-CONFIRMED on an all-RAM loopback path (2026-05-30)
+
+To isolate the network thread from disk and NIC entirely, ran a single-host
+benchmark: two-or-more `ezio` processes on one box, peers separated only by the
+new `--port` option (PR #142, now on master), each targeting a raw-partition
+image **file in tmpfs** (no `-F` -> still the real `raw_disk_io` path; no loop
+device needed since `partition_storage` is plain `open()`+`pread/pwrite`). The
+only tracker is a stdlib loopback tracker (returns `127.0.0.1` peers keyed by
+announced port, excludes the requester). Harness: `tests/loopback_test/`; raw
+logs under `tmp/loopback_test_results/`.
+
+**Environment:** one KVM VM, 16 vCPU on Intel Xeon E5-2640 v4 (Broadwell, masked
+as "QEMU Virtual CPU 2.5+"), 94 GiB RAM, **swap 0**, 32 GiB image (25.09 GiB
+covered, sparse Clonezilla torrent). The data path is 100% RAM + loopback TCP:
+no physical disk, no NIC.
+
+### Topology results (per-leecher rate + net-thread peak %CPU)
+
+| topology | per-leecher MiB/s | seeder net-thread | leecher net-thread |
+|----------|-------------------|-------------------|--------------------|
+| 1 seed -> 1 leech | ~1011 | 86% | **99.9%** |
+| 1 seed -> 2 leech | 822 / 596 | **99.9%** | ~99% |
+| 2 seed -> 1 leech | 971 | s0 **2%**, s1 81% | **99.9%** |
+| 2 seed -> 2 leech | 795 / 500 | s0 **77%**, s1 **15%** | **99.9%** |
+
+All four verified byte-identical over the 1632 torrent-covered regions
+(`verify_regions.py`). Seeders share one in-RAM image copy.
+
+### Conclusions (reinforce 1a; now with disk AND NIC removed)
+
+1. **The single network thread still pegs one core at ~1 GiB/s** even with the
+   "disk" in RAM and no NIC. So the ceiling is purely that thread, not disk,
+   NIC, or RAM. (RAM bandwidth used: ~1 GiB/s payload, even with ~5-8x
+   loopback/copy amplification ~5-10 GB/s, is only a few % of one DDR4-2133
+   channel's ~17 GB/s; ~15 of 16 cores sit idle.)
+2. **Per-leecher download is leecher-side single-thread bound** (~1 GiB/s,
+   99.9% in every topology). More seeders do not raise it: in 2-seed/1-leech one
+   seeder fully fed the leecher and the **second seeder sat at 2% CPU**.
+3. **Aggregate seeder egress is bounded by one seeder's thread.** BT choke/peer
+   selection concentrates load on a single seeder (2-seed/2-leech: s0 77%,
+   **s1 15% — nearly idle**); 2s2l was even marginally slower than 1s2l from
+   extra process/connection contention. Adding a parallel seeder does not add
+   bandwidth on one host — the leechers reseeding each other once finished is
+   the real scaling lever (matches the reseed/topology model, 1a #3 / Issue #44).
+4. **Negative tuning results** (all on this path):
+   - `--cache-size` x `--aio-threads` sweep, 3x3 grid, 3 runs each: flat
+     ~972-1012 MiB/s, differences within the 1 s poll quantization. **No effect**
+     (disk/cache are not the wall).
+   - `SPDLOG_LEVEL=off` vs `info`, 1->1, 3 runs each: identical (median 971.5 vs
+     972.2 MiB/s, net thread 99.9% in both). **Logging is not the overhead.**
+
+### Gap to libtorrent's known ceiling
+
+libtorrent reaches >2 GiB/s elsewhere (the int32 `download_rate` overflow,
+Section 5; qBittorrent #21003 / arvidn/libtorrent #7693). We get ~1 GiB/s on a
+pegged core -> ~half. spdlog is ruled out (above), so the remaining per-thread
+load is the parts that run regardless of log level: the disk_interface
+completion post-back (~38K `post()`/s, Section 4 Tier 2) and libtorrent's
+`peer`-category alert objects being generated/popped (would need dropping the
+category + a rebuild to isolate). The rest of the absolute gap to a DDR5 box's
+2 GiB/s is the much newer single core + bare-metal-vs-VM, not the RAM
+generation. Net: single-thread CPU is the lever, not memory bandwidth or disk.
+
+---
+
 ## 2. Profiling plan (do this FIRST, before any tuning)
 
 The single highest-value next step. Without it, every optimization below is a

@@ -360,6 +360,19 @@ A larger cache helps the **1-on-1** case most: once the seeder's cache is warm i
 
 > **Note:** These are small-scale lab figures and understate EZIO's real advantage. BitTorrent's strength is scale — the more clients you deploy to, the more they seed to each other and the further EZIO pulls ahead of unicast or multicast (see the scaling table above). With only 1-3 nodes you are seeing close to its worst case, not its best.
 
+### Best-case throughput — all-RAM (1-on-1)
+
+A 1-on-1 run with the partition image served from and written to RAM (tmpfs), exercising the real raw-disk I/O path end to end:
+
+- Host: 16 vCPU (Intel Xeon E5-2640 v4), 94 GiB RAM
+- Image: 32 GiB raw partition (25.09 GiB covered)
+
+| Scenario | Best | Typical |
+| --- | ---: | ---: |
+| 1-on-1 (all-RAM) | **~1046 MiB/s** (24.6 s) | ~1011 MiB/s |
+
+Result is stable across `--cache-size` (512 MB–2 GB) and `--aio-threads` (8–32).
+
 ---
 
 ## Limitations
