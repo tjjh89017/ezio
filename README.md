@@ -131,13 +131,17 @@ find . -maxdepth 1 -name "*.cpp" -o -name "*.hpp" | grep -v "./tmp/" | xargs cla
 
 ```
 Allowed Options:
-  -h [ --help ]       show help
-  -F [ --file ]       read/write a regular file instead of a raw disk
-  -l [ --listen ] arg gRPC listen address:port (default 127.0.0.1:50051)
-  --cache-size arg    unified cache size in MB (default 512)
-  --aio-threads arg   threads for disk I/O and hashing (default 16)
-  -v [ --version ]    show version
+  -h [ --help ]            show help
+  -F [ --file ]            read/write a regular file instead of a raw disk
+  -l [ --listen ] arg      gRPC listen address:port (default 127.0.0.1:50051)
+  --cache-size arg         unified cache size in MB (default 512)
+  --aio-threads arg        threads for disk I/O and hashing (default 16)
+  --slow-start             enable session-wide slow-start upload ramp (default off)
+  --slow-start-period arg  slow-start step period in seconds (default 10)
+  -v [ --version ]         show version
 ```
+
+When `--slow-start` is enabled, the seeder caps its **session-wide** upload at 10 MB/s on launch and steps it up by 10 MB/s every `--slow-start-period` seconds until it reaches 100 MB/s, after which the limit is removed (unlimited). This eases a fleet of leechers into a deploy instead of slamming them with full bandwidth from the first second. The ramp is purely time-based and open-loop (it starts at daemon launch, not when peers connect).
 
 ### Generate gRPC stubs (once)
 
