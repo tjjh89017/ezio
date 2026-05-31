@@ -62,6 +62,18 @@ EZIO is a **BitTorrent-based raw disk imaging tool** for fast LAN deployment.
 7. **Naming** — member variables use the libtorrent `m_` prefix
    (`m_buffer_pool`, `m_cache`, `m_settings`).
 
+8. **Every EZIO node is BOTH seeder and leecher — always analyze both.**
+   A target downloads (leecher) and, under the reseed model, immediately
+   reseeds (seeder); the persistent seeder also serves throughout. So any
+   architecture/perf analysis MUST cover **both roles**, because they load the
+   (single) network thread differently:
+   - *Seeder* net-thread load = serving piece requests + (v2) HASH-request /
+     proof assembly. This is the CONFIRMED bottleneck (one core pegged).
+   - *Leecher* net-thread load = recv + parse + picker + (v2) merkle tree
+     verification (`set_block` -> `merkle_fill_tree`).
+   When evaluating a feature, state its cost on the seeder path AND the leecher
+   path separately. Do not reason about only one role.
+
 ---
 
 ## Completed Work (summary)

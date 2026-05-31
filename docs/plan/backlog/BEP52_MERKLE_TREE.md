@@ -879,6 +879,72 @@ for (int p = 0; p < num_pieces; p++) {
 
 ---
 
+## v2 Hashing vs the Single Network Thread (2026-05-31)
+
+EZIO's confirmed bottleneck is the **single libtorrent network thread**
+(`NETWORK_THREAD_PROFILING.md`: seeder net thread pegged at 84-101% on one core,
+disk 13% util). BEP 52 adds SHA-256 / merkle work, so the question is **which of
+that work lands on the network thread**, because anything added there directly
+extends the binding constraint. Every EZIO node is both seeder and leecher
+(reseed model), so both roles are analyzed.
+
+### Where each piece of v2 work runs (libtorrent 2.0.10, verified in source)
+
+| Work | Thread | Source |
+|------|--------|--------|
+| **Block leaf SHA-256** (16 KiB block -> leaf hash) | **disk worker** | `do_hash` / `do_hash2` (`mmap_disk_io.cpp:1028+`) uses `hasher256 h2` per block; result stored in `j->d.h.block_hashes` |
+| **Merkle internal nodes + piece-root verify** (leaves -> root, compare) | **network thread** | `merkle_tree::set_block` calls `merkle_fill_tree` (`merkle_tree.cpp:533`); call chain `torrent::on_piece_hashed` -> `hash_picker::set_block_hash` -> `merkle_tree::set_block`, all on the net thread |
+| **HASH-request / proof (uncle hashes) verify** | **network thread** | `bt_peer_connection.cpp:1310 t->add_hashes()` -> `torrent.cpp:6975 m_hash_picker->add_hashes()` |
+
+**Key point:** the *heavy* hashing (SHA-256 over actual block data) is on the
+disk workers, which have large headroom (13% util) — that part is NOT the
+concern, and EZIO only needs to implement `async_hash2` to participate. What
+lands on the **already-pegged network thread** is the merkle *tree structure*
+work: `SHA256(64 bytes)` per internal node, plus proof verification.
+
+### Impact by role
+
+**Leecher (download verification):**
+- v1: piece completes -> disk thread computes one SHA-1 over the whole piece ->
+  net thread compares **1** hash. Net-thread cost ~= 0.
+- v2: disk thread computes per-block SHA-256 leaves -> net thread `set_block`
+  runs `merkle_fill_tree` to rebuild that piece's subtree
+  (16 MiB piece = 1024 blocks -> **~1023 `SHA256(64B)` per piece**) and compares
+  the root. This is a **net-new net-thread cost that v1 did not have at all.**
+- Magnitude: small data per node (64 B), but on the contended thread. At a
+  leecher receiving ~263 MiB/s that is ~16 pieces/s -> ~16K small SHA-256/s.
+  Not huge, but strictly additive to a thread that is the system limiter once
+  this node also reseeds.
+
+**Seeder (EZIO's actual bottleneck):**
+- The seeder's tree is already verified/loaded (`v2_piece_hashes_verified()`),
+  so it does **not** run `set_block` / `merkle_fill_tree`.
+- New cost is **serving HASH requests**: assembling uncle/proof hashes from the
+  stored tree (reads + message build, not re-hashing) plus the extra v2 HASH
+  message traffic v1 never had. Modest per request, but it competes for the one
+  pegged core, so it still eats into the egress ceiling.
+
+### Conclusions / mitigations
+
+1. **Heavy data hashing is fine** — it is on disk workers (headroom). Implement
+   `async_hash2` and move on.
+2. **The real risk is the net-thread delta**: leecher-side `merkle_fill_tree`
+   verification (zero -> nonzero vs v1) and seeder-side HASH/proof serving +
+   extra v2 messages. Direction matches `NETWORK_THREAD_PROFILING.md`: the wall
+   is that thread, and v2 adds to it.
+3. **Likely single-digit-% regression, not an order of magnitude** (64 B nodes),
+   but **measure — do not assume** (consistent with the perf-backlog pattern
+   where "obvious" estimates were wrong on real hardware).
+4. **Mitigations to evaluate:** prefer **v2-only** (not hybrid) to avoid the
+   disk-side SHA-1 + SHA-256 double hash; and ensure EZIO-generated torrents
+   embed complete piece layers so leechers rarely need HASH requests, minimizing
+   the seeder's proof-serving load.
+
+Cross-reference: `NETWORK_THREAD_PROFILING.md` (net-thread bottleneck data) and
+CLAUDE.md Critical Architecture Fact #8 (always analyze seeder + leecher).
+
+---
+
 ## References
 
 ### Specifications
