@@ -21,10 +21,6 @@ raw_disk_io_constructor(libtorrent::io_context &ioc,
 	libtorrent::settings_interface const &,
 	libtorrent::counters &);
 
-// Get global raw_disk_io instance (set by raw_disk_io_constructor)
-// Returns nullptr if using default disk_io or before construction
-raw_disk_io *get_raw_disk_io_instance();
-
 class raw_disk_io final : public libtorrent::disk_interface
 {
 private:

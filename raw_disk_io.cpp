@@ -18,10 +18,6 @@ namespace ezio
 constexpr size_t READ_POOL_SIZE = 512ULL * 1024 * 1024;
 constexpr size_t WRITE_POOL_SIZE = 512ULL * 1024 * 1024;
 
-// Global pointer to raw_disk_io instance for stats reporting
-// Set by raw_disk_io_constructor, accessed by log thread
-static raw_disk_io *g_raw_disk_io_instance = nullptr;
-
 // Helper function: Get cache entries from settings_pack::cache_size
 // cache_size is number of 16KiB blocks (libtorrent definition)
 // Returns number of 16KB entries
@@ -42,14 +38,7 @@ std::unique_ptr<libtorrent::disk_interface> raw_disk_io_constructor(libtorrent::
 	libtorrent::settings_interface const &s,
 	libtorrent::counters &c)
 {
-	auto disk_io = std::make_unique<raw_disk_io>(ioc, s, c);
-	g_raw_disk_io_instance = disk_io.get();
-	return disk_io;
-}
-
-raw_disk_io *get_raw_disk_io_instance()
-{
-	return g_raw_disk_io_instance;
+	return std::make_unique<raw_disk_io>(ioc, s, c);
 }
 
 raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
