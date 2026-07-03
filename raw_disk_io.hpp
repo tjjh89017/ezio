@@ -6,6 +6,8 @@
 #include <deque>
 #include <vector>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 #include <libtorrent/libtorrent.hpp>
 #include <boost/asio.hpp>
 #include "buffer_pool.hpp"
@@ -42,6 +44,11 @@ private:
 	// Cache statistics reporting (temporary for debugging)
 	std::thread m_stats_thread;
 	std::atomic<bool> m_shutdown{false};
+	// Wakes the stats thread out of its 30s wait so the destructor's join
+	// does not stall shutdown. m_shutdown is set under m_shutdown_mutex to
+	// avoid a lost wakeup against the wait_for predicate check.
+	std::mutex m_shutdown_mutex;
+	std::condition_variable m_shutdown_cv;
 
 	// callbacks are posted on this (main network I/O context)
 	libtorrent::io_context &m_ioc;
