@@ -9,7 +9,7 @@ gRPCService::gRPCService(ezio &daemon) :
 {
 }
 
-void gRPCService::start(std::string listen_address)
+bool gRPCService::start(std::string listen_address)
 {
 	ServerBuilder builder;
 	builder.AddListeningPort(listen_address, grpc::InsecureServerCredentials());
@@ -17,16 +17,27 @@ void gRPCService::start(std::string listen_address)
 	builder.SetMaxReceiveMessageSize(-1);
 	builder.RegisterService(this);
 	m_server = builder.BuildAndStart();
+	// BuildAndStart returns nullptr when the address is invalid or the port
+	// is already taken (e.g. a second ezio instance).
+	if (!m_server) {
+		spdlog::critical("failed to start gRPC server on {} (address in use or invalid?)", listen_address);
+		return false;
+	}
+	return true;
 }
 
 void gRPCService::stop()
 {
-	m_server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(10));
+	if (m_server) {
+		m_server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(10));
+	}
 }
 
 void gRPCService::wait()
 {
-	m_server->Wait();
+	if (m_server) {
+		m_server->Wait();
+	}
 }
 
 Status gRPCService::Shutdown(ServerContext *context, const Empty *e1,
