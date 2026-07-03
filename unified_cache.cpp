@@ -119,41 +119,6 @@ void cache_partition::mark_clean(torrent_location const &loc)
 	}
 }
 
-std::vector<torrent_location> cache_partition::collect_dirty_blocks()
-{
-	std::vector<torrent_location> dirty_blocks;
-	dirty_blocks.reserve(m_entries.size());
-
-	// NOTE: C++17 could use structured bindings: for (auto &[loc, entry] : m_entries)
-	for (auto &pair : m_entries) {
-		// Collect dirty blocks
-		if (pair.second.dirty) {
-			dirty_blocks.push_back(pair.first);
-			// Clear dirty flag (will be written to disk)
-			pair.second.dirty = false;
-		}
-	}
-
-	return dirty_blocks;
-}
-
-std::vector<torrent_location> cache_partition::collect_dirty_blocks_for_storage(
-	libtorrent::storage_index_t storage)
-{
-	std::vector<torrent_location> dirty_blocks;
-	dirty_blocks.reserve(m_entries.size());
-
-	// Only collect dirty blocks for the specified storage
-	for (auto &pair : m_entries) {
-		if (pair.second.dirty && pair.first.torrent == storage) {
-			dirty_blocks.push_back(pair.first);
-			pair.second.dirty = false;
-		}
-	}
-
-	return dirty_blocks;
-}
-
 size_t cache_partition::clear_piece(libtorrent::storage_index_t storage,
 	libtorrent::piece_index_t piece)
 {
@@ -282,19 +247,6 @@ void unified_cache::mark_clean(torrent_location const &loc)
 	m_partitions[partition_idx]->mark_clean(loc);
 }
 
-std::vector<torrent_location> unified_cache::collect_dirty_blocks(libtorrent::storage_index_t storage)
-{
-	std::vector<torrent_location> all_dirty;
-
-	// Collect from all partitions, but only for the specified storage
-	for (size_t i = 0; i < m_partitions.size(); ++i) {
-		auto partition_dirty = m_partitions[i]->collect_dirty_blocks_for_storage(storage);
-		all_dirty.insert(all_dirty.end(), partition_dirty.begin(), partition_dirty.end());
-	}
-
-	return all_dirty;
-}
-
 size_t unified_cache::clear_piece(libtorrent::storage_index_t storage,
 	libtorrent::piece_index_t piece)
 {
@@ -322,24 +274,6 @@ size_t unified_cache::total_dirty_count() const
 		total += m_partitions[i]->dirty_count();
 	}
 	return total;
-}
-
-size_t unified_cache::get_dirty_count(libtorrent::storage_index_t storage)
-{
-	// Collect dirty blocks for this storage
-	size_t count = 0;
-
-	for (size_t i = 0; i < m_partitions.size(); ++i) {
-		auto partition_dirty = m_partitions[i]->collect_dirty_blocks();
-
-		for (auto const &loc : partition_dirty) {
-			if (loc.torrent == storage) {
-				++count;
-			}
-		}
-	}
-
-	return count;
 }
 
 void unified_cache::set_max_entries(size_t new_max)
