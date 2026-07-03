@@ -23,9 +23,12 @@ EZIO is a **BitTorrent-based raw disk imaging tool** for fast LAN deployment.
 
 1. **Raw disk I/O** — pread/pwrite to a partition, no filesystem layer.
 
-2. **Unified buffer pool** (`buffer_pool`, 256 MB) — single pool of temporary
-   I/O buffers for read/write/hash. Dynamic allocation, watermarks (50% low,
-   87.5% high). This is *not* a cache.
+2. **Split buffer pools** (`buffer_pool` x2, 512 MB each) — temporary I/O
+   buffers: one pool for read + hash, one for write. Soft limit: allocation
+   only fails on real malloc failure; the high watermark (87.5%) raises the
+   backpressure (`exceeded`) flag, released at the low watermark (50%).
+   This is *not* a cache. (History: split -> merged 256 MB -> re-split
+   `f8e00ab` -> 512 MB each `0a5c885`.)
 
 3. **Lock-free unified cache** (`m_cache`, default 512 MB, `--cache-size`)
    - Write-through cache; **replaced the old `store_buffer`**.
@@ -81,7 +84,7 @@ EZIO is a **BitTorrent-based raw disk imaging tool** for fast LAN deployment.
 | Area | Description | Benefit |
 |------|-------------|---------|
 | Logging | Runtime log level via env; event-driven alerts | 5000x faster alert response |
-| Buffer pool | Merged split pools into one 256 MB pool | +48% memory efficiency |
+| Buffer pool | Merged into one 256 MB pool (+48% memory efficiency); later re-split into read/write pools, 512 MB each | See fact 2 above |
 | Settings | Constructor takes settings/counters; configurable thread pools | Runtime tuning, no recompile |
 | Lock-free cache | Write-through cache, 1:1 thread:partition, consistent hashing | +184% (270 -> 766 MB/s 1-on-1), 98-100% hit rate |
 | UI refactor | Component-based TUI: sorting, filtering, color, scrollbar, help | -743 lines, more features |
@@ -262,7 +265,7 @@ persistent seed; benchmark only, do not assume positive.
 
 **Code:**
 - `raw_disk_io.hpp` / `raw_disk_io.cpp` — main disk I/O (async_read/write/hash)
-- `buffer_pool.hpp` / `buffer_pool.cpp` — unified buffer pool
+- `buffer_pool.hpp` / `buffer_pool.cpp` — split read/write buffer pools
 - the lock-free cache (`m_cache`) and `partition_storage`
 
 **Docs:**

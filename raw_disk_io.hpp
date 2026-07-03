@@ -24,11 +24,13 @@ raw_disk_io_constructor(libtorrent::io_context &ioc,
 class raw_disk_io final : public libtorrent::disk_interface
 {
 private:
-	// Split buffer pools (128MB each, no over-allocation)
+	// Split buffer pools (READ_POOL_SIZE / WRITE_POOL_SIZE, 512 MB each).
+	// Soft limit: allocation only fails on real malloc failure; the watermarks
+	// drive the exceeded/backpressure flag (see buffer_pool.cpp).
 	buffer_pool m_read_buffer_pool;	 // Read + hash operations
 	buffer_pool m_write_buffer_pool;  // Write operations
 
-	unified_cache m_cache;	// Persistent cache (512MB, delayed write + read cache)
+	unified_cache m_cache;	// Write-through cache (cache_size setting, default 512 MB)
 
 	// Per-thread pool for consistent hashing (each pool has 1 thread)
 	// Each thread owns its cache partition exclusively (lock-free!)
