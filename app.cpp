@@ -93,7 +93,9 @@ app::app(const config &cfg) : m_config(cfg), m_session(make_session_params(cfg))
 
 int app::run()
 {
-	m_service.start(m_config.listen_address);
+	if (!m_service.start(m_config.listen_address)) {
+		return 1;
+	}
 	m_log.start();
 	spdlog::info("Server listening on {}", m_config.listen_address);
 	m_daemon.run();

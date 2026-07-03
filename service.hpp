@@ -33,7 +33,8 @@ class gRPCService final : public EZIO::Service
 public:
 	gRPCService(ezio &);
 	explicit gRPCService();
-	void start(std::string);
+	// Returns false if the server failed to start (e.g. listen address in use).
+	bool start(std::string);
 	void stop();
 	void wait();
 
