@@ -277,12 +277,6 @@ public:
 		return (it == m_entries.end()) ? 0 : it->second.length;
 	}
 
-	// Collect all dirty blocks in this partition and mark them as clean
-	std::vector<torrent_location> collect_dirty_blocks();
-
-	// Collect dirty blocks for a specific storage only
-	std::vector<torrent_location> collect_dirty_blocks_for_storage(libtorrent::storage_index_t storage);
-
 	// Remove all entries belonging to (storage, piece). Lock-free: owner-thread only.
 	size_t clear_piece(libtorrent::storage_index_t storage, libtorrent::piece_index_t piece);
 
@@ -403,9 +397,6 @@ public:
 		return m_partitions[partition_idx]->get_length(loc);
 	}
 
-	// Collect all dirty blocks for a storage
-	std::vector<torrent_location> collect_dirty_blocks(libtorrent::storage_index_t storage);
-
 	// Remove all cached entries for (storage, piece). Forwards to the owning partition.
 	// Lock-free: must be called from the owning worker thread.
 	size_t clear_piece(libtorrent::storage_index_t storage, libtorrent::piece_index_t piece);
@@ -413,7 +404,6 @@ public:
 	// Statistics
 	size_t total_entries() const;
 	size_t total_dirty_count() const;
-	size_t get_dirty_count(libtorrent::storage_index_t storage);
 	size_t max_entries() const
 	{
 		return m_max_entries;
