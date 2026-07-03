@@ -97,8 +97,13 @@ raw_disk_io::~raw_disk_io()
 {
 	spdlog::info("[raw_disk_io] Shutting down: waiting for all I/O to complete...");
 
-	// Stop stats reporting thread first
-	m_shutdown = true;
+	// Stop stats reporting thread first, waking it out of its 30s wait so
+	// shutdown does not stall until the next report tick.
+	{
+		std::lock_guard<std::mutex> lock(m_shutdown_mutex);
+		m_shutdown = true;
+	}
+	m_shutdown_cv.notify_all();
 	if (m_stats_thread.joinable()) {
 		m_stats_thread.join();
 	}
@@ -619,12 +624,19 @@ void raw_disk_io::stats_report_loop()
 {
 	spdlog::info("[raw_disk_io] Cache stats reporting thread started (30s interval)");
 
+	std::unique_lock<std::mutex> lock(m_shutdown_mutex);
 	while (!m_shutdown) {
-		std::this_thread::sleep_for(std::chrono::seconds(30));
-
-		if (m_shutdown) {
+		// Interruptible sleep: wait_for returns true when the destructor sets
+		// m_shutdown and notifies, so shutdown does not wait out the interval.
+		if (m_shutdown_cv.wait_for(lock, std::chrono::seconds(30),
+				[this] {
+					return m_shutdown.load();
+				})) {
 			break;
 		}
+
+		// Report without holding the lock; it only guards the flag/CV.
+		lock.unlock();
 
 		// Buffer pool usage stats (split pools)
 		int read_in_use = m_read_buffer_pool.in_use();
@@ -666,6 +678,8 @@ void raw_disk_io::stats_report_loop()
 					i, entries, usage, p_ops, p_hit_rate);
 			});
 		}
+
+		lock.lock();
 	}
 
 	spdlog::info("[raw_disk_io] Cache stats reporting thread exiting");
