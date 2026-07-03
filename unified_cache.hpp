@@ -163,7 +163,11 @@ private:
 	// Single LRU list (all blocks, both dirty and clean)
 	std::list<torrent_location> m_lru;	// unified LRU list
 
-	size_t m_max_entries;
+	// Written by the network thread via set_max_entries(); read by the owning
+	// worker thread in insert(). Atomic (relaxed) so the cross-thread access is
+	// well-defined; no ordering is needed, a stale limit only changes how many
+	// entries the next insert() evicts.
+	std::atomic<size_t> m_max_entries;
 	cache_partition_stats_internal m_stats;	 // Performance statistics (atomic)
 
 	// Dirty block tracking
@@ -286,7 +290,7 @@ public:
 	size_t dirty_count() const;
 	size_t max_entries() const
 	{
-		return m_max_entries;
+		return m_max_entries.load(std::memory_order_relaxed);
 	}
 
 	// Dynamic resize

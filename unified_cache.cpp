@@ -49,13 +49,14 @@ bool cache_partition::insert(torrent_location const &loc, char const *data, int 
 	// relying on this path to gradually shrink the partition on subsequent inserts.
 	// libtorrent 2.x design: allow over-allocation (short-term exceeding max_entries)
 	// This prevents blocking writes when all entries are temporarily dirty
+	size_t const max_entries = m_max_entries.load(std::memory_order_relaxed);
 	bool did_evict = false;
-	while (m_entries.size() >= m_max_entries) {
+	while (m_entries.size() >= max_entries) {
 		if (!evict_one_lru()) {
 			// Cannot evict (all clean entries exhausted)
 			// Allow over-allocation - insert anyway
 			spdlog::debug("[cache_partition] Over-allocation: size={}, max={}",
-				m_entries.size() + 1, m_max_entries);
+				m_entries.size() + 1, max_entries);
 			break;
 		}
 		did_evict = true;
@@ -170,7 +171,7 @@ void cache_partition::set_max_entries(size_t new_max)
 	// by the worker thread (1:1 mapping) and evicting here would race with
 	// concurrent insert/lookup on the worker thread.
 	// Eviction happens naturally in insert() on the owning worker thread.
-	m_max_entries = new_max;
+	m_max_entries.store(new_max, std::memory_order_relaxed);
 }
 
 bool cache_partition::evict_one_lru()
