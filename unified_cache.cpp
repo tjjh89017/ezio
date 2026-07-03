@@ -178,10 +178,21 @@ bool cache_partition::evict_one_lru()
 {
 	// Single LRU eviction: scan from LRU end for first clean block
 	// Skip dirty blocks (cannot evict while pending write)
-	for (auto it = m_lru.rbegin(); it != m_lru.rend(); ++it) {
+	auto it = m_lru.rbegin();
+	while (it != m_lru.rend()) {
 		auto entry_it = m_entries.find(*it);
 		if (entry_it == m_entries.end()) {
-			spdlog::error("[cache_partition] LRU inconsistency: entry not found");
+			// Should not happen: insert/get/clear_piece keep m_entries and
+			// m_lru in sync. If it does, drop the stale node so the error is
+			// logged once instead of on every eviction pass forever (nothing
+			// else can remove an orphaned node: all other removal paths go
+			// through the map entry's lru_iter).
+			spdlog::error("[cache_partition] LRU inconsistency: entry not found, dropping stale node");
+			// erase() takes the forward iterator to *it and returns the next
+			// forward position; wrapping that in a reverse_iterator resumes
+			// the reverse scan at the element preceding the erased node.
+			it = std::list<torrent_location>::reverse_iterator(
+				m_lru.erase(std::next(it).base()));
 			continue;
 		}
 
@@ -193,6 +204,8 @@ bool cache_partition::evict_one_lru()
 			m_stats.evictions++;
 			return true;
 		}
+
+		++it;
 	}
 
 	// All entries are dirty - cannot evict
