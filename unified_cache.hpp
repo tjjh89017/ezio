@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <boost/asio/thread_pool.hpp>
+#include <boost/assert.hpp>
 #include <libtorrent/libtorrent.hpp>
 #include <spdlog/spdlog.h>
 
@@ -356,35 +357,19 @@ public:
 	}
 
 	// Get two entries at once
+	// Both locations must map to the same partition. The only call site passes
+	// two blocks of the same (storage, piece), and get_partition_index ignores
+	// the offset, so this always holds today. A cross-partition pair would mean
+	// touching a partition owned by another thread, breaking the lock-free
+	// owner-thread model -- assert so any future routing change (e.g. hashing
+	// by chunk/offset) fails fast here instead of racing silently.
 	template<typename Fun>
 	int get2(torrent_location const &loc1, torrent_location const &loc2, Fun f)
 	{
-		size_t partition_idx1 = get_partition_index(loc1);
-		size_t partition_idx2 = get_partition_index(loc2);
+		size_t const partition_idx = get_partition_index(loc1);
+		BOOST_ASSERT(partition_idx == get_partition_index(loc2));
 
-		// If same partition, use single-partition get2
-		if (partition_idx1 == partition_idx2) {
-			return m_partitions[partition_idx1]->get2(loc1, loc2, f);
-		}
-
-		// Different partitions - need to handle separately
-		// Get from partition 1
-		char const *buf1 = nullptr;
-		bool found1 = m_partitions[partition_idx1]->get(loc1, [&](char const *b) {
-			buf1 = b;
-		});
-
-		// Get from partition 2
-		char const *buf2 = nullptr;
-		bool found2 = m_partitions[partition_idx2]->get(loc2, [&](char const *b) {
-			buf2 = b;
-		});
-
-		if (!found1 && !found2) {
-			return 0;
-		}
-
-		return f(buf1, buf2);
+		return m_partitions[partition_idx]->get2(loc1, loc2, f);
 	}
 
 	// Mark as clean after writeback completes
