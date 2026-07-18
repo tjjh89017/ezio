@@ -56,3 +56,6 @@ __pycache__/
 
 # powerloop tracking notes
 /.powerloop/
+
+# tmp files
+/tmp/
