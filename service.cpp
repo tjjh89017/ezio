@@ -103,6 +103,7 @@ Status gRPCService::AddTorrent(ServerContext *context,
 		return Status(grpc::StatusCode::UNAVAILABLE, e.what());
 	}
 
+	response->set_result(true);
 	return Status::OK;
 }
 
