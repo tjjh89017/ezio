@@ -1,6 +1,11 @@
 # EZIO
 
-![build test](https://github.com/tjjh89017/ezio/actions/workflows/github_actions.yml/badge.svg)
+[![build test](https://github.com/tjjh89017/ezio/actions/workflows/github_actions.yml/badge.svg)](https://github.com/tjjh89017/ezio/actions/workflows/github_actions.yml)
+[![CodeQL](https://github.com/tjjh89017/ezio/actions/workflows/codeql.yml/badge.svg)](https://github.com/tjjh89017/ezio/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/tjjh89017/ezio/badge)](https://scorecard.dev/viewer/?uri=github.com/tjjh89017/ezio)
+
+[![release](https://img.shields.io/github/v/release/tjjh89017/ezio?sort=semver&logo=github)](https://github.com/tjjh89017/ezio/releases/latest)
+[![license](https://img.shields.io/github/license/tjjh89017/ezio)](LICENSE)
 
 **EZIO is a high-performance disk imaging tool for rapidly deploying dozens to hundreds of machines over a LAN.** It distributes disk images peer-to-peer with the BitTorrent protocol and writes directly to raw disk partitions, achieving far faster deployment than traditional multicast — and it gets *faster* as you add more clients, because every client also seeds.
 
@@ -404,6 +409,7 @@ Result is stable across `--cache-size` (512 MB–2 GB) and `--aio-threads` (8–
 - Issues: https://github.com/tjjh89017/ezio/issues
 - Source: https://github.com/tjjh89017/ezio
 - Maintainer email: tjjh89017@hotmail.com
+- Security vulnerabilities: please report them privately, see [SECURITY.md](SECURITY.md)
 
 **Special thanks** to the National Center for High-performance Computing (NCHC), Taiwan, for test hardware and support.
 
