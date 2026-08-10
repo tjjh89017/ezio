@@ -2,13 +2,10 @@
 
 ## Supported Versions
 
-EZIO is developed on `master` and shipped as tagged releases. Only the latest
-release line receives security fixes; older tags are not backported.
-
-| Version         | Supported          |
-| --------------- | ------------------ |
-| latest `v2.0.x` | :white_check_mark: |
-| older tags      | :x:                |
+EZIO is developed on `master` and shipped as tagged releases. Security fixes go
+into the latest release line only; older tags are not backported. If you are
+running anything other than the most recent release, upgrade first and check
+whether the issue still reproduces.
 
 If you use EZIO through Clonezilla Lite Server, also report the issue to the
 [Clonezilla project](https://clonezilla.org/) so the bundled copy gets updated.
@@ -24,8 +21,8 @@ Report it privately through GitHub's coordinated disclosure flow:
 3. Include reproduction steps: the command line used, the torrent/partition
    layout, and any relevant `ezio` log output (run with a raised log level).
 
-If GitHub private reporting is unavailable to you, contact the maintainer
-listed in [.github/CODEOWNERS](.github/CODEOWNERS) directly instead.
+If GitHub private reporting is unavailable to you, email the maintainer
+directly at <tjjh89017@hotmail.com> instead.
 
 ### What to expect
 

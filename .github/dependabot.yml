@@ -1,12 +1,15 @@
 version: 2
 
 updates:
-  # Keep the SHA-pinned actions in .github/workflows/ fresh.
+  # Workflows reference actions by floating major tag (actions/checkout@v6), so
+  # minor and patch upgrades arrive on their own and Dependabot stays quiet.
+  # What this rule is actually for is the major bumps: it opens a PR when
+  # actions/checkout@v7 or codeql-action@v5 lands, which is otherwise easy to
+  # miss until an old major is deprecated.
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     commit-message:
       prefix: ci
     labels:
@@ -15,14 +18,3 @@ updates:
       github-actions:
         patterns:
           - "*"
-
-  # gRPC client helpers under utils/
-  - package-ecosystem: pip
-    directory: /utils
-    schedule:
-      interval: weekly
-      day: monday
-    commit-message:
-      prefix: build
-    labels:
-      - dependencies
