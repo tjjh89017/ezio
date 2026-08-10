@@ -8,6 +8,7 @@ type: software
 authors:
   - given-names: Yu-Chiang
     family-names: Huang
+    alias: tjjh89017
 abstract: >-
   EZIO is a high-performance disk imaging tool for rapidly deploying dozens to
   hundreds of machines over a LAN. It distributes disk images peer-to-peer with
