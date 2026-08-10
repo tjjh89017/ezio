@@ -1,0 +1,80 @@
+name: CodeQL
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  schedule:
+    # Same weekly slot as the build test, offset to avoid competing for runners
+    - cron: '30 12 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      # required to upload the SARIF results to code scanning
+      security-events: write
+      # required by github/codeql-action to read the workflow run status
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # C++ daemon: needs a real compile, so CodeQL traces a manual build
+          - language: c-cpp
+            build-mode: manual
+          # utils/ gRPC client scripts
+          - language: python
+            build-mode: none
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      # Mirrors the builder stage of the Dockerfile
+      - name: Install build dependencies
+        if: matrix.build-mode == 'manual'
+        run: |
+          sudo apt-get -y update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libssl-dev \
+            cmake \
+            make \
+            libgrpc-dev \
+            libgrpc++-dev \
+            libprotobuf-dev \
+            protobuf-compiler-grpc \
+            libtorrent-rasterbar-dev \
+            libboost-program-options-dev \
+            libspdlog-dev
+
+      - name: Build EZIO
+        if: matrix.build-mode == 'manual'
+        run: |
+          cmake -B build -S .
+          cmake --build build -j "$(nproc)"
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          category: "/language:${{ matrix.language }}"
