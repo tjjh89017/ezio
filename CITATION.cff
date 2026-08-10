@@ -1,0 +1,76 @@
+cff-version: 1.2.0
+title: EZIO
+message: >-
+  If you use this software in your research, please cite it using the metadata
+  below. If you are citing the mechanism rather than the implementation, cite
+  the IEEE Access 2021 paper listed under references.
+type: software
+authors:
+  - given-names: Yu-Chiang
+    family-names: Huang
+abstract: >-
+  EZIO is a high-performance disk imaging tool for rapidly deploying dozens to
+  hundreds of machines over a LAN. It distributes disk images peer-to-peer with
+  the BitTorrent protocol and writes directly to raw disk partitions, so
+  deployment time stays roughly flat as clients are added because every client
+  also seeds. It uses partclone to capture only the used filesystem blocks, and
+  ships inside Clonezilla as its Lite Server Mode.
+repository-code: 'https://github.com/tjjh89017/ezio'
+url: 'https://github.com/tjjh89017/ezio'
+license: GPL-2.0-only
+keywords:
+  - bittorrent
+  - peer-to-peer
+  - disk-imaging
+  - massive-deployment
+  - clonezilla
+  - partclone
+references:
+  - type: article
+    title: 'A BitTorrent Mechanism-Based Solution for Massive System Deployment'
+    journal: IEEE Access
+    year: 2021
+    volume: 9
+    start: 21043
+    end: 21058
+    doi: 10.1109/ACCESS.2021.3052525
+    authors:
+      - given-names: Steven J. H.
+        family-names: Shiau
+      - given-names: Yu-Chiang
+        family-names: Huang
+      - given-names: Yu-Chin
+        family-names: Tsai
+      - given-names: Chen-Kai
+        family-names: Sun
+      - given-names: Ching-Hsuan
+        family-names: Yen
+      - given-names: Chi-Yo
+        family-names: Huang
+  - type: article
+    title: 'A Novel Massive Deployment Solution Based on the Peer-to-Peer Protocol'
+    journal: Applied Sciences
+    year: 2019
+    volume: 9
+    issue: '2'
+    start: 296
+    doi: 10.3390/app9020296
+    authors:
+      - given-names: Steven J. H.
+        family-names: Shiau
+      - given-names: Yu-Chiang
+        family-names: Huang
+      - given-names: Ching-Hsuan
+        family-names: Yen
+      - given-names: Yu-Chin
+        family-names: Tsai
+      - given-names: Chen-Kai
+        family-names: Sun
+      - given-names: Jer-Nan
+        family-names: Juang
+      - given-names: Chi-Yo
+        family-names: Huang
+      - given-names: Ching-Chun
+        family-names: Huang
+      - given-names: Shih-Kun
+        family-names: Huang
