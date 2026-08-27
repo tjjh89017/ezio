@@ -4,6 +4,8 @@
 
 #include <libtorrent/libtorrent.hpp>
 
+#include <libtorrent/extensions/ut_pex.hpp>
+
 #include "raw_disk_io.hpp"
 
 namespace ezio
@@ -25,6 +27,11 @@ lt::session_params app::make_session_params(const config &cfg)
 	p.set_bool(lt::settings_pack::enable_outgoing_utp, false);
 	p.set_bool(lt::settings_pack::enable_incoming_utp, false);
 	p.set_int(lt::settings_pack::mixed_mode_algorithm, lt::settings_pack::prefer_tcp);
+
+	// DHT / LSD / PEX are all disabled by default; enable via --enable-dht,
+	// --enable-lsd, --enable-pex.
+	p.set_bool(lt::settings_pack::enable_dht, cfg.dht);
+	p.set_bool(lt::settings_pack::enable_lsd, cfg.lsd);
 
 	// thread pool size from config (used for both I/O and hashing)
 	p.set_int(lt::settings_pack::aio_threads, cfg.aio_threads);
@@ -66,7 +73,11 @@ lt::session_params app::make_session_params(const config &cfg)
 		spdlog::info("BitTorrent listen port: {}", cfg.bt_listen_port);
 	}
 
-	lt::session_params ses_params(p);
+	// Construct with an empty extension list instead of libtorrent's
+	// default_plugins() (ut_pex, ut_metadata, smart_ban) so PEX is truly off
+	// unless explicitly enabled via --enable-pex (wired in the app ctor via
+	// session::add_extension).
+	lt::session_params ses_params(p, {});
 	if (!cfg.file_flag) {
 		ses_params.disk_io_constructor = raw_disk_io_constructor;
 	}
@@ -75,6 +86,12 @@ lt::session_params app::make_session_params(const config &cfg)
 
 app::app(const config &cfg) : m_config(cfg), m_session(make_session_params(cfg)), m_daemon(m_session, m_config.slow_start, m_config.slow_start_period), m_service(m_daemon), m_log(m_daemon, m_daemon.get_io_context())
 {
+	// PEX is off by default (session_params was built with an empty extension
+	// list); add the ut_pex extension only when explicitly enabled.
+	if (m_config.pex) {
+		m_session.add_extension(&lt::create_ut_pex_plugin);
+	}
+
 	// Route every peer -- including LAN/private addresses -- into the global peer
 	// class. By default libtorrent maps private-range IPs to a separate local
 	// peer class that ignores the session-wide upload_rate_limit (and the unchoke
