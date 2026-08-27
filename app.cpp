@@ -28,10 +28,14 @@ lt::session_params app::make_session_params(const config &cfg)
 	p.set_bool(lt::settings_pack::enable_incoming_utp, false);
 	p.set_int(lt::settings_pack::mixed_mode_algorithm, lt::settings_pack::prefer_tcp);
 
-	// DHT / LSD / PEX are all disabled by default; enable via --enable-dht,
-	// --enable-lsd, --enable-pex.
+	// DHT / LSD are disabled by default; enable via --enable-dht / --enable-lsd.
+	// PEX is always on (see the app ctor).
 	p.set_bool(lt::settings_pack::enable_dht, cfg.dht);
 	p.set_bool(lt::settings_pack::enable_lsd, cfg.lsd);
+
+	// LAN deployment: no NAT traversal needed, so disable UPnP and NAT-PMP.
+	p.set_bool(lt::settings_pack::enable_upnp, false);
+	p.set_bool(lt::settings_pack::enable_natpmp, false);
 
 	// thread pool size from config (used for both I/O and hashing)
 	p.set_int(lt::settings_pack::aio_threads, cfg.aio_threads);
@@ -74,9 +78,10 @@ lt::session_params app::make_session_params(const config &cfg)
 	}
 
 	// Construct with an empty extension list instead of libtorrent's
-	// default_plugins() (ut_pex, ut_metadata, smart_ban) so PEX is truly off
-	// unless explicitly enabled via --enable-pex (wired in the app ctor via
-	// session::add_extension).
+	// default_plugins() (ut_pex, ut_metadata, smart_ban) so ut_metadata and
+	// smart_ban stay off (smart_ban is deliberately disabled); ut_pex is added
+	// back unconditionally in the app ctor via session::add_extension. Note
+	// libtorrent skips ut_pex automatically for private torrents.
 	lt::session_params ses_params(p, {});
 	if (!cfg.file_flag) {
 		ses_params.disk_io_constructor = raw_disk_io_constructor;
@@ -86,11 +91,11 @@ lt::session_params app::make_session_params(const config &cfg)
 
 app::app(const config &cfg) : m_config(cfg), m_session(make_session_params(cfg)), m_daemon(m_session, m_config.slow_start, m_config.slow_start_period), m_service(m_daemon), m_log(m_daemon, m_daemon.get_io_context())
 {
-	// PEX is off by default (session_params was built with an empty extension
-	// list); add the ut_pex extension only when explicitly enabled.
-	if (m_config.pex) {
-		m_session.add_extension(&lt::create_ut_pex_plugin);
-	}
+	// PEX is always on (session_params was built with an empty extension list
+	// to keep ut_metadata and smart_ban off, so ut_pex is added back here
+	// unconditionally). libtorrent skips ut_pex automatically for private
+	// torrents.
+	m_session.add_extension(&lt::create_ut_pex_plugin);
 
 	// Route every peer -- including LAN/private addresses -- into the global peer
 	// class. By default libtorrent maps private-range IPs to a separate local

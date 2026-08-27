@@ -146,7 +146,6 @@ Allowed Options:
   -p [ --port ] arg        BitTorrent peer listen port (default 6881)
   --enable-dht             enable DHT (default off)
   --enable-lsd             enable Local Service Discovery (default off)
-  --enable-pex             enable Peer Exchange (default off)
   -v [ --version ]         show version
 ```
 
