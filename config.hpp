@@ -35,8 +35,6 @@ public:
 	bool dht = false;
 	// enable Local Service Discovery (default off)
 	bool lsd = false;
-	// enable Peer Exchange (default off)
-	bool pex = false;
 };
 
 }  // namespace ezio

@@ -19,7 +19,6 @@ void config::parse_from_argv(int argc, char **argv)
 		("port,p", bpo::value<int>(&bt_listen_port)->default_value(0), "BitTorrent peer listen port (default 6881)")
 		("enable-dht", bpo::bool_switch(&dht)->default_value(false), "enable DHT (default off)")
 		("enable-lsd", bpo::bool_switch(&lsd)->default_value(false), "enable Local Service Discovery (default off)")
-		("enable-pex", bpo::bool_switch(&pex)->default_value(false), "enable Peer Exchange (default off)")
 		("version,v", "show version")
 	;
 	// clang-format on
