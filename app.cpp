@@ -8,6 +8,12 @@
 
 #include "raw_disk_io.hpp"
 
+namespace
+{
+// Session-wide peer cap, high enough that it never binds.
+constexpr int SESSION_PEER_LIMIT = 1000;
+}  // namespace
+
 namespace ezio
 {
 
@@ -50,15 +56,15 @@ lt::session_params app::make_session_params(const config &cfg)
 	p.set_int(lt::settings_pack::send_buffer_low_watermark, 32 * 1024 * 1024);
 
 	// Keep the session-wide caps out of the way; the effective limits are enforced
-	// per-torrent (max_connections / max_uploads, set in add_torrent). A high
-	// connections_limit and an unlimited unchoke_slots_limit (-1) let the
-	// per-torrent max_uploads be the sole governor of how many peers the seeder
-	// unchokes. Peers are routed into the global peer class (see
-	// set_peer_class_filter in the app ctor) so the session-wide upload_rate_limit
-	// the slow-start ramp sets reaches LAN peers too -- libtorrent's default would
-	// otherwise exempt them via a local class.
-	p.set_int(lt::settings_pack::connections_limit, 1000);
-	p.set_int(lt::settings_pack::unchoke_slots_limit, -1);
+	// per-torrent (max_connections / max_uploads, set in add_torrent). Peers are
+	// routed into the global peer class (see set_peer_class_filter in the app
+	// ctor) so the session-wide upload_rate_limit the slow-start ramp sets
+	// reaches LAN peers too -- libtorrent's default would otherwise exempt them
+	// via a local class.
+	// unchoke_slots_limit must be positive: with -1 libtorrent skips the unchoke
+	// round, and a freed upload slot is never given to a peer that waits.
+	p.set_int(lt::settings_pack::connections_limit, SESSION_PEER_LIMIT);
+	p.set_int(lt::settings_pack::unchoke_slots_limit, SESSION_PEER_LIMIT);
 
 	// unified_cache size from config (default 512MB)
 	// Note: cache_size is deprecated but still used by raw_disk_io
