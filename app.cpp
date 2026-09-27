@@ -66,6 +66,10 @@ lt::session_params app::make_session_params(const config &cfg)
 	p.set_int(lt::settings_pack::connections_limit, SESSION_PEER_LIMIT);
 	p.set_int(lt::settings_pack::unchoke_slots_limit, SESSION_PEER_LIMIT);
 
+	// Close a connection after 60 s with no interest in both directions
+	// (libtorrent default: 600), so that peers with the same pieces dial others.
+	p.set_int(lt::settings_pack::inactivity_timeout, 60);
+
 	// unified_cache size from config (default 512MB)
 	// Note: cache_size is deprecated but still used by raw_disk_io
 	// cache_size unit: number of 16KiB blocks
