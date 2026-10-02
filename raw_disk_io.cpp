@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <pthread.h>
 #include <cstdlib>
 #include <string>
 #include <thread>
@@ -150,6 +151,14 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	for (size_t i = 0; i < m_num_io_threads; ++i) {
 		m_io_thread_pools.emplace_back(std::make_unique<boost::asio::thread_pool>(1));	// 1 thread per pool
 		spdlog::debug("[raw_disk_io] I/O thread pool {} created", i);
+	}
+
+	// Thread names for per-thread CPU sampling (pidstat, top -H)
+	for (size_t i = 0; i < m_num_io_threads; ++i) {
+		boost::asio::post(*m_io_thread_pools[i], [i]() {
+			std::string const name = "ezio-aio-" + std::to_string(i);
+			pthread_setname_np(pthread_self(), name.c_str());
+		});
 	}
 
 	spdlog::info("[raw_disk_io] All {} I/O thread pools started successfully", m_num_io_threads);
@@ -812,6 +821,7 @@ void raw_disk_io::record_read_miss(size_t thread_idx)
 
 void raw_disk_io::stats_report_loop()
 {
+	pthread_setname_np(pthread_self(), "ezio-stats");
 	spdlog::info("[raw_disk_io] Cache stats reporting thread started ({}s interval)",
 		m_stats_interval.count());
 
