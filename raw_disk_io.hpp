@@ -13,6 +13,7 @@
 #include "buffer_pool.hpp"
 #include "unified_cache.hpp"
 #include "partition_storage.hpp"
+#include "piece_route.hpp"
 
 namespace ezio
 {
@@ -59,15 +60,11 @@ private:
 	std::map<libtorrent::storage_index_t, std::unique_ptr<partition_storage>> m_storages;
 	std::deque<libtorrent::storage_index_t> m_free_slots;
 
-	// Consistent hashing: maps (storage, piece) to thread index
-	// Same piece always goes to same thread (and its cache partition)
+	// Piece-level routing (offset ignored).
 	size_t get_thread_index(libtorrent::storage_index_t storage,
 		libtorrent::piece_index_t piece) const
 	{
-		size_t h = 0;
-		h ^= std::hash<int>{}(static_cast<int>(storage));
-		h ^= std::hash<int>{}(static_cast<int>(piece));
-		return h % m_num_io_threads;
+		return piece_route_index(storage, piece, m_num_io_threads);
 	}
 
 public:

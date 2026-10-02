@@ -3,7 +3,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <functional>
 #include <list>
 #include <memory>
 #include <unordered_map>
@@ -14,6 +13,7 @@
 #include <libtorrent/libtorrent.hpp>
 #include <spdlog/spdlog.h>
 
+#include "piece_route.hpp"
 #include "torrent_location.hpp"
 
 namespace ezio
@@ -446,13 +446,8 @@ public:
 private:
 	size_t get_partition_index(torrent_location const &loc) const
 	{
-		// Hash only storage + piece (NOT offset)
-		// This ensures all blocks of same piece go to same partition/thread
-		// Important for: hash operations can access all blocks without cross-partition
-		size_t h = 0;
-		h ^= std::hash<int>{}(static_cast<int>(loc.torrent));
-		h ^= std::hash<int>{}(static_cast<int>(loc.piece));
-		return h % m_partitions.size();
+		// Piece-level routing (offset ignored).
+		return piece_route_index(loc.torrent, loc.piece, m_partitions.size());
 	}
 };
 
