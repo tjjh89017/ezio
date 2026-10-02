@@ -287,6 +287,7 @@ void raw_disk_io::async_read(
 					auto const start_time = libtorrent::clock_type::now();
 					m_storages[idx]->read(buf + buf_offset, r.piece, offset, len, error);
 					record_pread(thread_idx, ret == 0 ? 2 : 1, false);
+					++m_queue_stats[thread_idx].pread_unaligned;
 					auto const read_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
 
 					m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
@@ -318,21 +319,37 @@ void raw_disk_io::async_read(
 					// later reads of this batch request (order is unchanged).
 					int chunk_end_idx = chunk_default_end;
 					if (m_queue_prefetch && t_batch) {
-						int const run_end = std::min(
-							batch_read_run_end(idx, r.piece, this_block_idx, blocks_in_piece),
-							chunk_start_idx + m_prefetch_cap_blocks);
+						run_stop stop;
+						int run_end = batch_read_run_end(idx, r.piece, this_block_idx, blocks_in_piece, stop);
+						if (run_end > chunk_start_idx + m_prefetch_cap_blocks) {
+							run_end = chunk_start_idx + m_prefetch_cap_blocks;
+							stop = run_stop::cap;
+						}
+						record_run_stop(thread_idx, stop);
 						chunk_end_idx = std::max(chunk_end_idx, run_end);
 					}
-					bool const extended = chunk_end_idx > chunk_default_end;
 
 					// Probe how many blocks in the chunk are missing from cache
+					int missing_default = 0;
 					int missing = 0;
 					for (int i = chunk_start_idx; i < chunk_end_idx; ++i) {
 						int off = i * DEFAULT_BLOCK_SIZE;
 						if (!m_cache.has({idx, r.piece, off})) {
 							++missing;
+							if (i < chunk_default_end) {
+								++missing_default;
+							}
 						}
 					}
+					// An extended range that fails the 75% rule falls back to
+					// the default chunk, so the extension never shrinks a pread
+					if (chunk_end_idx > chunk_default_end &&
+						missing * 4 < (chunk_end_idx - chunk_start_idx) * 3) {
+						chunk_end_idx = chunk_default_end;
+						missing = missing_default;
+						++m_queue_stats[thread_idx].ext_fallback;
+					}
+					bool const extended = chunk_end_idx > chunk_default_end;
 					int const chunk_blocks = chunk_end_idx - chunk_start_idx;
 
 					if (missing * 4 >= chunk_blocks * 3) {
@@ -393,6 +410,7 @@ void raw_disk_io::async_read(
 						auto const start_time = libtorrent::clock_type::now();
 						m_storages[idx]->read(buf, r.piece, r.start, r.length, error);
 						record_pread(thread_idx, 1, false);
+						++m_queue_stats[thread_idx].pread_single;
 						auto const read_time =
 							libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
 
@@ -745,11 +763,13 @@ void raw_disk_io::run_batch(size_t thread_idx, job_batch &batch)
 }
 
 int raw_disk_io::batch_read_run_end(libtorrent::storage_index_t storage,
-	libtorrent::piece_index_t piece, int first_block, int blocks_in_piece) const
+	libtorrent::piece_index_t piece, int first_block, int blocks_in_piece, run_stop &stop) const
 {
 	auto const &batch = *static_cast<job_batch const *>(t_batch);
 	thread_local std::vector<bool> wanted;
 	wanted.assign(size_t(blocks_in_piece), false);
+	int highest = -1;
+	bool barrier = false;
 	for (size_t i = t_batch_pos + 1; i < batch.size(); ++i) {
 		auto const &j = batch[i];
 		if (j.storage != storage || j.piece != piece) {
@@ -757,6 +777,7 @@ int raw_disk_io::batch_read_run_end(libtorrent::storage_index_t storage,
 		}
 		// A write, hash or clear of this piece ends the scan
 		if (j.kind != job_kind::read) {
+			barrier = true;
 			break;
 		}
 		int const b0 = j.offset / DEFAULT_BLOCK_SIZE;
@@ -764,12 +785,28 @@ int raw_disk_io::batch_read_run_end(libtorrent::storage_index_t storage,
 		for (int b = std::max(b0, 0); b <= b1; ++b) {
 			wanted[size_t(b)] = true;
 		}
+		highest = std::max(highest, b1);
 	}
 	int end = first_block + 1;
 	while (end < blocks_in_piece && wanted[size_t(end)]) {
 		++end;
 	}
+	if (end >= blocks_in_piece) {
+		stop = run_stop::piece_end;
+	} else if (highest >= end) {
+		stop = run_stop::gap;
+	} else if (barrier) {
+		stop = run_stop::barrier;
+	} else {
+		// No later request of this piece in the batch: the batch end limits it
+		stop = run_stop::batch_end;
+	}
 	return end;
+}
+
+void raw_disk_io::record_run_stop(size_t thread_idx, run_stop stop)
+{
+	++m_queue_stats[thread_idx].stop[static_cast<size_t>(stop)];
 }
 
 void raw_disk_io::record_pread(size_t thread_idx, int blocks, bool extended)
@@ -901,9 +938,15 @@ void raw_disk_io::stats_report_loop()
 				double const b_mean = q.batches ? double(q.batch_jobs) / q.batches : 0.0;
 				double const p_mean = q.preads ? double(q.pread_blocks) / q.preads : 0.0;
 				spdlog::info("[batch_prefetch] P{:2d}: batch n={} jobs={} mean={:.1f} max={} | "
-							 "pread n={} blocks={} mean={:.1f} max={} ext={}",
+							 "pread n={} blocks={} mean={:.1f} max={} ext={} | single={} unaligned={} "
+							 "ext_fallback={} | stop gap={} batch_end={} barrier={} piece_end={} cap={}",
 					i, q.batches, q.batch_jobs, b_mean, q.batch_max, q.preads, q.pread_blocks,
-					p_mean, q.pread_max, q.ext_prefetch);
+					p_mean, q.pread_max, q.ext_prefetch, q.pread_single, q.pread_unaligned,
+					q.ext_fallback, q.stop[0], q.stop[1], q.stop[2], q.stop[3], q.stop[4]);
+				q.pread_single = 0;
+				q.pread_unaligned = 0;
+				q.ext_fallback = 0;
+				q.stop.fill(0);
 				q.batches = 0;
 				q.batch_jobs = 0;
 				q.batch_max = 0;

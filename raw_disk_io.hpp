@@ -73,6 +73,13 @@ private:
 		std::uint64_t pread_blocks = 0;
 		std::uint32_t pread_max = 0;
 		std::uint64_t ext_prefetch = 0;
+		// Read-path pread kinds: one-block fallback, unaligned two-block read
+		std::uint64_t pread_single = 0;
+		std::uint64_t pread_unaligned = 0;
+		// Extended ranges that failed the 75% rule and used the default chunk
+		std::uint64_t ext_fallback = 0;
+		// Why the queue-aware run stopped, indexed by run_stop
+		std::array<std::uint64_t, 5> stop{};
 	};
 	std::unique_ptr<worker_queue_stats[]> m_queue_stats;
 
@@ -171,8 +178,19 @@ private:
 	void run_batch(size_t thread_idx, job_batch &batch);
 	// End (exclusive) of the run of blocks after first_block that later read
 	// jobs of the current batch request for the same piece
-	int batch_read_run_end(libtorrent::storage_index_t storage,
-		libtorrent::piece_index_t piece, int first_block, int blocks_in_piece) const;
+	// Why a queue-aware run stopped: a later block of the piece is requested
+	// but not the next one (gap), no later request of the piece in the batch
+	// (batch_end), a write/hash/clear of the piece (barrier), piece end, cap
+	enum class run_stop : std::uint8_t { gap,
+		batch_end,
+		barrier,
+		piece_end,
+		cap };
+	// End (exclusive) of the run of blocks after first_block that later read
+	// jobs of the current batch request for the same piece
+	int batch_read_run_end(libtorrent::storage_index_t storage, libtorrent::piece_index_t piece,
+		int first_block, int blocks_in_piece, run_stop &stop) const;
+	void record_run_stop(size_t thread_idx, run_stop stop);
 	void record_pread(size_t thread_idx, int blocks, bool extended);
 	void record_job_start(size_t thread_idx);
 	void record_read_miss(size_t thread_idx);
