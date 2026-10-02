@@ -20,5 +20,6 @@ RUN apt-get -y update && \
     python3-grpcio \
     python3-grpc-tools \
     openssl \
+    opentracker \
     procps && \
     rm -rf /var/lib/apt/lists/*

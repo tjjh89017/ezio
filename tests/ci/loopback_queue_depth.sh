@@ -14,9 +14,10 @@
 #   EZIO_EXTRA      extra ezio options, for example "--aio-threads 8"
 #   KEEP_WORK=1     keep WORK_DIR after the run
 #
-# Needs: python3 with libtorrent and grpc_tools (a venv with grpcio is made
-# if grpc is missing), openssl, sha256sum. The peers find each other through
-# a small HTTP tracker on 127.0.0.1 that this script starts.
+# Needs: opentracker, python3 with libtorrent and grpc_tools (a venv with
+# grpcio is made if grpc is missing), openssl, sha256sum. The peers find each other through
+# opentracker on 127.0.0.1, in whitelist mode with the test info-hash, as in
+# a real deployment. DHT and LSD stay off (ezio default), PEX stays on.
 #
 # Local run in Docker (build and test in one container; output in $OUT):
 #   docker build -t ezio-loopback-test:local tests/ci
@@ -86,56 +87,9 @@ if ! python3 -c 'import grpc, grpc_tools' 2>/dev/null; then
 	"$PY" -m pip install --quiet grpcio grpcio-tools protobuf
 fi
 "$PY" -c 'import libtorrent' || die "python3 libtorrent bindings are missing"
+command -v opentracker > /dev/null || die "opentracker is missing"
 "$PY" -m grpc_tools.protoc -I "$REPO" --python_out="$PYDIR" \
 	--grpc_python_out="$PYDIR" "$REPO/ezio.proto"
-
-cat > "$PYDIR/tracker.py" <<'EOF'
-# Minimal HTTP tracker. All peers are 127.0.0.1, keyed by the announced port.
-import sys, time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit, unquote_to_bytes
-
-swarms = {}
-
-def bencode(o):
-    if isinstance(o, int):
-        return b'i%de' % o
-    if isinstance(o, bytes):
-        return b'%d:%s' % (len(o), o)
-    if isinstance(o, dict):
-        return b'd' + b''.join(bencode(k.encode()) + bencode(o[k]) for k in sorted(o)) + b'e'
-    raise TypeError(type(o))
-
-class H(BaseHTTPRequestHandler):
-    def log_message(self, *a):
-        pass
-
-    def do_GET(self):
-        u = urlsplit(self.path)
-        q = {}
-        for part in u.query.split('&'):
-            k, _, v = part.partition('=')
-            q[unquote_to_bytes(k)] = unquote_to_bytes(v)
-        ih = q.get(b'info_hash', b'')
-        port = int(q.get(b'port', b'0') or 0)
-        event = q.get(b'event', b'').decode()
-        peers = swarms.setdefault(ih, {})
-        if event == 'stopped':
-            peers.pop(port, None)
-        else:
-            peers[port] = time.time()
-        blob = b''.join(bytes([127, 0, 0, 1]) + p.to_bytes(2, 'big')
-                        for p in peers if p != port)
-        sys.stderr.write('%s port=%d event=%s peers=%d\n' % (
-            time.strftime('%H:%M:%S'), port, event or '-', len(peers)))
-        body = bencode({'interval': 5, 'min interval': 2, 'peers': blob})
-        self.send_response(200)
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-ThreadingHTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
-EOF
 
 cat > "$PYDIR/mktorrent.py" <<'EOF'
 # Single-file v1 torrent; the file name is the disk offset.
@@ -151,6 +105,7 @@ with open(out, 'wb') as f:
     f.write(lt.bencode(ct.generate()))
 print('pieces=%d piece_size=%d files=%d name=%s' % (
     fs.num_pieces(), fs.piece_length(), fs.num_files(), fs.file_name(0)))
+print('info_hash=%s' % lt.torrent_info(out).info_hash())
 EOF
 
 cat > "$PYDIR/ctl.py" <<'EOF'
@@ -174,6 +129,8 @@ elif cmd == 'wait':
     timeout, addrs = float(sys.argv[2]), sys.argv[3:]
     start = time.monotonic()
     done = {}
+    first_peer = {}
+    first_data = {}
     last = 0
     while len(done) < len(addrs):
         el = time.monotonic() - start
@@ -184,6 +141,12 @@ elif cmd == 'wait':
             if a in done:
                 continue
             ts = stub(a).GetTorrentStatus(ezio_pb2.UpdateRequest(), timeout=10).torrents
+            if a not in first_peer and any(t.num_peers > 0 for t in ts.values()):
+                first_peer[a] = el
+                print('first_peer %s %.2f s' % (a, el))
+            if a not in first_data and any(t.total_done > 0 for t in ts.values()):
+                first_data[a] = el
+                print('first_data %s %.2f s' % (a, el))
             if ts and all(t.is_finished for t in ts.values()):
                 done[a] = el
                 print('finished %s %.2f s' % (a, el))
@@ -215,13 +178,17 @@ set -o pipefail
 t1=$(date +%s.%N)
 log "image created in $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }') s"
 
-"$PY" "$PYDIR/tracker.py" "$TRACKER_PORT" 2> "$LOG_DIR/tracker.log" &
-PIDS+=($!)
-
 t0=$(date +%s.%N)
 "$PY" "$PYDIR/mktorrent.py" "$IMAGE" "$TORRENT" "$PIECE_SIZE" \
 	"http://127.0.0.1:$TRACKER_PORT/announce" | tee "$LOG_DIR/torrent_info.txt"
 t1=$(date +%s.%N)
+INFO_HASH=$(awk -F= '/^info_hash=/ {print $2}' "$LOG_DIR/torrent_info.txt")
+echo "$INFO_HASH" > "$WORK_DIR/whitelist.txt"
+# Whitelist mode: opentracker rejects announces for other info-hashes.
+opentracker -i 127.0.0.1 -p "$TRACKER_PORT" -w "$WORK_DIR/whitelist.txt" \
+	> "$LOG_DIR/tracker.log" 2>&1 &
+PIDS+=($!)
+log "opentracker on 127.0.0.1:$TRACKER_PORT, whitelist $INFO_HASH"
 log "torrent created in $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }') s"
 
 IMAGE_SHA=$(sha256sum "$IMAGE" | awk '{print $1}')
@@ -299,6 +266,8 @@ fi
 	echo "- image: ${IMAGE_SIZE_MIB} MiB, piece 16 MiB, 1 seeder + 2 leechers on 127.0.0.1"
 	echo "- result: $([[ $rc == 0 ]] && echo PASS || echo FAIL)"
 	echo "- wall time from leecher add to both finished: $(awk -v a="$t_start" -v b="$t_end" 'BEGIN { printf "%.1f", b - a }') s"
+	echo "- peer discovery: opentracker (whitelist) on 127.0.0.1:$TRACKER_PORT; DHT and LSD off, PEX on"
+	awk '/^first_(peer|data)/ { printf "- %s %s at %.1f s after the add\n", $2, $1, $3 }' "$LOG_DIR/wait.log"
 	awk -v mib="$IMAGE_SIZE_MIB" '/^finished/ {
 		printf "- %s finished at %.1f s, %.1f MiB/s\n", $2, $3, mib / $3 }' "$LOG_DIR/wait.log"
 	echo

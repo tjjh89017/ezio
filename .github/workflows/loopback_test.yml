@@ -54,7 +54,10 @@ jobs:
             python3-libtorrent \
             python3-grpcio \
             python3-grpc-tools \
-            openssl
+            openssl \
+            opentracker
+          # The test starts its own opentracker on another port.
+          sudo systemctl stop opentracker || true
 
       - name: Build
         run: |
