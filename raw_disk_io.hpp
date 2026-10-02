@@ -62,20 +62,89 @@ private:
 		std::uint64_t miss_samples = 0;
 		std::uint64_t miss_sum = 0;
 		std::uint32_t miss_max = 0;
+
+		// Batches run by the worker and jobs per batch
+		std::uint64_t batches = 0;
+		std::uint64_t batch_jobs = 0;
+		std::uint32_t batch_max = 0;
+		// Read-path preads and blocks per pread; ext = queue-aware extensions
+		std::uint64_t preads = 0;
+		std::uint64_t pread_blocks = 0;
+		std::uint32_t pread_max = 0;
+		std::uint64_t ext_prefetch = 0;
 	};
 	std::unique_ptr<worker_queue_stats[]> m_queue_stats;
 
-	// Post a job to a worker and count it in the worker queue depth.
+	// Experimental switches, read once in the constructor (default off)
+	bool m_batch_submit = false;  // EZIO_BATCH_SUBMIT
+
+	enum class job_kind : std::uint8_t { read,
+		write,
+		hash,
+		clear };
+
+	// Type-erased job body. std::function needs a copyable callable, but the
+	// jobs capture disk_buffer_holder (move-only), so use a virtual wrapper.
+	struct job_fn_base {
+		virtual ~job_fn_base() = default;
+		virtual void run() = 0;
+	};
+	template<typename F>
+	struct job_fn final : job_fn_base {
+		F f;
+		explicit job_fn(F &&fn) :
+			f(std::move(fn))
+		{
+		}
+		void run() override
+		{
+			f();
+		}
+	};
+
+	// A queued job with the metadata a worker can inspect inside its batch
+	struct disk_job {
+		job_kind kind;
+		libtorrent::storage_index_t storage;
+		libtorrent::piece_index_t piece;
+		int offset;
+		int length;
+		std::unique_ptr<job_fn_base> fn;
+	};
+	using job_batch = std::vector<disk_job>;
+
+	// Staged jobs per worker. Only the network thread touches them.
+	std::vector<job_batch> m_staging;
+
+	// Count a job in the worker queue depth, then post it (switch off) or
+	// stage it for the next submit_jobs() (switch on).
 	template<typename Job>
-	void post_job(size_t thread_idx, Job &&job)
+	void post_job(size_t thread_idx, job_kind kind, libtorrent::storage_index_t storage,
+		libtorrent::piece_index_t piece, int offset, int length, Job &&job)
 	{
 		m_queue_stats[thread_idx].depth.fetch_add(1, std::memory_order_relaxed);
-		boost::asio::post(*m_io_thread_pools[thread_idx],
-			[this, thread_idx, job = std::forward<Job>(job)]() mutable {
-				record_job_start(thread_idx);
-				job();
-			});
+		if (!m_batch_submit) {
+			boost::asio::post(*m_io_thread_pools[thread_idx],
+				[this, thread_idx, job = std::forward<Job>(job)]() mutable {
+					record_job_start(thread_idx);
+					job();
+				});
+			return;
+		}
+		using fn_t = job_fn<typename std::decay<Job>::type>;
+		auto &staged = m_staging[thread_idx];
+		staged.push_back(disk_job{kind, storage, piece, offset, length,
+			std::unique_ptr<job_fn_base>(new fn_t(std::forward<Job>(job)))});
+		if (staged.size() >= BATCH_FLUSH_JOBS) {
+			flush_staging(thread_idx);
+		}
 	}
+	// Safety flush: a staging vector this long is posted at once
+	static constexpr size_t BATCH_FLUSH_JOBS = 256;
+	void flush_staging(size_t thread_idx);
+	void flush_all_staging();
+	void run_batch(size_t thread_idx, job_batch &batch);
+	void record_pread(size_t thread_idx, int blocks, bool extended);
 	void record_job_start(size_t thread_idx);
 	void record_read_miss(size_t thread_idx);
 

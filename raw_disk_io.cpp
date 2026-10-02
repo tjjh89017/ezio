@@ -53,6 +53,18 @@ static std::chrono::seconds read_stats_interval()
 	return std::chrono::seconds(v);
 }
 
+// Experimental on/off switch from an environment variable (default off)
+static bool read_env_switch(char const *name)
+{
+	char const *env = std::getenv(name);
+	return env && (std::string(env) == "1" || std::string(env) == "true");
+}
+
+// Current batch of this worker thread and the position of the running job.
+// Null outside a batch (switch off, or a job posted directly).
+static thread_local void const *t_batch = nullptr;
+static thread_local size_t t_batch_pos = 0;
+
 // Histogram bucket for a queue depth: 0, 1-3, 4-15, 16-63, 64-255, 256+
 static size_t depth_bucket(std::uint32_t d)
 {
@@ -119,6 +131,11 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	m_queue_stats = std::make_unique<worker_queue_stats[]>(m_num_io_threads);
 	m_stats_interval = read_stats_interval();
 
+	m_batch_submit = read_env_switch("EZIO_BATCH_SUBMIT");
+	m_staging.resize(m_num_io_threads);
+	spdlog::info("[raw_disk_io] Experimental: batch_submit={} batch_flush={} jobs",
+		m_batch_submit, size_t(BATCH_FLUSH_JOBS));
+
 	// Create each thread pool with 1 thread
 	for (size_t i = 0; i < m_num_io_threads; ++i) {
 		m_io_thread_pools.emplace_back(std::make_unique<boost::asio::thread_pool>(1));	// 1 thread per pool
@@ -145,6 +162,9 @@ raw_disk_io::~raw_disk_io()
 	if (m_stats_thread.joinable()) {
 		m_stats_thread.join();
 	}
+
+	// abort() flushes too; this covers a destruction without abort()
+	flush_all_staging();
 
 	// Join all thread pools (waits for all pending work to complete)
 	for (size_t i = 0; i < m_num_io_threads; ++i) {
@@ -217,7 +237,7 @@ void raw_disk_io::async_read(
 	size_t thread_idx = get_thread_index(idx, r.piece);
 
 	// Post all work to worker thread (lock-free: single thread per partition)
-	post_job(thread_idx,
+	post_job(thread_idx, job_kind::read, idx, r.piece, r.start, r.length,
 		[=, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
 
@@ -247,6 +267,7 @@ void raw_disk_io::async_read(
 
 					auto const start_time = libtorrent::clock_type::now();
 					m_storages[idx]->read(buf + buf_offset, r.piece, offset, len, error);
+					record_pread(thread_idx, ret == 0 ? 2 : 1, false);
 					auto const read_time = libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
 
 					m_stats_counters.inc_stats_counter(libtorrent::counters::num_read_ops);
@@ -308,6 +329,7 @@ void raw_disk_io::async_read(
 						m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, read_time);
 						m_stats_counters.inc_stats_counter(
 							libtorrent::counters::num_blocks_read, chunk_blocks);
+						record_pread(thread_idx, chunk_blocks, false);
 
 						if (chunk_ret > 0 && !error) {
 							// Bulk insert each block, skipping already-cached entries
@@ -340,6 +362,7 @@ void raw_disk_io::async_read(
 						// < 75% missing: fall back to original single-block pread
 						auto const start_time = libtorrent::clock_type::now();
 						m_storages[idx]->read(buf, r.piece, r.start, r.length, error);
+						record_pread(thread_idx, 1, false);
 						auto const read_time =
 							libtorrent::total_microseconds(libtorrent::clock_type::now() - start_time);
 
@@ -391,7 +414,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		size_t thread_idx = get_thread_index(storage, r.piece);
 
 		// Post all work to worker thread (lock-free: single thread per partition)
-		post_job(thread_idx,
+		post_job(thread_idx, job_kind::write, storage, r.piece, r.start, r.length,
 			[=, o = std::move(o), handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 				torrent_location loc{storage, r.piece, r.start};
 
@@ -476,7 +499,7 @@ void raw_disk_io::async_hash(
 	// Use consistent hashing: hash operations use same thread as I/O for this piece
 	// Since all blocks of a piece go to same partition, no cross-partition access needed
 	size_t thread_idx = get_thread_index(storage, piece);
-	post_job(thread_idx,
+	post_job(thread_idx, job_kind::hash, storage, piece, 0, 0,
 		[=, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
 			libtorrent::hasher ph;
@@ -611,7 +634,7 @@ void raw_disk_io::async_clear_piece(libtorrent::storage_index_t storage,
 	std::function<void(libtorrent::piece_index_t)> handler)
 {
 	size_t thread_idx = get_thread_index(storage, index);
-	post_job(thread_idx,
+	post_job(thread_idx, job_kind::clear, storage, index, 0, 0,
 		[this, storage, index, handler = std::move(handler)]() mutable {
 			size_t removed = m_cache.clear_piece(storage, index);
 			spdlog::debug("[async_clear_piece] storage={} piece={} cleared {} entries",
@@ -640,10 +663,64 @@ std::vector<libtorrent::open_file_state> raw_disk_io::get_status(libtorrent::sto
 
 void raw_disk_io::abort(bool wait)
 {
+	// Called on the network thread (session_impl::abort_stage2).
+	// Post staged jobs so none is lost; the destructor joins the workers.
+	flush_all_staging();
 }
 
 void raw_disk_io::submit_jobs()
 {
+	// Called on the network thread (session_impl::submit_disk_jobs)
+	flush_all_staging();
+}
+
+void raw_disk_io::flush_staging(size_t thread_idx)
+{
+	auto &staged = m_staging[thread_idx];
+	if (staged.empty()) {
+		return;
+	}
+	boost::asio::post(*m_io_thread_pools[thread_idx],
+		[this, thread_idx, batch = std::move(staged)]() mutable {
+			run_batch(thread_idx, batch);
+		});
+	staged = job_batch();
+}
+
+void raw_disk_io::flush_all_staging()
+{
+	for (size_t i = 0; i < m_staging.size(); ++i) {
+		flush_staging(i);
+	}
+}
+
+void raw_disk_io::run_batch(size_t thread_idx, job_batch &batch)
+{
+	auto &q = m_queue_stats[thread_idx];
+	++q.batches;
+	q.batch_jobs += batch.size();
+	q.batch_max = std::max(q.batch_max, static_cast<std::uint32_t>(batch.size()));
+
+	// FIFO: jobs run in the order of their async_* calls
+	t_batch = &batch;
+	for (size_t i = 0; i < batch.size(); ++i) {
+		t_batch_pos = i;
+		record_job_start(thread_idx);
+		batch[i].fn->run();
+		batch[i].fn.reset();
+	}
+	t_batch = nullptr;
+}
+
+void raw_disk_io::record_pread(size_t thread_idx, int blocks, bool extended)
+{
+	auto &q = m_queue_stats[thread_idx];
+	++q.preads;
+	q.pread_blocks += std::uint64_t(blocks);
+	q.pread_max = std::max(q.pread_max, static_cast<std::uint32_t>(blocks));
+	if (extended) {
+		++q.ext_prefetch;
+	}
 }
 
 void raw_disk_io::settings_updated()
@@ -759,6 +836,20 @@ void raw_disk_io::stats_report_loop()
 				q.miss_samples = 0;
 				q.miss_sum = 0;
 				q.miss_max = 0;
+
+				double const b_mean = q.batches ? double(q.batch_jobs) / q.batches : 0.0;
+				double const p_mean = q.preads ? double(q.pread_blocks) / q.preads : 0.0;
+				spdlog::info("[batch_prefetch] P{:2d}: batch n={} jobs={} mean={:.1f} max={} | "
+							 "pread n={} blocks={} mean={:.1f} max={} ext={}",
+					i, q.batches, q.batch_jobs, b_mean, q.batch_max, q.preads, q.pread_blocks,
+					p_mean, q.pread_max, q.ext_prefetch);
+				q.batches = 0;
+				q.batch_jobs = 0;
+				q.batch_max = 0;
+				q.preads = 0;
+				q.pread_blocks = 0;
+				q.pread_max = 0;
+				q.ext_prefetch = 0;
 			});
 		}
 
