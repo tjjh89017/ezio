@@ -132,9 +132,19 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 	m_stats_interval = read_stats_interval();
 
 	m_batch_submit = read_env_switch("EZIO_BATCH_SUBMIT");
+	m_queue_prefetch = read_env_switch("EZIO_QUEUE_PREFETCH");
+	if (m_queue_prefetch && !m_batch_submit) {
+		spdlog::warn("[raw_disk_io] EZIO_QUEUE_PREFETCH needs EZIO_BATCH_SUBMIT, ignored");
+		m_queue_prefetch = false;
+	}
+	// 4 MiB cap, kept at or below 1/8 of a partition so one prefetch
+	// cannot evict much of its own partition
+	m_prefetch_cap_blocks = static_cast<int>(std::max<size_t>(m_prefetch_blocks,
+		std::min<size_t>(256, entries_per_partition / 8)));
 	m_staging.resize(m_num_io_threads);
-	spdlog::info("[raw_disk_io] Experimental: batch_submit={} batch_flush={} jobs",
-		m_batch_submit, size_t(BATCH_FLUSH_JOBS));
+	spdlog::info("[raw_disk_io] Experimental: batch_submit={} queue_prefetch={} "
+				 "(cap {} blocks) batch_flush={} jobs",
+		m_batch_submit, m_queue_prefetch, m_prefetch_cap_blocks, size_t(BATCH_FLUSH_JOBS));
 
 	// Create each thread pool with 1 thread
 	for (size_t i = 0; i < m_num_io_threads; ++i) {
@@ -293,7 +303,18 @@ void raw_disk_io::async_read(
 
 					int const n = std::min<int>(static_cast<int>(m_prefetch_blocks), blocks_in_piece);
 					int const chunk_start_idx = (this_block_idx / n) * n;
-					int const chunk_end_idx = std::min(chunk_start_idx + n, blocks_in_piece);
+					int const chunk_default_end = std::min(chunk_start_idx + n, blocks_in_piece);
+
+					// Queue-aware extension: also cover the contiguous blocks that
+					// later reads of this batch request (order is unchanged).
+					int chunk_end_idx = chunk_default_end;
+					if (m_queue_prefetch && t_batch) {
+						int const run_end = std::min(
+							batch_read_run_end(idx, r.piece, this_block_idx, blocks_in_piece),
+							chunk_start_idx + m_prefetch_cap_blocks);
+						chunk_end_idx = std::max(chunk_end_idx, run_end);
+					}
+					bool const extended = chunk_end_idx > chunk_default_end;
 
 					// Probe how many blocks in the chunk are missing from cache
 					int missing = 0;
@@ -308,7 +329,7 @@ void raw_disk_io::async_read(
 					if (missing * 4 >= chunk_blocks * 3) {
 						// >= 75% of chunk is missing: whole-chunk pread + bulk insert
 						thread_local std::vector<char> tls_chunk_buf;
-						size_t const need = size_t(n) * DEFAULT_BLOCK_SIZE;
+						size_t const need = size_t(chunk_blocks) * DEFAULT_BLOCK_SIZE;
 						if (tls_chunk_buf.size() < need)
 							tls_chunk_buf.resize(need);
 
@@ -329,7 +350,7 @@ void raw_disk_io::async_read(
 						m_stats_counters.inc_stats_counter(libtorrent::counters::disk_job_time, read_time);
 						m_stats_counters.inc_stats_counter(
 							libtorrent::counters::num_blocks_read, chunk_blocks);
-						record_pread(thread_idx, chunk_blocks, false);
+						record_pread(thread_idx, chunk_blocks, extended);
 
 						if (chunk_ret > 0 && !error) {
 							// Bulk insert each block, skipping already-cached entries
@@ -710,6 +731,34 @@ void raw_disk_io::run_batch(size_t thread_idx, job_batch &batch)
 		batch[i].fn.reset();
 	}
 	t_batch = nullptr;
+}
+
+int raw_disk_io::batch_read_run_end(libtorrent::storage_index_t storage,
+	libtorrent::piece_index_t piece, int first_block, int blocks_in_piece) const
+{
+	auto const &batch = *static_cast<job_batch const *>(t_batch);
+	thread_local std::vector<bool> wanted;
+	wanted.assign(size_t(blocks_in_piece), false);
+	for (size_t i = t_batch_pos + 1; i < batch.size(); ++i) {
+		auto const &j = batch[i];
+		if (j.storage != storage || j.piece != piece) {
+			continue;
+		}
+		// A write, hash or clear of this piece ends the scan
+		if (j.kind != job_kind::read) {
+			break;
+		}
+		int const b0 = j.offset / DEFAULT_BLOCK_SIZE;
+		int const b1 = std::min((j.offset + j.length - 1) / DEFAULT_BLOCK_SIZE, blocks_in_piece - 1);
+		for (int b = std::max(b0, 0); b <= b1; ++b) {
+			wanted[size_t(b)] = true;
+		}
+	}
+	int end = first_block + 1;
+	while (end < blocks_in_piece && wanted[size_t(end)]) {
+		++end;
+	}
+	return end;
 }
 
 void raw_disk_io::record_pread(size_t thread_idx, int blocks, bool extended)

@@ -77,6 +77,9 @@ private:
 
 	// Experimental switches, read once in the constructor (default off)
 	bool m_batch_submit = false;  // EZIO_BATCH_SUBMIT
+	bool m_queue_prefetch = false;	// EZIO_QUEUE_PREFETCH, needs m_batch_submit
+	// Upper bound of one queue-aware prefetch pread, in blocks
+	int m_prefetch_cap_blocks = 16;
 
 	enum class job_kind : std::uint8_t { read,
 		write,
@@ -144,6 +147,10 @@ private:
 	void flush_staging(size_t thread_idx);
 	void flush_all_staging();
 	void run_batch(size_t thread_idx, job_batch &batch);
+	// End (exclusive) of the run of blocks after first_block that later read
+	// jobs of the current batch request for the same piece
+	int batch_read_run_end(libtorrent::storage_index_t storage,
+		libtorrent::piece_index_t piece, int first_block, int blocks_in_piece) const;
 	void record_pread(size_t thread_idx, int blocks, bool extended);
 	void record_job_start(size_t thread_idx);
 	void record_read_miss(size_t thread_idx);
