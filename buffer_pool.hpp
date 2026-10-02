@@ -1,6 +1,7 @@
 #ifndef __BUFFER_POOL_HPP__
 #define __BUFFER_POOL_HPP__
 
+#include <atomic>
 #include <vector>
 #include <boost/core/noncopyable.hpp>
 #include <libtorrent/libtorrent.hpp>
@@ -36,16 +37,16 @@ public:
 	void check_buffer_level();
 
 	// Get current number of buffers in use.
-	// May be called from a stats thread; the read is racy but tolerated.
+	// May be called from the stats thread, so m_size is atomic (relaxed).
 	int in_use() const
 	{
-		return m_size;
+		return m_size.load(std::memory_order_relaxed);
 	}
 
 private:
 	libtorrent::io_context &m_ios;
 	// All fields below are touched only on the network thread (see contract above).
-	int m_size;
+	std::atomic<int> m_size;
 	int m_max_use;
 	int m_low_watermark;
 	int m_high_watermark;

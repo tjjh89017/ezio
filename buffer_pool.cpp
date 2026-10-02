@@ -43,11 +43,11 @@ char *buffer_pool::allocate_buffer_impl()
 		m_exceeded_max_size = true;
 		return nullptr;
 	}
-	m_size++;
+	m_size.fetch_add(1, std::memory_order_relaxed);
 
 	// Trigger exceeded flag at the high watermark (soft limit signal for backpressure).
-	if (m_size >= m_high_watermark && !m_exceeded_max_size) {
-		spdlog::debug("buffer pool reached high watermark, mem usage: {}", m_size);
+	if (m_size.load(std::memory_order_relaxed) >= m_high_watermark && !m_exceeded_max_size) {
+		spdlog::debug("buffer pool reached high watermark, mem usage: {}", m_size.load(std::memory_order_relaxed));
 		m_exceeded_max_size = true;
 	}
 
@@ -76,13 +76,13 @@ char *buffer_pool::allocate_buffer(bool &exceeded, std::shared_ptr<libtorrent::d
 void buffer_pool::free_disk_buffer(char *buf)
 {
 	free(buf);
-	m_size--;
+	m_size.fetch_sub(1, std::memory_order_relaxed);
 	check_buffer_level();
 }
 
 void buffer_pool::check_buffer_level()
 {
-	if (!m_exceeded_max_size || m_size > m_low_watermark) {
+	if (!m_exceeded_max_size || m_size.load(std::memory_order_relaxed) > m_low_watermark) {
 		// still high usage
 		return;
 	}
