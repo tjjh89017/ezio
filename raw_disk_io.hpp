@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <libtorrent/libtorrent.hpp>
 #include <boost/asio.hpp>
+#include <boost/assert.hpp>
 #include "buffer_pool.hpp"
 #include "unified_cache.hpp"
 #include "partition_storage.hpp"
@@ -125,6 +126,7 @@ private:
 	void post_job(size_t thread_idx, job_kind kind, libtorrent::storage_index_t storage,
 		libtorrent::piece_index_t piece, int offset, int length, Job &&job)
 	{
+		assert_network_thread();
 		m_queue_stats[thread_idx].depth.fetch_add(1, std::memory_order_relaxed);
 		if (!m_batch_submit) {
 			boost::asio::post(*m_io_thread_pools[thread_idx],
@@ -144,6 +146,26 @@ private:
 	}
 	// Safety flush: a staging vector this long is posted at once
 	static constexpr size_t BATCH_FLUSH_JOBS = 256;
+
+	// Debug check: post_job(), submit_jobs() and abort() run on the libtorrent
+	// network thread only, which keeps m_staging single-threaded. The first
+	// caller is the anchor; the constructor and destructor run on the thread
+	// that owns the session, so they cannot be the anchor.
+#ifndef NDEBUG
+	std::atomic<std::thread::id> m_network_thread{};
+	void assert_network_thread()
+	{
+		std::thread::id expected{};
+		std::thread::id const self = std::this_thread::get_id();
+		if (!m_network_thread.compare_exchange_strong(expected, self)) {
+			BOOST_ASSERT_MSG(expected == self, "raw_disk_io job API called off the network thread");
+		}
+	}
+#else
+	void assert_network_thread()
+	{
+	}
+#endif
 	void flush_staging(size_t thread_idx);
 	void flush_all_staging();
 	void run_batch(size_t thread_idx, job_batch &batch);

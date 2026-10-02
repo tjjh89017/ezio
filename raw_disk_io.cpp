@@ -684,6 +684,7 @@ std::vector<libtorrent::open_file_state> raw_disk_io::get_status(libtorrent::sto
 
 void raw_disk_io::abort(bool wait)
 {
+	assert_network_thread();
 	// Called on the network thread (session_impl::abort_stage2).
 	// Post staged jobs so none is lost; the destructor joins the workers.
 	flush_all_staging();
@@ -691,6 +692,7 @@ void raw_disk_io::abort(bool wait)
 
 void raw_disk_io::submit_jobs()
 {
+	assert_network_thread();
 	// Called on the network thread (session_impl::submit_disk_jobs)
 	flush_all_staging();
 }
