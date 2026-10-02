@@ -19,6 +19,7 @@ void config::parse_from_argv(int argc, char **argv)
 		("port,p", bpo::value<int>(&bt_listen_port)->default_value(0), "BitTorrent peer listen port (default 6881)")
 		("enable-dht", bpo::bool_switch(&dht)->default_value(false), "enable DHT (default off)")
 		("enable-lsd", bpo::bool_switch(&lsd)->default_value(false), "enable Local Service Discovery (default off)")
+		("allow-multiple-connections-per-ip", bpo::bool_switch(&multi_conn_per_ip)->default_value(false), "allow several peers on one IP, for single-host tests (default off)")
 		("version,v", "show version")
 	;
 	// clang-format on
