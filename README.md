@@ -15,8 +15,19 @@ It uses [`partclone`](http://partclone.org/) to capture only the used filesystem
 
 ---
 
+## Talks & Presentations
+
+[![EZIO: Predictable, Fast, Scalable BitTorrent-Based Bare Metal Provisioning](https://img.youtube.com/vi/OorhCUAORmg/maxresdefault.jpg)](https://www.youtube.com/watch?v=OorhCUAORmg)
+
+- [Open Source Summit Korea 2026 - EZIO: Predictable, Fast, Scalable BitTorrent-Based Bare Metal Provisioning](https://www.youtube.com/watch?v=OorhCUAORmg)
+- [Slides](https://speakerdeck.com/tjjh89017/open-source-summit-korea-2026-ezio-predictable-fast-scalable-bittorrent-based-bare-metal-provisioning-98ea4fd0-34c6-434b-b05e-919fd7350111)
+- [Recording Video](https://www.youtube.com/watch?v=OorhCUAORmg)
+
+---
+
 ## Table of Contents
 
+- [Talks & Presentations](#talks--presentations)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
 - [Usage](#usage)
