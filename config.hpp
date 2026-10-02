@@ -35,6 +35,8 @@ public:
 	bool dht = false;
 	// enable Local Service Discovery (default off)
 	bool lsd = false;
+	// allow several peers on one IP, for single-host tests (default off)
+	bool multi_conn_per_ip = false;
 };
 
 }  // namespace ezio
