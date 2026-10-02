@@ -138,7 +138,7 @@ Findings:
 
 ## Thread Routing Granularity: Why Piece-Level (2026-05-23)
 
-`get_thread_index(storage, piece)` hashes by storage + piece **only** (no
+`get_thread_index(storage, piece)` routes by `(storage + piece) % threads` **only** (no
 block offset), so all blocks of a piece map to one thread/partition. This is
 a deliberate choice, not an accident.
 
