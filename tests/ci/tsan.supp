@@ -1,0 +1,3 @@
+# ThreadSanitizer suppressions for the loopback TSan job.
+# Only frames completely inside the uninstrumented distribution libraries
+# (libtorrent, Boost) belong here. Never suppress an EZIO frame.

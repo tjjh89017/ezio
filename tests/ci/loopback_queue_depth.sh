@@ -17,6 +17,9 @@
 #                   baseline, batch (EZIO_BATCH_SUBMIT=1), batch+prefetch
 #                   (EZIO_BATCH_SUBMIT=1 EZIO_QUEUE_PREFETCH=1)
 #   ROUNDS          1 or 2 (default: 1); round 2 runs VARIANTS in reverse order
+#   EZIO_TSAN=1     the binary has ThreadSanitizer: each instance writes its
+#                   reports to <variant dir>/tsan_<name>.<pid>; a report with
+#                   an EZIO source frame fails the run
 #
 # Needs: opentracker, python3 with libtorrent and grpc_tools (a venv with
 # grpcio is made if grpc is missing), openssl, sha256sum. The peers find each other through
@@ -289,7 +292,12 @@ run_variant() {
 	local vpids=()
 	for i in 0 1 2; do
 		# shellcheck disable=SC2086
-		env $venv EZIO_STATS_INTERVAL="$STATS_INTERVAL" SPDLOG_LEVEL=info \
+		local tsan=""
+		if [[ "${EZIO_TSAN:-0}" == 1 ]]; then
+			tsan="TSAN_OPTIONS=halt_on_error=0 exitcode=66 history_size=4"
+			tsan+=" log_path=$vdir/tsan_${NAMES[$i]} suppressions=$REPO/tests/ci/tsan.supp"
+		fi
+		env $venv ${tsan:+"$tsan"} EZIO_STATS_INTERVAL="$STATS_INTERVAL" SPDLOG_LEVEL=info \
 			"$EZIO_BIN" --listen "${GRPC[$i]}" --port "${BT[$i]}" \
 			--allow-multiple-connections-per-ip $EZIO_EXTRA \
 			< /dev/null > "$vdir/ezio_${NAMES[$i]}.log" 2>&1 &
@@ -298,7 +306,7 @@ run_variant() {
 	done
 
 	for i in 0 1 2; do
-		for _ in $(seq 50); do
+		for _ in $(seq 300); do
 			grep -q "Server listening" "$vdir/ezio_${NAMES[$i]}.log" && break
 			sleep 0.2
 		done
@@ -333,7 +341,7 @@ run_variant() {
 		ctl shutdown "${GRPC[$i]}"
 	done
 	for pid in "${vpids[@]}"; do
-		timeout 30 tail --pid="$pid" -f /dev/null || kill -9 "$pid" 2>/dev/null || true
+		timeout 120 tail --pid="$pid" -f /dev/null || kill -9 "$pid" 2>/dev/null || true
 	done
 
 	local shas="" sha
@@ -351,6 +359,21 @@ run_variant() {
 		fi
 	done
 	log "variant $variant sha256: $shas"
+	if [[ "${EZIO_TSAN:-0}" == 1 ]]; then
+		local n_all n_ezio
+		for i in 0 1 2; do
+			n_all=$(cat "$vdir"/tsan_"${NAMES[$i]}".* 2>/dev/null | grep -c '^WARNING: ThreadSanitizer' || true)
+			# Reports with a frame in an EZIO source file
+			n_ezio=$(cat "$vdir"/tsan_"${NAMES[$i]}".* 2>/dev/null | awk -v src="$REPO/" '
+				/^WARNING: ThreadSanitizer/ { inrep = 1; hit = 0; next }
+				/^SUMMARY: ThreadSanitizer/ { if (inrep && hit) n++; inrep = 0; next }
+				inrep && index($0, src) && !index($0, src "tmp/") { hit = 1 }
+				END { print n + 0 }' || true)
+			echo "$round $variant ${NAMES[$i]} $n_all $n_ezio" >> "$LOG_DIR/tsan_counts.txt"
+			log "tsan ${NAMES[$i]}: reports $n_all, with EZIO frames $n_ezio"
+			((n_ezio == 0)) || rc=1
+		done
+	fi
 	((vrc == 0)) || rc=1
 
 	shas="${shas% }"
@@ -375,6 +398,16 @@ fi
 # --- Summarize ------------------------------------------------------------
 "$PY" "$REPO/tests/ci/loopback_summary.py" "$LOG_DIR" "$IMAGE_SIZE_MIB" "$rc" \
 	"${VARIANT_LIST[*]}" "$ROUNDS" > "$LOG_DIR/summary.md" || log "summary script failed"
+if [[ -f "$LOG_DIR/tsan_counts.txt" ]]; then
+	{
+		echo "### ThreadSanitizer reports"
+		echo
+		echo "| round | variant | instance | reports | with EZIO frames |"
+		echo "|---|---|---|---|---|"
+		awk '{ printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5 }' "$LOG_DIR/tsan_counts.txt"
+		echo
+	} >> "$LOG_DIR/summary.md"
+fi
 cat "$LOG_DIR/summary.md"
 
 exit "$rc"

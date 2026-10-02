@@ -87,3 +87,82 @@ jobs:
           path: ${{ runner.temp }}/loopback_logs
           retention-days: 7
           if-no-files-found: warn
+
+  tsan:
+    name: Loopback under ThreadSanitizer (1 GiB, variants)
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      IMAGE_SIZE_MIB: 1024
+      STATS_INTERVAL: 5
+      TIMEOUT: 2400
+      VARIANTS: baseline batch batch+prefetch
+      ROUNDS: 1
+      EZIO_TSAN: 1
+    steps:
+      - name: Show runner resources
+        run: |
+          echo "LOG_DIR=$RUNNER_TEMP/tsan_logs" >> "$GITHUB_ENV"
+          echo "WORK_DIR=$RUNNER_TEMP/tsan_work" >> "$GITHUB_ENV"
+          nproc
+          free -g
+          # TSan cannot map its shadow memory with the default ASLR entropy.
+          sudo sysctl -w vm.mmap_rnd_bits=28
+
+      - name: checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get -y update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libssl-dev \
+            cmake \
+            make \
+            libgrpc-dev \
+            libgrpc++-dev \
+            libprotobuf-dev \
+            protobuf-compiler-grpc \
+            libtorrent-rasterbar-dev \
+            libboost-program-options-dev \
+            libspdlog-dev \
+            python3-libtorrent \
+            python3-grpcio \
+            python3-grpc-tools \
+            openssl \
+            opentracker \
+            sysstat
+          # The test starts its own opentracker on another port.
+          sudo systemctl stop opentracker || true
+
+      - name: Build with ThreadSanitizer
+        run: |
+          # Debug keeps the asserts on; the option adds -O1 -g.
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DEZIO_SANITIZE_THREAD=ON
+          cmake --build build -j"$(nproc)"
+
+      - name: Run loopback test under ThreadSanitizer
+        run: tests/ci/loopback_queue_depth.sh
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## ThreadSanitizer job (timings are not comparable)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$LOG_DIR/summary.md" ]; then
+            sed -n '/^### ThreadSanitizer reports/,$p' "$LOG_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            grep -A5 '^| round | variant | time' "$LOG_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY" || true
+          else
+            echo "No summary: the test stopped before the transfer." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tsan-logs
+          path: ${{ runner.temp }}/tsan_logs
+          retention-days: 7
+          if-no-files-found: warn
