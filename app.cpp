@@ -39,6 +39,10 @@ lt::session_params app::make_session_params(const config &cfg)
 	p.set_bool(lt::settings_pack::enable_dht, cfg.dht);
 	p.set_bool(lt::settings_pack::enable_lsd, cfg.lsd);
 
+	// Single-host tests run every peer on 127.0.0.1; libtorrent keeps only
+	// one connection per IP unless this is set.
+	p.set_bool(lt::settings_pack::allow_multiple_connections_per_ip, cfg.multi_conn_per_ip);
+
 	// LAN deployment: no NAT traversal needed, so disable UPnP and NAT-PMP.
 	p.set_bool(lt::settings_pack::enable_upnp, false);
 	p.set_bool(lt::settings_pack::enable_natpmp, false);
