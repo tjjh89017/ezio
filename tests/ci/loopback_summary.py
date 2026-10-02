@@ -121,7 +121,9 @@ def pidstat_summary(text, pids):
         threads.setdefault((current, name, r.get("TID")), []).append(cpu)
     out = {}
     for inst in NAMES:
-        net = [v for (i, n, _), v in threads.items() if i == inst and n.startswith("libtorrent-netw")]
+        pid = pids.get(inst)
+        net = sorted((v for (i, n, t), v in threads.items() if i == inst and n == "ezio" and t != pid),
+                     key=lambda v: -mean(v))
         aio = [(mean(v), max(v), n) for (i, n, _), v in threads.items() if i == inst and n.startswith("ezio-aio")]
         res = {}
         if net:
@@ -193,21 +195,43 @@ def proc_threads(text):
     return threads, io, tck
 
 
-def proc_delta(start, end):
-    """CPU s and context switches of the net thread and the aio workers, I/O syscalls."""
+GRPC_PREFIX = ("grpc", "event_engine", "timer_manager", "resolver-execut", "default-executo",
+               "global-executo")
+
+
+def proc_delta(start, end, pid):
+    """CPU s and context switches per thread group, and I/O syscalls.
+
+    The libtorrent network thread has no name of its own: it keeps the
+    process name "ezio". Rule: of the threads named "ezio" that are not the
+    main thread (tid != pid), the one with the most CPU is the network thread.
+    """
     t0, io0, _ = proc_threads(start)
     t1, io1, tck = proc_threads(end)
-    out = {"net_s": 0.0, "net_cs": 0, "aio_s": 0.0, "aio_cs": 0, "all_s": 0.0}
+    per = {}
     for tid, (comm, ticks, cs) in t1.items():
         b_ticks, b_cs = t0.get(tid, (comm, 0, 0))[1:]
-        sec = (ticks - b_ticks) / tck
+        per[tid] = (comm, (ticks - b_ticks) / tck, cs - b_cs)
+    cand = [t for t, (c, _, _) in per.items() if c == "ezio" and t != pid]
+    net = max(cand, key=lambda t: per[t][1]) if cand else None
+    out = {k: 0.0 for k in ("net_s", "aio_s", "grpc_s", "stats_s", "main_s", "other_s", "all_s")}
+    out.update(net_cs=0, aio_cs=0)
+    for tid, (comm, sec, cs) in per.items():
         out["all_s"] += sec
-        if comm.startswith("libtorrent-netw"):
+        if tid == net:
             out["net_s"] += sec
-            out["net_cs"] += cs - b_cs
+            out["net_cs"] += cs
         elif comm.startswith("ezio-aio"):
             out["aio_s"] += sec
-            out["aio_cs"] += cs - b_cs
+            out["aio_cs"] += cs
+        elif comm == "ezio-stats":
+            out["stats_s"] += sec
+        elif tid == pid:
+            out["main_s"] += sec
+        elif comm.startswith(GRPC_PREFIX):
+            out["grpc_s"] += sec
+        else:
+            out["other_s"] += sec
     for k in ("syscr", "syscw", "read_bytes", "write_bytes"):
         out[k] = io1.get(k, 0) - io0.get(k, 0)
     out["ok"] = bool(t1)
@@ -286,18 +310,24 @@ def main():
       "seconds per GiB of the image. cs = voluntary + nonvoluntary context switches. "
       "syscr/syscw = read and write syscalls of the whole process (sockets included).")
     p()
-    p("| round | variant | instance | net CPU s | net s/GiB | aio CPU s | aio s/GiB | process CPU s | net cs | aio cs | syscr | syscw |")
-    p("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    p("Network thread rule: it keeps the process name \"ezio\"; of those threads, not the main "
+      "thread, the one with the most CPU. Other CPU: grpc = gRPC/abseil threads, stats = "
+      "ezio-stats, main = main thread, other = the rest.")
+    p()
+    p("| round | variant | instance | net CPU s | net s/GiB | net cs | aio CPU s | aio s/GiB | aio cs | grpc s | stats s | main s | other s | process CPU s | syscr | syscw |")
+    p("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     gib = image_mib / 1024
     for m in runs:
         for n in NAMES:
+            pid = kv(read(os.path.join(m["dir"], "pids.txt"))).get(n)
             d = proc_delta(read(os.path.join(m["dir"], "proc_start_%s.txt" % n)),
-                           read(os.path.join(m["dir"], "proc_end_%s.txt" % n)))
+                           read(os.path.join(m["dir"], "proc_end_%s.txt" % n)), pid)
             if not d["ok"]:
                 continue
-            p("| %s | %s | %s | %s | %.2f | %s | %.2f | %s | %d | %d | %d | %d |" % (
-                m["round"], m["variant"], n, f1(d["net_s"]), d["net_s"] / gib, f1(d["aio_s"]),
-                d["aio_s"] / gib, f1(d["all_s"]), d["net_cs"], d["aio_cs"], d["syscr"], d["syscw"]))
+            p("| %s | %s | %s | %s | %.2f | %d | %s | %.2f | %d | %s | %s | %s | %s | %s | %d | %d |" % (
+                m["round"], m["variant"], n, f1(d["net_s"]), d["net_s"] / gib, d["net_cs"],
+                f1(d["aio_s"]), d["aio_s"] / gib, d["aio_cs"], f1(d["grpc_s"]), f1(d["stats_s"]),
+                f1(d["main_s"]), f1(d["other_s"]), f1(d["all_s"]), d["syscr"], d["syscw"]))
     p()
     p("### Resources during the transfer (5 s samples)")
     p()
