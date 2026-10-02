@@ -1,6 +1,10 @@
 #ifndef __RAW_DISK_IO_HPP__
 #define __RAW_DISK_IO_HPP__
 
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <deque>
@@ -42,10 +46,46 @@ private:
 	const size_t m_num_io_threads;	// Fixed at startup (from aio_threads setting)
 	size_t m_prefetch_blocks;  // Initial chunk size in blocks, clamped to piece at runtime
 
+	// Queue depth stats of one worker. The network thread increments depth
+	// before a post; the worker decrements it at job start. Other fields are
+	// touched only by the owning worker and reset at each stats report.
+	struct worker_queue_stats {
+		alignas(64) std::atomic<std::uint32_t> depth{0};
+
+		alignas(64) std::uint64_t samples = 0;
+		std::uint64_t sum = 0;
+		std::uint32_t max = 0;
+		// Buckets: 0, 1-3, 4-15, 16-63, 64-255, 256+
+		std::array<std::uint64_t, 6> hist{};
+
+		// Depth sampled at a read cache miss, just before the pread
+		std::uint64_t miss_samples = 0;
+		std::uint64_t miss_sum = 0;
+		std::uint32_t miss_max = 0;
+	};
+	std::unique_ptr<worker_queue_stats[]> m_queue_stats;
+
+	// Post a job to a worker and count it in the worker queue depth.
+	template<typename Job>
+	void post_job(size_t thread_idx, Job &&job)
+	{
+		m_queue_stats[thread_idx].depth.fetch_add(1, std::memory_order_relaxed);
+		boost::asio::post(*m_io_thread_pools[thread_idx],
+			[this, thread_idx, job = std::forward<Job>(job)]() mutable {
+				record_job_start(thread_idx);
+				job();
+			});
+	}
+	void record_job_start(size_t thread_idx);
+	void record_read_miss(size_t thread_idx);
+
+	// Stats report interval, from EZIO_STATS_INTERVAL (seconds, default 30)
+	std::chrono::seconds m_stats_interval{30};
+
 	// Cache statistics reporting (temporary for debugging)
 	std::thread m_stats_thread;
 	std::atomic<bool> m_shutdown{false};
-	// Wakes the stats thread out of its 30s wait so the destructor's join
+	// Wakes the stats thread out of its interval wait so the destructor's join
 	// does not stall shutdown. m_shutdown is set under m_shutdown_mutex to
 	// avoid a lost wakeup against the wait_for predicate check.
 	std::mutex m_shutdown_mutex;

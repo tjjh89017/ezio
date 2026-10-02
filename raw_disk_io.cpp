@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <chrono>
@@ -32,6 +33,40 @@ static size_t calculate_cache_entries(libtorrent::settings_interface const &sett
 		entries, (entries * 16) / 1024);
 
 	return entries;
+}
+
+// Stats report interval in seconds from EZIO_STATS_INTERVAL (default 30)
+static std::chrono::seconds read_stats_interval()
+{
+	constexpr long DEFAULT_INTERVAL = 30;
+	char const *env = std::getenv("EZIO_STATS_INTERVAL");
+	if (!env || !*env) {
+		return std::chrono::seconds(DEFAULT_INTERVAL);
+	}
+	char *end = nullptr;
+	long const v = std::strtol(env, &end, 10);
+	if (*end != '\0' || v <= 0) {
+		spdlog::warn("[raw_disk_io] Invalid EZIO_STATS_INTERVAL '{}', using {}s",
+			env, DEFAULT_INTERVAL);
+		return std::chrono::seconds(DEFAULT_INTERVAL);
+	}
+	return std::chrono::seconds(v);
+}
+
+// Histogram bucket for a queue depth: 0, 1-3, 4-15, 16-63, 64-255, 256+
+static size_t depth_bucket(std::uint32_t d)
+{
+	if (d == 0)
+		return 0;
+	if (d < 4)
+		return 1;
+	if (d < 16)
+		return 2;
+	if (d < 64)
+		return 3;
+	if (d < 256)
+		return 4;
+	return 5;
 }
 
 std::unique_ptr<libtorrent::disk_interface> raw_disk_io_constructor(libtorrent::io_context &ioc,
@@ -80,6 +115,9 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 
 	// Initialize cache partitions
 	m_cache.resize_partitions(m_num_io_threads, entries_per_partition);
+
+	m_queue_stats = std::make_unique<worker_queue_stats[]>(m_num_io_threads);
+	m_stats_interval = read_stats_interval();
 
 	// Create each thread pool with 1 thread
 	for (size_t i = 0; i < m_num_io_threads; ++i) {
@@ -179,7 +217,7 @@ void raw_disk_io::async_read(
 	size_t thread_idx = get_thread_index(idx, r.piece);
 
 	// Post all work to worker thread (lock-free: single thread per partition)
-	boost::asio::post((*m_io_thread_pools[thread_idx]),
+	post_job(thread_idx,
 		[=, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
 
@@ -202,6 +240,7 @@ void raw_disk_io::async_read(
 
 				if (ret != 3) {
 					// Partial or complete miss - read from disk
+					record_read_miss(thread_idx);
 					auto offset = (ret == 0) ? r.start : ((ret & 2) ? (block_offset + DEFAULT_BLOCK_SIZE) : r.start);
 					auto len = (ret == 0) ? r.length : ((ret & 2) ? (r.length - len1) : len1);
 					auto buf_offset = (ret == 0) ? 0 : ((ret & 2) ? len1 : 0);
@@ -223,6 +262,9 @@ void raw_disk_io::async_read(
 				});
 
 				if (!cache_hit) {
+					// Covers both the chunk prefetch and the single-block pread
+					record_read_miss(thread_idx);
+
 					// Determine piece geometry for chunk-aligned prefetch
 					int const piece_size = m_storages[idx]->piece_size(r.piece);
 					int const blocks_in_piece = (piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
@@ -349,7 +391,7 @@ bool raw_disk_io::async_write(libtorrent::storage_index_t storage, libtorrent::p
 		size_t thread_idx = get_thread_index(storage, r.piece);
 
 		// Post all work to worker thread (lock-free: single thread per partition)
-		boost::asio::post((*m_io_thread_pools[thread_idx]),
+		post_job(thread_idx,
 			[=, o = std::move(o), handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 				torrent_location loc{storage, r.piece, r.start};
 
@@ -434,7 +476,7 @@ void raw_disk_io::async_hash(
 	// Use consistent hashing: hash operations use same thread as I/O for this piece
 	// Since all blocks of a piece go to same partition, no cross-partition access needed
 	size_t thread_idx = get_thread_index(storage, piece);
-	boost::asio::post((*m_io_thread_pools[thread_idx]),
+	post_job(thread_idx,
 		[=, handler = std::move(handler), buffer = std::move(buffer)]() mutable {
 			libtorrent::storage_error error;
 			libtorrent::hasher ph;
@@ -569,7 +611,7 @@ void raw_disk_io::async_clear_piece(libtorrent::storage_index_t storage,
 	std::function<void(libtorrent::piece_index_t)> handler)
 {
 	size_t thread_idx = get_thread_index(storage, index);
-	boost::asio::post((*m_io_thread_pools[thread_idx]),
+	post_job(thread_idx,
 		[this, storage, index, handler = std::move(handler)]() mutable {
 			size_t removed = m_cache.clear_piece(storage, index);
 			spdlog::debug("[async_clear_piece] storage={} piece={} cleared {} entries",
@@ -620,15 +662,36 @@ void raw_disk_io::settings_updated()
 	// Future: Consider implementing dynamic thread pool resizing if needed
 }
 
+void raw_disk_io::record_job_start(size_t thread_idx)
+{
+	auto &q = m_queue_stats[thread_idx];
+	// Jobs still queued behind this one
+	std::uint32_t const d = q.depth.fetch_sub(1, std::memory_order_relaxed) - 1;
+	++q.samples;
+	q.sum += d;
+	q.max = std::max(q.max, d);
+	++q.hist[depth_bucket(d)];
+}
+
+void raw_disk_io::record_read_miss(size_t thread_idx)
+{
+	auto &q = m_queue_stats[thread_idx];
+	std::uint32_t const d = q.depth.load(std::memory_order_relaxed);
+	++q.miss_samples;
+	q.miss_sum += d;
+	q.miss_max = std::max(q.miss_max, d);
+}
+
 void raw_disk_io::stats_report_loop()
 {
-	spdlog::info("[raw_disk_io] Cache stats reporting thread started (30s interval)");
+	spdlog::info("[raw_disk_io] Cache stats reporting thread started ({}s interval)",
+		m_stats_interval.count());
 
 	std::unique_lock<std::mutex> lock(m_shutdown_mutex);
 	while (!m_shutdown) {
 		// Interruptible sleep: wait_for returns true when the destructor sets
 		// m_shutdown and notifies, so shutdown does not wait out the interval.
-		if (m_shutdown_cv.wait_for(lock, std::chrono::seconds(30),
+		if (m_shutdown_cv.wait_for(lock, m_stats_interval,
 				[this] {
 					return m_shutdown.load();
 				})) {
@@ -676,6 +739,26 @@ void raw_disk_io::stats_report_loop()
 				spdlog::info("[unified_cache]   P{:2d}: {:5d} entries ({:4.1f}%) | "
 							 "{:6d} ops | hit: {:5.2f}%",
 					i, entries, usage, p_ops, p_hit_rate);
+
+				// Queue depth of the last interval, then reset
+				auto &q = m_queue_stats[i];
+				auto pct = [&q](size_t b) {
+					return q.samples ? 100.0 * q.hist[b] / q.samples : 0.0;
+				};
+				double const q_mean = q.samples ? double(q.sum) / q.samples : 0.0;
+				double const m_mean = q.miss_samples ? double(q.miss_sum) / q.miss_samples : 0.0;
+				spdlog::info("[queue_depth]   P{:2d}: q n={} mean={:.1f} max={} "
+							 "[0:{:.0f}% 1-3:{:.0f}% 4-15:{:.0f}% 16-63:{:.0f}% "
+							 "64-255:{:.0f}% 256+:{:.0f}%] | q@miss n={} mean={:.1f} max={}",
+					i, q.samples, q_mean, q.max, pct(0), pct(1), pct(2), pct(3), pct(4),
+					pct(5), q.miss_samples, m_mean, q.miss_max);
+				q.samples = 0;
+				q.sum = 0;
+				q.max = 0;
+				q.hist.fill(0);
+				q.miss_samples = 0;
+				q.miss_sum = 0;
+				q.miss_max = 0;
 			});
 		}
 

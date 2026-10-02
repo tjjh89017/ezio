@@ -250,6 +250,23 @@ SPDLOG_LEVEL=info,raw_disk_io=debug ./ezio   # per-component
 
 Levels: `trace`, `debug`, `info` (default), `warn`, `error`, `critical`, `off`.
 
+### Stats interval
+
+Set the period of the cache and queue depth stats report with `EZIO_STATS_INTERVAL` (seconds, default 30):
+
+```shell
+EZIO_STATS_INTERVAL=5 ./ezio
+```
+
+Each report logs, for each disk worker, the cumulative cache hit rate (`[unified_cache]`) and the queue depth of the last interval (`[queue_depth]`):
+
+```
+[queue_depth]   P 3: q n=5120 mean=0.4 max=37 [0:91% 1-3:6% 4-15:2% 16-63:1% 64-255:0% 256+:0%] | q@miss n=120 mean=22.0 max=480
+```
+
+- `q`: the number of jobs that wait behind each job when the worker starts it.
+- `q@miss`: the number of jobs that wait in the queue when a read misses the cache and the worker starts the pread.
+
 ### Threads and cache
 
 | Option | Default | Purpose |
