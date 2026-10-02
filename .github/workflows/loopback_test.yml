@@ -21,11 +21,12 @@ jobs:
       IMAGE_SIZE_MIB: 20480
       STATS_INTERVAL: 5
       TIMEOUT: 3600
-      LOG_DIR: ${{ runner.temp }}/loopback_logs
-      WORK_DIR: ${{ runner.temp }}/loopback_work
     steps:
       - name: Show runner resources
         run: |
+          # The runner context is not available in job-level env.
+          echo "LOG_DIR=$RUNNER_TEMP/loopback_logs" >> "$GITHUB_ENV"
+          echo "WORK_DIR=$RUNNER_TEMP/loopback_work" >> "$GITHUB_ENV"
           nproc
           free -g
           df -h
