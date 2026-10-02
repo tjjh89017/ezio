@@ -269,6 +269,21 @@ Each report logs, for each disk worker, the cumulative cache hit rate (`[unified
 - `q`: the number of jobs that wait behind each job when the worker starts it.
 - `q@miss`: the number of jobs that wait in the queue when a read misses the cache and the worker starts the pread.
 
+### Experimental disk job switches
+
+These switches are experimental and off by default. Set them to `1` to enable:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `EZIO_BATCH_SUBMIT` | off | Stage disk jobs per worker and post them as one batch at `submit_jobs()` |
+| `EZIO_QUEUE_PREFETCH` | off | On a read miss, extend the prefetch pread over the contiguous blocks that later reads of the same batch request (cap 4 MiB). Needs `EZIO_BATCH_SUBMIT=1` |
+
+```shell
+EZIO_BATCH_SUBMIT=1 EZIO_QUEUE_PREFETCH=1 ./ezio
+```
+
+The `[batch_prefetch]` stats line shows the jobs per batch, the blocks per read-path pread, and the number of extended prefetches (`ext`).
+
 ### Threads and cache
 
 | Option | Default | Purpose |

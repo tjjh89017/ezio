@@ -13,6 +13,10 @@
 #   TIMEOUT         seconds to wait for both leechers (default: 600)
 #   EZIO_EXTRA      extra ezio options, for example "--aio-threads 8"
 #   KEEP_WORK=1     keep WORK_DIR after the run
+#   VARIANTS        variants to run in order (default: "baseline"); one of
+#                   baseline, batch (EZIO_BATCH_SUBMIT=1), batch+prefetch
+#                   (EZIO_BATCH_SUBMIT=1 EZIO_QUEUE_PREFETCH=1)
+#   ROUNDS          1 or 2 (default: 1); round 2 runs VARIANTS in reverse order
 #
 # Needs: opentracker, python3 with libtorrent and grpc_tools (a venv with
 # grpcio is made if grpc is missing), openssl, sha256sum. The peers find each other through
@@ -37,6 +41,8 @@ LOG_DIR="$(mkdir -p "${LOG_DIR:-$PWD/loopback_logs}" && cd "${LOG_DIR:-$PWD/loop
 STATS_INTERVAL="${STATS_INTERVAL:-2}"
 TIMEOUT="${TIMEOUT:-600}"
 EZIO_EXTRA="${EZIO_EXTRA:-}"
+read -r -a VARIANT_LIST <<< "${VARIANTS:-baseline}"
+ROUNDS="${ROUNDS:-1}"
 
 TRACKER_PORT=6979
 NAMES=(seeder leecher0 leecher1)
@@ -195,106 +201,162 @@ IMAGE_SHA=$(sha256sum "$IMAGE" | awk '{print $1}')
 log "image sha256 $IMAGE_SHA"
 
 TARGETS=("$IMAGE" "$WORK_DIR/leecher0.img" "$WORK_DIR/leecher1.img")
-for t in "${TARGETS[@]:1}"; do
-	truncate -s "$((IMAGE_SIZE_MIB * 1024 * 1024))" "$t"
-done
 
-# Optional: needs root or passwordless sudo (skipped in a container).
-sync
-if echo 3 | sudo -n tee /proc/sys/vm/drop_caches > /dev/null 2>&1; then
-	log "page cache dropped"
-else
-	log "page cache NOT dropped (no sudo or no permission), skipped"
-fi
+variant_env() {
+	case "$1" in
+	baseline) echo "" ;;
+	batch) echo "EZIO_BATCH_SUBMIT=1" ;;
+	batch+prefetch) echo "EZIO_BATCH_SUBMIT=1 EZIO_QUEUE_PREFETCH=1" ;;
+	*) die "unknown variant: $1" ;;
+	esac
+}
 
-# --- Start instances -------------------------------------------------------
-for i in 0 1 2; do
-	# shellcheck disable=SC2086
-	EZIO_STATS_INTERVAL="$STATS_INTERVAL" SPDLOG_LEVEL=info \
-		"$EZIO_BIN" --listen "${GRPC[$i]}" --port "${BT[$i]}" \
-		--allow-multiple-connections-per-ip $EZIO_EXTRA \
-		< /dev/null > "$LOG_DIR/ezio_${NAMES[$i]}.log" 2>&1 &
-	PIDS+=($!)
-done
+# Totals of one seeder log as "key=value" words for the table row.
+seeder_totals() {
+	local f="$1"
+	grep -o 'q n=.*' "$f" | awk '
+		{ split($2, a, "="); split($3, b, "=");
+		  n += a[2]; s += a[2] * b[2];
+		  split($13, d, "="); split($14, e, "=");
+		  mn += d[2]; ms += d[2] * e[2] }
+		END { printf "q_mean=%.1f miss_n=%d miss_mean=%.1f\n",
+			n ? s / n : 0, mn, mn ? ms / mn : 0 }'
+	# Cache counters are cumulative: use the last report of each partition.
+	grep 'ops | hit:' "$f" | sed 's/.*P *\([0-9]*\):.*| *\([0-9]*\) ops | hit: *\([0-9.]*\)%.*/\1 \2 \3/' |
+		awk '{ ops[$1] = $2; hit[$1] = $3 }
+			END { for (p in ops) { t += ops[p]; h += ops[p] * hit[p] / 100 }
+				printf "hit=%.1f\n", t ? 100 * h / t : 0 }'
+	grep -o 'batch n=.*' "$f" | awk '
+		{ split($2, a, "="); split($3, b, "="); split($5, c, "=");
+		  bn += a[2]; bj += b[2]; if (c[2] + 0 > bmx) bmx = c[2] + 0;
+		  split($8, d, "="); split($9, e, "="); split($11, g, "="); split($12, x, "=");
+		  pn += d[2]; pb += e[2]; if (g[2] + 0 > pmx) pmx = g[2] + 0; ext += x[2] }
+		END { printf "batch_mean=%.1f batch_max=%d pread_n=%d pread_mean=%.1f pread_max=%d ext=%d\n",
+			bn ? bj / bn : 0, bmx, pn, pn ? pb / pn : 0, pmx, ext }'
+}
 
-for i in 0 1 2; do
-	for _ in $(seq 50); do
-		grep -q "Server listening" "$LOG_DIR/ezio_${NAMES[$i]}.log" && break
-		sleep 0.2
+# run_variant <round> <variant>: one transfer; appends a row to $ROWS.
+run_variant() {
+	local round="$1" variant="$2"
+	local vdir="$LOG_DIR/r${round}_${variant}"
+	local venv
+	venv="$(variant_env "$variant")"
+	mkdir -p "$vdir"
+	log "=== round $round variant $variant (${venv:-no switch}) ==="
+
+	for t in "${TARGETS[@]:1}"; do
+		rm -f "$t"
+		truncate -s "$((IMAGE_SIZE_MIB * 1024 * 1024))" "$t"
 	done
-	grep -q "Server listening" "$LOG_DIR/ezio_${NAMES[$i]}.log" ||
-		die "${NAMES[$i]} did not start"
-done
+	# Optional: needs root or passwordless sudo (skipped in a container).
+	sync
+	if echo 3 | sudo -n tee /proc/sys/vm/drop_caches > /dev/null 2>&1; then
+		log "page cache dropped"
+	else
+		log "page cache NOT dropped (no sudo or no permission), skipped"
+	fi
 
-ctl add "${GRPC[0]}" "$TORRENT" "${TARGETS[0]}" seed
-log "seeder added"
-sleep 1
-t_start=$(date +%s.%N)
-ctl add "${GRPC[1]}" "$TORRENT" "${TARGETS[1]}"
-ctl add "${GRPC[2]}" "$TORRENT" "${TARGETS[2]}"
-log "leechers added, waiting (timeout ${TIMEOUT} s)"
+	local vpids=()
+	for i in 0 1 2; do
+		# shellcheck disable=SC2086
+		env $venv EZIO_STATS_INTERVAL="$STATS_INTERVAL" SPDLOG_LEVEL=info \
+			"$EZIO_BIN" --listen "${GRPC[$i]}" --port "${BT[$i]}" \
+			--allow-multiple-connections-per-ip $EZIO_EXTRA \
+			< /dev/null > "$vdir/ezio_${NAMES[$i]}.log" 2>&1 &
+		vpids+=($!)
+		PIDS+=($!)
+	done
 
-rc=0
-ctl wait "$TIMEOUT" "${GRPC[1]}" "${GRPC[2]}" | tee "$LOG_DIR/wait.log" || rc=1
-t_end=$(date +%s.%N)
+	for i in 0 1 2; do
+		for _ in $(seq 50); do
+			grep -q "Server listening" "$vdir/ezio_${NAMES[$i]}.log" && break
+			sleep 0.2
+		done
+		grep -q "Server listening" "$vdir/ezio_${NAMES[$i]}.log" ||
+			die "${NAMES[$i]} did not start"
+	done
 
-# Let one more stats report cover the end of the transfer.
-sleep "$((STATS_INTERVAL + 1))"
-for i in 0 1 2; do
-	ctl shutdown "${GRPC[$i]}"
-done
-for pid in "${PIDS[@]:1}"; do
-	timeout 30 tail --pid="$pid" -f /dev/null || kill -9 "$pid" 2>/dev/null || true
-done
+	ctl add "${GRPC[0]}" "$TORRENT" "${TARGETS[0]}" seed
+	sleep 1
+	local t_start t_end vrc=0
+	t_start=$(date +%s.%N)
+	ctl add "${GRPC[1]}" "$TORRENT" "${TARGETS[1]}"
+	ctl add "${GRPC[2]}" "$TORRENT" "${TARGETS[2]}"
+	log "leechers added, waiting (timeout ${TIMEOUT} s)"
+	ctl wait "$TIMEOUT" "${GRPC[1]}" "${GRPC[2]}" > "$vdir/wait.log" || vrc=1
+	t_end=$(date +%s.%N)
+	grep -E '^(finished|timeout)' "$vdir/wait.log" || true
 
-# --- Verify and summarize --------------------------------------------------
-if ((rc == 0)); then
+	# Let one more stats report cover the end of the transfer.
+	sleep "$((STATS_INTERVAL + 1))"
+	for i in 0 1 2; do
+		ctl shutdown "${GRPC[$i]}"
+	done
+	for pid in "${vpids[@]}"; do
+		timeout 30 tail --pid="$pid" -f /dev/null || kill -9 "$pid" 2>/dev/null || true
+	done
+
+	local shas="" sha
 	for i in 1 2; do
-		sha=$(sha256sum "${TARGETS[$i]}" | awk '{print $1}')
-		if [[ "$sha" == "$IMAGE_SHA" ]]; then
-			log "${NAMES[$i]} sha256 OK"
+		if ((vrc == 0)); then
+			sha=$(sha256sum "${TARGETS[$i]}" | awk '{print $1}')
 		else
-			log "${NAMES[$i]} sha256 MISMATCH: $sha"
-			rc=1
+			sha=none
+		fi
+		if [[ "$sha" == "$IMAGE_SHA" ]]; then
+			shas+="OK "
+		else
+			shas+="FAIL "
+			vrc=1
 		fi
 	done
+	log "variant $variant sha256: $shas"
+	((vrc == 0)) || rc=1
+
+	local wall mibs tot
+	wall=$(awk -v a="$t_start" -v b="$t_end" 'BEGIN { printf "%.1f", b - a }')
+	mibs=$(awk -v mib="$IMAGE_SIZE_MIB" '/^finished/ { printf "%.1f ", mib / $3 }' "$vdir/wait.log")
+	mibs="${mibs% }"
+	mibs="${mibs:--}"
+	tot=$(seeder_totals "$vdir/ezio_seeder.log" | tr '\n' ' ')
+	shas="${shas% }"
+	echo "$round $variant $wall ${mibs// /,} $tot sha=${shas// /,}" >> "$ROWS"
+	echo "$tot" > "$vdir/seeder_totals.txt"
+}
+
+rc=0
+ROWS="$LOG_DIR/rows.txt"
+: > "$ROWS"
+for v in "${VARIANT_LIST[@]}"; do
+	run_variant 1 "$v"
+done
+if ((ROUNDS >= 2)); then
+	for ((k = ${#VARIANT_LIST[@]} - 1; k >= 0; k--)); do
+		run_variant 2 "${VARIANT_LIST[$k]}"
+	done
 fi
 
+# --- Summarize ------------------------------------------------------------
 {
-	echo "## EZIO loopback queue depth test"
+	echo "## EZIO loopback variant comparison"
 	echo
 	echo "- image: ${IMAGE_SIZE_MIB} MiB, piece 16 MiB, 1 seeder + 2 leechers on 127.0.0.1"
 	echo "- result: $([[ $rc == 0 ]] && echo PASS || echo FAIL)"
-	echo "- wall time from leecher add to both finished: $(awk -v a="$t_start" -v b="$t_end" 'BEGIN { printf "%.1f", b - a }') s"
-	echo "- peer discovery: opentracker (whitelist) on 127.0.0.1:$TRACKER_PORT; DHT and LSD off, PEX on"
-	awk '/^first_(peer|data)/ { printf "- %s %s at %.1f s after the add\n", $2, $1, $3 }' "$LOG_DIR/wait.log"
-	awk -v mib="$IMAGE_SIZE_MIB" '/^finished/ {
-		printf "- %s finished at %.1f s, %.1f MiB/s\n", $2, $3, mib / $3 }' "$LOG_DIR/wait.log"
+	echo "- variants: ${VARIANT_LIST[*]}; rounds: $ROUNDS (round 2 in reverse order)"
+	echo "- time: from leecher add to both finished. MiB/s: per leecher."
+	echo "- seeder columns: q = queue depth at job start, q@miss = depth at a read miss,"
+	echo "  hit = seeder cache hit rate, batch = jobs per batch, pread = blocks per"
+	echo "  read-path pread, ext = queue-aware extended prefetches"
 	echo
-	for n in "${NAMES[@]}"; do
-		echo "### $n"
-		echo
-		echo '```'
-		# Totals over all partitions and intervals.
-		grep -o 'q n=.*' "$LOG_DIR/ezio_$n.log" | awk '
-			{ split($2, a, "="); split($3, b, "="); split($4, c, "=");
-			  n += a[2]; s += a[2] * b[2]; if (c[2] + 0 > mx) mx = c[2] + 0;
-			  split($13, d, "="); split($14, e, "="); split($15, f, "=");
-			  mn += d[2]; ms += d[2] * e[2]; if (f[2] + 0 > mmx) mmx = f[2] + 0 }
-			END { printf "total: q n=%d mean=%.2f max=%d | q@miss n=%d mean=%.2f max=%d\n",
-				n, n ? s / n : 0, mx, mn, mn ? ms / mn : 0, mmx }'
-		echo '```'
-		echo
-		echo '<details><summary>per-partition lines with activity</summary>'
-		echo
-		echo '```'
-		grep '\[queue_depth\]' "$LOG_DIR/ezio_$n.log" | grep -v 'q n=0 ' |
-			sed 's/ \[info\] \[queue_depth\] */ /' || true
-		echo '```'
-		echo
-		echo '</details>'
-		echo
-	done
+	echo "| round | variant | time s | MiB/s per leecher | q mean | q@miss mean | q@miss n | hit % | batch mean/max | pread n | pread mean/max | ext | sha256 |"
+	echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+	awk '{
+		for (i = 5; i <= NF; i++) { split($i, kv, "="); v[kv[1]] = kv[2] }
+		printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s/%s | %s | %s/%s | %s | %s |\n",
+			$1, $2, $3, $4, v["q_mean"], v["miss_mean"], v["miss_n"], v["hit"],
+			v["batch_mean"], v["batch_max"], v["pread_n"], v["pread_mean"], v["pread_max"],
+			v["ext"], v["sha"] }' "$ROWS"
+	echo
 } > "$LOG_DIR/summary.md"
 cat "$LOG_DIR/summary.md"
 
