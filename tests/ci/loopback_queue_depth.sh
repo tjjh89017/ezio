@@ -362,13 +362,11 @@ run_variant() {
 	if [[ "${EZIO_TSAN:-0}" == 1 ]]; then
 		local n_all n_ezio
 		for i in 0 1 2; do
-			n_all=$(cat "$vdir"/tsan_"${NAMES[$i]}".* 2>/dev/null | grep -c '^WARNING: ThreadSanitizer' || true)
-			# Reports with a frame in an EZIO source file
-			n_ezio=$(cat "$vdir"/tsan_"${NAMES[$i]}".* 2>/dev/null | awk -v src="$REPO/" '
-				/^WARNING: ThreadSanitizer/ { inrep = 1; hit = 0; next }
-				/^SUMMARY: ThreadSanitizer/ { if (inrep && hit) n++; inrep = 0; next }
-				inrep && index($0, src) && !index($0, src "tmp/") { hit = 1 }
-				END { print n + 0 }' || true)
+			# shellcheck disable=SC2086
+			read -r n_all n_ezio < <("$PY" "$REPO/tests/ci/tsan_classify.py" "$REPO" \
+				"$vdir"/tsan_"${NAMES[$i]}".* 2>/dev/null || echo "0 0")
+			"$PY" "$REPO/tests/ci/tsan_classify.py" -v "$REPO" "$vdir"/tsan_"${NAMES[$i]}".* \
+				> "$vdir/tsan_ezio_${NAMES[$i]}.txt" 2>/dev/null || true
 			echo "$round $variant ${NAMES[$i]} $n_all $n_ezio" >> "$LOG_DIR/tsan_counts.txt"
 			log "tsan ${NAMES[$i]}: reports $n_all, with EZIO frames $n_ezio"
 			((n_ezio == 0)) || rc=1
