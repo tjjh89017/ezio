@@ -57,7 +57,8 @@ jobs:
             python3-grpcio \
             python3-grpc-tools \
             openssl \
-            opentracker
+            opentracker \
+            sysstat
           # The test starts its own opentracker on another port.
           sudo systemctl stop opentracker || true
 

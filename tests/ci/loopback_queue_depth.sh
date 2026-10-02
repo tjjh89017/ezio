@@ -211,28 +211,58 @@ variant_env() {
 	esac
 }
 
-# Totals of one seeder log as "key=value" words for the table row.
-seeder_totals() {
-	local f="$1"
-	grep -o 'q n=.*' "$f" | awk '
-		{ split($2, a, "="); split($3, b, "=");
-		  n += a[2]; s += a[2] * b[2];
-		  split($13, d, "="); split($14, e, "=");
-		  mn += d[2]; ms += d[2] * e[2] }
-		END { printf "q_mean=%.1f miss_n=%d miss_mean=%.1f\n",
-			n ? s / n : 0, mn, mn ? ms / mn : 0 }'
-	# Cache counters are cumulative: use the last report of each partition.
-	grep 'ops | hit:' "$f" | sed 's/.*P *\([0-9]*\):.*| *\([0-9]*\) ops | hit: *\([0-9.]*\)%.*/\1 \2 \3/' |
-		awk '{ ops[$1] = $2; hit[$1] = $3 }
-			END { for (p in ops) { t += ops[p]; h += ops[p] * hit[p] / 100 }
-				printf "hit=%.1f\n", t ? 100 * h / t : 0 }'
-	grep -o 'batch n=.*' "$f" | awk '
-		{ split($2, a, "="); split($3, b, "="); split($5, c, "=");
-		  bn += a[2]; bj += b[2]; if (c[2] + 0 > bmx) bmx = c[2] + 0;
-		  split($8, d, "="); split($9, e, "="); split($11, g, "="); split($12, x, "=");
-		  pn += d[2]; pb += e[2]; if (g[2] + 0 > pmx) pmx = g[2] + 0; ext += x[2] }
-		END { printf "batch_mean=%.1f batch_max=%d pread_n=%d pread_mean=%.1f pread_max=%d ext=%d\n",
-			bn ? bj / bn : 0, bmx, pn, pn ? pb / pn : 0, pmx, ext }'
+# Light samplers for one variant: per-thread CPU, disk, vmstat, dirty pages.
+SAMPLER_PIDS=()
+start_samplers() {
+	local vdir="$1" pids="$2"
+	SAMPLER_PIDS=()
+	if command -v pidstat > /dev/null; then
+		pidstat -h -t -u -p "$pids" 5 > "$vdir/pidstat.txt" 2>&1 &
+		SAMPLER_PIDS+=($!)
+	else
+		top -bH -d 5 -p "$pids" > "$vdir/top.txt" 2>&1 &
+		SAMPLER_PIDS+=($!)
+	fi
+	if command -v iostat > /dev/null; then
+		iostat -x -d -y 5 > "$vdir/iostat.txt" 2>&1 &
+		SAMPLER_PIDS+=($!)
+	fi
+	vmstat -n 5 > "$vdir/vmstat.txt" 2>&1 &
+	SAMPLER_PIDS+=($!)
+	while true; do
+		echo "$(date +%s) $(awk '/^(Dirty|Writeback):/ { printf "%s%s ", $1, $2 }' /proc/meminfo)"
+		sleep 5
+	done > "$vdir/meminfo.txt" 2>&1 &
+	SAMPLER_PIDS+=($!)
+	PIDS+=("${SAMPLER_PIDS[@]}")
+}
+
+stop_samplers() {
+	for pid in "${SAMPLER_PIDS[@]}"; do
+		kill "$pid" 2>/dev/null || true
+	done
+	for pid in "${SAMPLER_PIDS[@]}"; do
+		wait "$pid" 2>/dev/null || true
+	done
+}
+
+# proc_snapshot <file> <pid>: per-thread CPU ticks and context switches,
+# and the I/O counters of the process.
+# Thread lines: "thread <tid> <comm> <utime> <stime> <voluntary> <nonvoluntary>"
+proc_snapshot() {
+	local out="$1" pid="$2" t comm st
+	{
+		echo "time $(date +%s.%N) clk_tck $(getconf CLK_TCK)"
+		for t in /proc/"$pid"/task/*; do
+			comm=$(tr ' ' '_' < "$t/comm" 2>/dev/null) || continue
+			st=$(sed 's/.*) //' "$t/stat" 2>/dev/null) || continue
+			# Fields after "(comm) ": utime is 12th, stime is 13th
+			echo "thread ${t##*/} $comm $(echo "$st" | awk '{print $12, $13}') $(awk '
+				/^voluntary_ctxt_switches/ { v = $2 } /^nonvoluntary_ctxt_switches/ { n = $2 }
+				END { print v, n }' "$t/status" 2>/dev/null)"
+		done
+		awk '{ printf "io %s %s\n", $1, $2 }' /proc/"$pid"/io 2>/dev/null
+	} > "$out"
 }
 
 # run_variant <round> <variant>: one transfer; appends a row to $ROWS.
@@ -278,6 +308,12 @@ run_variant() {
 
 	ctl add "${GRPC[0]}" "$TORRENT" "${TARGETS[0]}" seed
 	sleep 1
+	echo "seeder=${vpids[0]} leecher0=${vpids[1]} leecher1=${vpids[2]}" > "$vdir/pids.txt"
+	echo "$DISK_DEV" > "$vdir/disk.txt"
+	for i in 0 1 2; do
+		proc_snapshot "$vdir/proc_start_${NAMES[$i]}.txt" "${vpids[$i]}"
+	done
+	start_samplers "$vdir" "$(IFS=,; echo "${vpids[*]}")"
 	local t_start t_end vrc=0
 	t_start=$(date +%s.%N)
 	ctl add "${GRPC[1]}" "$TORRENT" "${TARGETS[1]}"
@@ -285,6 +321,10 @@ run_variant() {
 	log "leechers added, waiting (timeout ${TIMEOUT} s)"
 	ctl wait "$TIMEOUT" "${GRPC[1]}" "${GRPC[2]}" > "$vdir/wait.log" || vrc=1
 	t_end=$(date +%s.%N)
+	for i in 0 1 2; do
+		proc_snapshot "$vdir/proc_end_${NAMES[$i]}.txt" "${vpids[$i]}"
+	done
+	stop_samplers
 	grep -E '^(finished|timeout)' "$vdir/wait.log" || true
 
 	# Let one more stats report cover the end of the transfer.
@@ -313,20 +353,16 @@ run_variant() {
 	log "variant $variant sha256: $shas"
 	((vrc == 0)) || rc=1
 
-	local wall mibs tot
-	wall=$(awk -v a="$t_start" -v b="$t_end" 'BEGIN { printf "%.1f", b - a }')
-	mibs=$(awk -v mib="$IMAGE_SIZE_MIB" '/^finished/ { printf "%.1f ", mib / $3 }' "$vdir/wait.log")
-	mibs="${mibs% }"
-	mibs="${mibs:--}"
-	tot=$(seeder_totals "$vdir/ezio_seeder.log" | tr '\n' ' ')
 	shas="${shas% }"
-	echo "$round $variant $wall ${mibs// /,} $tot sha=${shas// /,}" >> "$ROWS"
-	echo "$tot" > "$vdir/seeder_totals.txt"
+	awk -v a="$t_start" -v b="$t_end" -v r="$round" -v v="$variant" -v s="${shas// /,}" \
+		'BEGIN { printf "round=%s variant=%s wall=%.1f sha=%s\n", r, v, b - a, s }' > "$vdir/meta.txt"
 }
 
 rc=0
-ROWS="$LOG_DIR/rows.txt"
-: > "$ROWS"
+# The disk that holds the image and the targets, for iostat
+DISK_DEV=$(lsblk -no pkname "$(df --output=source "$WORK_DIR" | tail -1)" 2>/dev/null | head -1 || true)
+[[ -n "$DISK_DEV" ]] || DISK_DEV=$(basename "$(df --output=source "$WORK_DIR" | tail -1)")
+log "disk device for iostat: $DISK_DEV"
 for v in "${VARIANT_LIST[@]}"; do
 	run_variant 1 "$v"
 done
@@ -337,27 +373,8 @@ if ((ROUNDS >= 2)); then
 fi
 
 # --- Summarize ------------------------------------------------------------
-{
-	echo "## EZIO loopback variant comparison"
-	echo
-	echo "- image: ${IMAGE_SIZE_MIB} MiB, piece 16 MiB, 1 seeder + 2 leechers on 127.0.0.1"
-	echo "- result: $([[ $rc == 0 ]] && echo PASS || echo FAIL)"
-	echo "- variants: ${VARIANT_LIST[*]}; rounds: $ROUNDS (round 2 in reverse order)"
-	echo "- time: from leecher add to both finished. MiB/s: per leecher."
-	echo "- seeder columns: q = queue depth at job start, q@miss = depth at a read miss,"
-	echo "  hit = seeder cache hit rate, batch = jobs per batch, pread = blocks per"
-	echo "  read-path pread, ext = queue-aware extended prefetches"
-	echo
-	echo "| round | variant | time s | MiB/s per leecher | q mean | q@miss mean | q@miss n | hit % | batch mean/max | pread n | pread mean/max | ext | sha256 |"
-	echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
-	awk '{
-		for (i = 5; i <= NF; i++) { split($i, kv, "="); v[kv[1]] = kv[2] }
-		printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s/%s | %s | %s/%s | %s | %s |\n",
-			$1, $2, $3, $4, v["q_mean"], v["miss_mean"], v["miss_n"], v["hit"],
-			v["batch_mean"], v["batch_max"], v["pread_n"], v["pread_mean"], v["pread_max"],
-			v["ext"], v["sha"] }' "$ROWS"
-	echo
-} > "$LOG_DIR/summary.md"
+"$PY" "$REPO/tests/ci/loopback_summary.py" "$LOG_DIR" "$IMAGE_SIZE_MIB" "$rc" \
+	"${VARIANT_LIST[*]}" "$ROUNDS" > "$LOG_DIR/summary.md" || log "summary script failed"
 cat "$LOG_DIR/summary.md"
 
 exit "$rc"
