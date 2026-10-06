@@ -4,6 +4,7 @@
 loopback_ctl.py mktorrent <image> <out> <piece_size> <tracker_url>
 loopback_ctl.py add <grpc_addr> <torrent> <target> [seed]
 loopback_ctl.py wait <timeout_s> <grpc_addr>...
+loopback_ctl.py uploaded <grpc_addr>
 loopback_ctl.py shutdown <grpc_addr>
 
 The gRPC commands need ezio_pb2 and ezio_pb2_grpc on PYTHONPATH.
@@ -71,6 +72,13 @@ def wait(timeout, *addrs):
         time.sleep(0.2)
 
 
+def uploaded(addr):
+    """Print the payload bytes the node has uploaded, summed over its torrents."""
+    import ezio_pb2
+    ts = stub(addr).GetTorrentStatus(ezio_pb2.UpdateRequest(), timeout=10).torrents
+    print(sum(t.total_payload_upload for t in ts.values()))
+
+
 def shutdown(addr):
     import grpc
     import ezio_pb2
@@ -82,7 +90,8 @@ def shutdown(addr):
 
 
 def main():
-    cmds = {"mktorrent": mktorrent, "add": add, "wait": wait, "shutdown": shutdown}
+    cmds = {"mktorrent": mktorrent, "add": add, "wait": wait, "uploaded": uploaded,
+            "shutdown": shutdown}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         sys.exit(__doc__)
     cmds[sys.argv[1]](*sys.argv[2:])

@@ -12,6 +12,10 @@
 #   STATS_INTERVAL  EZIO_STATS_INTERVAL for every instance (default: 5)
 #   TIMEOUT         seconds to wait for both leechers (default: 600)
 #   EZIO_EXTRA      extra ezio options, for example "--aio-threads 8"
+#   SEEDER_UPLOAD_LIMIT_MIB
+#                   start the seeder with --upload-rate-limit <value>; the run
+#                   fails if the seeder's average payload upload rate is not
+#                   within 0.7x to 1.3x of it (default: 0, no limit, no check)
 #   KEEP_WORK=1     keep WORK_DIR after the run
 #   EZIO_TSAN=1     the binary has ThreadSanitizer: each instance writes its
 #                   reports to LOG_DIR/tsan_<name>.<pid>; a report with an
@@ -31,6 +35,7 @@ STATS_INTERVAL="${STATS_INTERVAL:-5}"
 TIMEOUT="${TIMEOUT:-600}"
 EZIO_EXTRA="${EZIO_EXTRA:-}"
 EZIO_TSAN="${EZIO_TSAN:-0}"
+SEEDER_UPLOAD_LIMIT_MIB="${SEEDER_UPLOAD_LIMIT_MIB:-0}"
 
 TRACKER_PORT=6979
 NAMES=(seeder leecher0 leecher1)
@@ -149,10 +154,14 @@ for i in 0 1 2; do
 		# classifier decides. A crash still gives a non-zero status.
 		tsan_env=("TSAN_OPTIONS=halt_on_error=0 exitcode=0 history_size=4 log_path=$LOG_DIR/tsan_${NAMES[$i]} suppressions=$REPO/tests/ci/tsan.supp")
 	fi
+	limit=()
+	if ((i == 0 && SEEDER_UPLOAD_LIMIT_MIB > 0)); then
+		limit=(--upload-rate-limit "$SEEDER_UPLOAD_LIMIT_MIB")
+	fi
 	# shellcheck disable=SC2086
 	env "${tsan_env[@]}" EZIO_STATS_INTERVAL="$STATS_INTERVAL" SPDLOG_LEVEL=info \
 		"$EZIO_BIN" --listen "${GRPC[$i]}" --port "${BT[$i]}" \
-		--allow-multiple-connections-per-ip $EZIO_EXTRA \
+		--allow-multiple-connections-per-ip "${limit[@]}" $EZIO_EXTRA \
 		< /dev/null > "$LOG_DIR/ezio_${NAMES[$i]}.log" 2>&1 &
 	EZIO_PIDS+=($!)
 	PIDS+=($!)
@@ -181,6 +190,7 @@ ctl add "${GRPC[2]}" "$TORRENT" "${TARGETS[2]}"
 log "leechers added, waiting (timeout ${TIMEOUT} s)"
 ctl wait "$TIMEOUT" "${GRPC[1]}" "${GRPC[2]}" | tee "$LOG_DIR/wait.log" || rc=1
 t_end=$(date +%s.%N)
+seeder_up=$(ctl uploaded "${GRPC[0]}") || seeder_up=0
 for i in 0 1 2; do
 	proc_snapshot "$LOG_DIR/proc_end_${NAMES[$i]}.txt" "${EZIO_PIDS[$i]}" || true
 done
@@ -241,6 +251,19 @@ if [[ "$EZIO_TSAN" == 1 ]]; then
 fi
 
 awk -v a="$t_start" -v b="$t_end" 'BEGIN { printf "wall=%.1f\n", b - a }' > "$LOG_DIR/meta.txt"
+echo "seeder_up_bytes=$seeder_up upload_limit_mib=$SEEDER_UPLOAD_LIMIT_MIB" >> "$LOG_DIR/meta.txt"
+
+# The seeder's payload upload over the whole transfer must follow the limit.
+# The two leechers also upload to each other; that traffic is not counted.
+if ((SEEDER_UPLOAD_LIMIT_MIB > 0)); then
+	ratio=$(awk -v u="$seeder_up" -v a="$t_start" -v b="$t_end" -v l="$SEEDER_UPLOAD_LIMIT_MIB" \
+		'BEGIN { printf "%.2f", u / 1048576 / (b - a) / l }')
+	log "seeder upload: $seeder_up bytes, $ratio x the limit of $SEEDER_UPLOAD_LIMIT_MIB MiB/s"
+	if ! awk -v r="$ratio" 'BEGIN { exit !(r >= 0.7 && r <= 1.3) }'; then
+		log "ERROR: seeder upload rate is not within 0.7x to 1.3x of the limit"
+		rc=1
+	fi
+fi
 "$PY" "$REPO/tests/ci/loopback_summary.py" "$LOG_DIR" "$IMAGE_SIZE_MIB" "$rc" \
 	> "$LOG_DIR/summary.md" || log "summary script failed"
 cat "$LOG_DIR/summary.md"

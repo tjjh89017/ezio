@@ -90,6 +90,16 @@ jobs:
       - name: Run loopback test
         run: tests/ci/loopback_test.sh
 
+      # The loopback link is far faster than 40 MiB/s, so the limit must bind.
+      - name: Run loopback test with a seeder upload rate limit
+        if: matrix.variant == 'release'
+        env:
+          IMAGE_SIZE_MIB: 1024
+          SEEDER_UPLOAD_LIMIT_MIB: 40
+          TIMEOUT: 300
+        run: |
+          LOG_DIR="$LOG_DIR/ratelimit" WORK_DIR="$WORK_DIR-ratelimit" tests/ci/loopback_test.sh
+
       - name: Write job summary
         if: always()
         run: |
@@ -98,6 +108,10 @@ jobs:
             cat "$LOG_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No summary (${{ matrix.variant }}): the test stopped before the transfer." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f "$LOG_DIR/ratelimit/summary.md" ]; then
+            echo "Job: ${{ matrix.variant }}, seeder upload rate limit" >> "$GITHUB_STEP_SUMMARY"
+            cat "$LOG_DIR/ratelimit/summary.md" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload logs
