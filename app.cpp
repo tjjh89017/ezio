@@ -48,8 +48,10 @@ lt::session_params app::make_session_params(const config &cfg)
 	p.set_int(lt::settings_pack::hashing_threads, cfg.aio_threads);
 	spdlog::info("Thread pool: aio_threads={} (used for both I/O and hashing)", cfg.aio_threads);
 
+	// Piece suggestions made deployment slower when the link limits; keep them off.
+	p.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::no_piece_suggestions);
+
 	// network buffer sizes
-	p.set_int(lt::settings_pack::suggest_mode, lt::settings_pack::suggest_read_cache);
 	p.set_int(lt::settings_pack::max_queued_disk_bytes, 128 * 1024 * 1024);
 	p.set_int(lt::settings_pack::send_not_sent_low_watermark, 524288);
 	p.set_int(lt::settings_pack::send_buffer_watermark, 128 * 1024 * 1024);
