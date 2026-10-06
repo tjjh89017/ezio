@@ -2,8 +2,8 @@
 
 `loopback_test.sh` runs one EZIO seeder and two EZIO leechers on
 127.0.0.1 and checks that both leechers get a correct copy of the image.
-The workflow `.github/workflows/loopback_test.yml` runs it on every pull
-request and on every push to `master`.
+The workflow `.github/workflows/main.yml` runs it on every pull request
+and on every push to `master`.
 
 ## What the test does
 
@@ -30,24 +30,46 @@ The test fails when:
 
 The workflow job also has its own timeout (45 minutes).
 
-## CI matrix
+## How CI is wired
 
-| job | build | image |
+`.github/workflows/main.yml` (workflow `Main`) has these jobs:
+
+| job | needs | what it does |
 |---|---|---|
-| release | `Release` | 8 GiB (`workflow_dispatch` input `image_size_mib` changes it) |
-| tsan | `Debug` with `-DEZIO_SANITIZE_THREAD=ON` | 2 GiB |
+| `build (debian:stable)`, `build (debian:sid)`, `build (ubuntu:latest)` | - | `Release` build of EZIO in a container of that image; the gate for all other jobs |
+| `Loopback (optimized build)` | `build` | `Release` build, 8 GiB image (`workflow_dispatch` input `image_size_mib` changes it) |
+| `Loopback (ThreadSanitizer)` | `build` | `Debug` build with `-DEZIO_SANITIZE_THREAD=ON`, 2 GiB image |
+| `Loopback (optimized build, upload rate limit)` | `build` | `Release` build, 1 GiB image, `SEEDER_UPLOAD_LIMIT_MIB=40` |
+| `e2e-required` | `build` and all loopback jobs | fails unless every job it needs succeeded |
+| `CodeQL (c-cpp)`, `CodeQL (python)` | `build` | CodeQL `security-extended` analysis |
 
-The release job runs the test a second time with a 1 GiB image and
-`SEEDER_UPLOAD_LIMIT_MIB=40`: the seeder starts with
-`--upload-rate-limit 40`. The run fails when the seeder's payload upload
-(`total_payload_upload` over gRPC) divided by the transfer time is not
-within 0.7x to 1.3x of the limit. The leechers' uploads to each other are
-not counted. All peers are on 127.0.0.1, so this also checks that the
-peer class filter puts local peers under the session limit. Its logs are
-in the `ratelimit` directory of the artifact.
+The three `build (...)` checks and `e2e-required` are the checks to
+require on `master`. A new loopback job must be added to the `needs` list
+of `e2e-required`. The loopback jobs run on the runner itself
+(`ubuntu-latest`), so the test covers the runner's distribution only.
 
-Each job writes `summary.md` to the job summary and uploads its log
-directory as the artifact `loopback-logs-<job>` (7 days).
+Two composite actions hold the steps that the jobs share:
+
+- `.github/actions/build`: installs the build dependencies (with `sudo`
+  on the runner, without it as root in a container), then runs `cmake`
+  and builds into `build/`. Inputs: `build-type` (default
+  `Release`) and `tsan` (`ON`/`OFF`, default `OFF`).
+- `.github/actions/loopback-test`: installs the test dependencies, runs
+  `loopback_test.sh` on `build/ezio`, writes `summary.md` to the job
+  summary and uploads the log directory as an artifact (7 days). Inputs:
+  `image-size-mib`, `tsan` (`0`/`1`; `1` also sets
+  `vm.mmap_rnd_bits=28`), `upload-limit-mib` (empty means no limit),
+  `timeout`, `log-dir`, `summary-title` and `artifact-name`.
+
+The artifacts are `loopback-logs-optimized`, `loopback-logs-tsan` and
+`loopback-logs-rate-limit`.
+
+In the rate limit job the seeder starts with `--upload-rate-limit 40`.
+The run fails when the seeder's payload upload (`total_payload_upload`
+over gRPC) divided by the transfer time is not within 0.7x to 1.3x of the
+limit. The leechers' uploads to each other are not counted. All peers are
+on 127.0.0.1, so this also checks that the peer class filter puts local
+peers under the session limit.
 
 ## Run it locally
 
