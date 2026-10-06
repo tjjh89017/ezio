@@ -75,7 +75,8 @@ def cpu(start, end, pid):
 
 def main():
     log_dir, image_mib, rc = sys.argv[1], float(sys.argv[2]), sys.argv[3]
-    wall = kv(read(log_dir, "meta.txt")).get("wall", "-")
+    meta = kv(read(log_dir, "meta.txt"))
+    wall = meta.get("wall", "-")
     sha = kv(read(log_dir, "sha.txt"))
     status = kv(read(log_dir, "exit.txt"))
     pids = kv(read(log_dir, "pids.txt"))
@@ -87,6 +88,11 @@ def main():
     p()
     p("- image: %d MiB, piece 16 MiB, 1 seeder + 2 leechers on 127.0.0.1" % image_mib)
     p("- transfer time (both leechers added -> both finished): %s s" % wall)
+    limit = float(meta.get("upload_limit_mib", "0"))
+    if limit > 0 and wall != "-" and float(wall) > 0:
+        up = float(meta.get("seeder_up_bytes", "0")) / 1048576 / float(wall)
+        p("- seeder `--upload-rate-limit %d`: payload upload %.1f MiB/s = %.2fx the limit "
+          "(pass: 0.7x to 1.3x)" % (limit, up, up / limit))
     p("- A loopback run on a shared runner does not represent a real NVMe or 10 Gbit/s deployment.")
     p()
     p("| instance | finish s | MiB/s | sha256 | exit status | cache hit % |")

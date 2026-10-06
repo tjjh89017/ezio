@@ -37,6 +37,15 @@ The workflow job also has its own timeout (45 minutes).
 | release | `Release` | 8 GiB (`workflow_dispatch` input `image_size_mib` changes it) |
 | tsan | `Debug` with `-DEZIO_SANITIZE_THREAD=ON` | 2 GiB |
 
+The release job runs the test a second time with a 1 GiB image and
+`SEEDER_UPLOAD_LIMIT_MIB=40`: the seeder starts with
+`--upload-rate-limit 40`. The run fails when the seeder's payload upload
+(`total_payload_upload` over gRPC) divided by the transfer time is not
+within 0.7x to 1.3x of the limit. The leechers' uploads to each other are
+not counted. All peers are on 127.0.0.1, so this also checks that the
+peer class filter puts local peers under the session limit. Its logs are
+in the `ratelimit` directory of the artifact.
+
 Each job writes `summary.md` to the job summary and uploads its log
 directory as the artifact `loopback-logs-<job>` (7 days).
 
