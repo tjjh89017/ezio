@@ -7,7 +7,11 @@ updates:
   # actions/checkout@v7 or codeql-action@v5 lands, which is otherwise easy to
   # miss until an old major is deprecated.
   - package-ecosystem: github-actions
-    directory: /
+    # "/" covers only .github/workflows and a root action.yml; the composite
+    # actions need their own entry.
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: monthly
     commit-message:

@@ -1,0 +1,100 @@
+name: Loopback test
+description: Run tests/ci/loopback_test.sh on build/ezio, write the job summary and upload the logs.
+
+inputs:
+  image-size-mib:
+    description: Test image size in MiB
+    required: false
+    default: '1024'
+  tsan:
+    description: 1 when build/ezio has ThreadSanitizer, else 0
+    required: false
+    default: '0'
+  upload-limit-mib:
+    description: Seeder --upload-rate-limit in MiB/s; empty means no limit
+    required: false
+    default: ''
+  timeout:
+    description: Seconds to wait for both leechers
+    required: false
+    default: '900'
+  log-dir:
+    description: Log directory; empty means RUNNER_TEMP/loopback_logs
+    required: false
+    default: ''
+  summary-title:
+    description: Heading of this run in the job summary
+    required: true
+  artifact-name:
+    description: Name of the uploaded log artifact
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install test dependencies
+      shell: bash
+      run: |
+        sudo apt-get -y update
+        sudo apt-get install -y --no-install-recommends \
+          python3-libtorrent \
+          python3-grpcio \
+          python3-grpc-tools \
+          openssl \
+          opentracker
+        # The test starts its own opentracker on another port.
+        sudo systemctl stop opentracker || true
+
+    # TSan cannot map its shadow memory with the default ASLR entropy.
+    - name: Allow ThreadSanitizer shadow memory
+      if: inputs.tsan == '1'
+      shell: bash
+      run: sudo sysctl -w vm.mmap_rnd_bits=28
+
+    - name: Set dirs and show runner resources
+      id: dirs
+      shell: bash
+      env:
+        IN_LOG_DIR: ${{ inputs.log-dir }}
+      run: |
+        log_dir="${IN_LOG_DIR:-$RUNNER_TEMP/loopback_logs}"
+        echo "log-dir=$log_dir" >> "$GITHUB_OUTPUT"
+        echo "work-dir=$RUNNER_TEMP/loopback_work" >> "$GITHUB_OUTPUT"
+        nproc
+        free -g
+        df -h "$RUNNER_TEMP"
+
+    - name: Run loopback test
+      shell: bash
+      env:
+        IMAGE_SIZE_MIB: ${{ inputs.image-size-mib }}
+        EZIO_TSAN: ${{ inputs.tsan }}
+        SEEDER_UPLOAD_LIMIT_MIB: ${{ inputs.upload-limit-mib }}
+        TIMEOUT: ${{ inputs.timeout }}
+        STATS_INTERVAL: '5'
+        LOG_DIR: ${{ steps.dirs.outputs.log-dir }}
+        WORK_DIR: ${{ steps.dirs.outputs.work-dir }}
+      run: tests/ci/loopback_test.sh
+
+    - name: Write job summary
+      if: always()
+      shell: bash
+      env:
+        LOG_DIR: ${{ steps.dirs.outputs.log-dir }}
+        TITLE: ${{ inputs.summary-title }}
+      run: |
+        echo "### $TITLE" >> "$GITHUB_STEP_SUMMARY"
+        if [ -f "$LOG_DIR/summary.md" ]; then
+          cat "$LOG_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "No summary: the test stopped before the transfer." >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.dirs.outputs.log-dir }}
+        retention-days: 7
+        if-no-files-found: warn
