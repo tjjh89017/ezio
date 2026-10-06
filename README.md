@@ -154,6 +154,7 @@ Allowed Options:
   --aio-threads arg        threads for disk I/O and hashing (default 16)
   --slow-start             enable session-wide slow-start upload ramp (default off)
   --slow-start-period arg  slow-start step period in seconds (default 10)
+  --upload-rate-limit arg  session-wide upload rate limit in MiB/s, 0 = unlimited (default 0)
   -p [ --port ] arg        BitTorrent peer listen port (default 6881)
   --enable-dht             enable DHT (default off)
   --enable-lsd             enable Local Service Discovery (default off)
@@ -163,6 +164,8 @@ Allowed Options:
 ```
 
 When `--slow-start` is enabled, the seeder caps its **session-wide** upload at 10 MB/s on launch and steps it up by 10 MB/s every `--slow-start-period` seconds until it reaches 100 MB/s, after which the limit is removed (unlimited). This eases a fleet of leechers into a deploy instead of slamming them with full bandwidth from the first second. The ramp is purely time-based and open-loop (it starts at daemon launch, not when peers connect).
+
+`--upload-rate-limit` sets a steady **session-wide** upload limit in MiB/s, for example to leave part of the seeder's uplink to TFTP/PXE on the same host. It is applied at launch and works with or without `--slow-start`. With `--slow-start`, the ramp never goes above the limit and its last step sets the limit instead of removing it; a limit of 10 MiB/s or less skips the ramp. The limit is shared by all torrents and peers of the session (LAN peers included) and, as in libtorrent, counts the estimated TCP/IP overhead, so the payload rate is a little lower. The largest value is 2047 MiB/s (libtorrent stores the limit as an `int` in bytes/s); a larger value is clamped.
 
 ### Generate gRPC stubs (once)
 
