@@ -1,6 +1,7 @@
 #ifndef __RAW_DISK_IO_HPP__
 #define __RAW_DISK_IO_HPP__
 
+#include <chrono>
 #include <map>
 #include <memory>
 #include <deque>
@@ -42,10 +43,13 @@ private:
 	const size_t m_num_io_threads;	// Fixed at startup (from aio_threads setting)
 	size_t m_prefetch_blocks;  // Initial chunk size in blocks, clamped to piece at runtime
 
+	// Stats report interval, from EZIO_STATS_INTERVAL (seconds, default 30)
+	std::chrono::seconds m_stats_interval{30};
+
 	// Cache statistics reporting (temporary for debugging)
 	std::thread m_stats_thread;
 	std::atomic<bool> m_shutdown{false};
-	// Wakes the stats thread out of its 30s wait so the destructor's join
+	// Wakes the stats thread out of its interval wait so the destructor's join
 	// does not stall shutdown. m_shutdown is set under m_shutdown_mutex to
 	// avoid a lost wakeup against the wait_for predicate check.
 	std::mutex m_shutdown_mutex;

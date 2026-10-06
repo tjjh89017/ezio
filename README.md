@@ -252,6 +252,14 @@ SPDLOG_LEVEL=info,raw_disk_io=debug ./ezio   # per-component
 
 Levels: `trace`, `debug`, `info` (default), `warn`, `error`, `critical`, `off`.
 
+### Stats interval
+
+Set the period of the cache stats report with `EZIO_STATS_INTERVAL` (seconds, default 30):
+
+```shell
+EZIO_STATS_INTERVAL=5 ./ezio
+```
+
 ### Threads and cache
 
 | Option | Default | Purpose |
