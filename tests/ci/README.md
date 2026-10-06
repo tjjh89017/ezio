@@ -40,12 +40,14 @@ The workflow job also has its own timeout (45 minutes).
 | `Loopback (optimized build)` | `build` | `Release` build, 8 GiB image (`workflow_dispatch` input `image_size_mib` changes it) |
 | `Loopback (ThreadSanitizer)` | `build` | `Debug` build with `-DEZIO_SANITIZE_THREAD=ON`, 2 GiB image |
 | `Loopback (optimized build, upload rate limit)` | `build` | `Release` build, 1 GiB image, `SEEDER_UPLOAD_LIMIT_MIB=40` |
+| `build-required` | `build` | fails unless every `build (...)` entry succeeded |
 | `e2e-required` | `build` and all loopback jobs | fails unless every job it needs succeeded |
 | `CodeQL (c-cpp)`, `CodeQL (python)` | `build` | CodeQL `security-extended` analysis |
 
-The three `build (...)` checks and `e2e-required` are the checks to
-require on `master`. A new loopback job must be added to the `needs` list
-of `e2e-required`. The loopback jobs run on the runner itself
+`build-required` and `e2e-required` are the checks to require on
+`master`; their names stay the same when the build matrix or the loopback
+jobs change. A new loopback job must be added to the `needs` list of
+`e2e-required`. The loopback jobs run on the runner itself
 (`ubuntu-latest`), so the test covers the runner's distribution only.
 
 Two composite actions hold the steps that the jobs share:
