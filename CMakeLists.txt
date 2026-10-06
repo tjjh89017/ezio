@@ -11,6 +11,12 @@ project(ezio CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 
+option(EZIO_SANITIZE_THREAD "Build with ThreadSanitizer (CI race check)" OFF)
+if(EZIO_SANITIZE_THREAD)
+	add_compile_options(-fsanitize=thread -fno-omit-frame-pointer -g -O1)
+	add_link_options(-fsanitize=thread)
+endif()
+
 set(sources
 	main.cpp
 	app.cpp
