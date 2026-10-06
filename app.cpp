@@ -54,8 +54,9 @@ lt::session_params app::make_session_params(const config &cfg)
 	// network buffer sizes
 	p.set_int(lt::settings_pack::max_queued_disk_bytes, 128 * 1024 * 1024);
 	p.set_int(lt::settings_pack::send_not_sent_low_watermark, 524288);
-	p.set_int(lt::settings_pack::send_buffer_watermark, 128 * 1024 * 1024);
-	p.set_int(lt::settings_pack::send_buffer_low_watermark, 32 * 1024 * 1024);
+	// Small send chain: every send walks the whole chain (chained_buffer::build_vec).
+	p.set_int(lt::settings_pack::send_buffer_watermark, 2 * 1024 * 1024);
+	p.set_int(lt::settings_pack::send_buffer_low_watermark, 512 * 1024);
 
 	// Keep the session-wide caps out of the way; the effective limits are enforced
 	// per-torrent (max_connections / max_uploads, set in add_torrent). Peers are
