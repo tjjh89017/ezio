@@ -36,7 +36,7 @@ The workflow job also has its own timeout (45 minutes).
 
 | job | needs | what it does |
 |---|---|---|
-| `build (debian:sid)`, `build (ubuntu:resolute)`, `build (ubuntu:stonking)` | - | `Release` build of EZIO in a container of that image; the gate for all other jobs |
+| `build (debian:sid)`, `build (ubuntu:latest)`, `build (ubuntu:devel)` | - | `Release` build of EZIO in a container of that image; the gate for all other jobs |
 | `Loopback (optimized build)` | `build` | `Release` build, 8 GiB image (`workflow_dispatch` input `image_size_mib` changes it) |
 | `Loopback (ThreadSanitizer)` | `build` | `Debug` build with `-DEZIO_SANITIZE_THREAD=ON`, 2 GiB image |
 | `Loopback (optimized build, upload rate limit)` | `build` | `Release` build, 1 GiB image, `SEEDER_UPLOAD_LIMIT_MIB=40` |

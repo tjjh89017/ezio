@@ -24,8 +24,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Build check on the distributions that stevenshiau/ezio-build packages for;
-  # the gate for all other jobs.
+  # Build check on Debian sid, the current Ubuntu LTS and the Ubuntu
+  # development release; the gate for all other jobs.
   build:
     name: build (${{ matrix.image }})
     runs-on: ubuntu-latest
@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: ['debian:sid', 'ubuntu:resolute', 'ubuntu:stonking']
+        image: ['debian:sid', 'ubuntu:latest', 'ubuntu:devel']
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
