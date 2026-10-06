@@ -1,0 +1,47 @@
+name: Build EZIO
+description: Install the build dependencies, then configure and build EZIO into build/.
+
+inputs:
+  build-type:
+    description: CMAKE_BUILD_TYPE (Release, Debug, ...)
+    required: false
+    default: Release
+  tsan:
+    description: EZIO_SANITIZE_THREAD, ON or OFF
+    required: false
+    default: 'OFF'
+
+runs:
+  using: composite
+  steps:
+    # Runs on the runner and as root in a Debian/Ubuntu container (no sudo).
+    - name: Install build dependencies
+      shell: bash
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        SUDO=
+        if [ "$(id -u)" != 0 ]; then SUDO=sudo; fi
+        $SUDO apt-get -y update
+        $SUDO apt-get install -y --no-install-recommends \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          cmake \
+          make \
+          libgrpc-dev \
+          libgrpc++-dev \
+          libprotobuf-dev \
+          protobuf-compiler-grpc \
+          libtorrent-rasterbar-dev \
+          libboost-program-options-dev \
+          libspdlog-dev
+
+    - name: Configure and build
+      shell: bash
+      env:
+        BUILD_TYPE: ${{ inputs.build-type }}
+        TSAN: ${{ inputs.tsan }}
+      run: |
+        cmake -S . -B build -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DEZIO_SANITIZE_THREAD="$TSAN"
+        cmake --build build -j"$(nproc)"

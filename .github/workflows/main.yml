@@ -1,0 +1,163 @@
+name: Main
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      image_size_mib:
+        description: 'Image size in MiB for the optimized loopback job'
+        required: false
+        default: '8192'
+
+permissions:
+  contents: read
+
+# Do not stack runs of consecutive pushes to a PR. Pushes to master still run
+# to completion so the Security tab stays in sync with the branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Build check on several distributions; the gate for all other jobs.
+  build:
+    name: build (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['debian:stable', 'debian:sid', 'ubuntu:latest']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build EZIO
+        uses: ./.github/actions/build
+
+  loopback:
+    name: ${{ matrix.name }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Loopback (optimized build)
+            variant: optimized
+            build_type: Release
+            tsan: 'OFF'
+            image_mib: 8192
+          # Debug keeps the asserts on; TSan is slow, so the image is smaller.
+          - name: Loopback (ThreadSanitizer)
+            variant: tsan
+            build_type: Debug
+            tsan: 'ON'
+            image_mib: 2048
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build EZIO
+        uses: ./.github/actions/build
+        with:
+          build-type: ${{ matrix.build_type }}
+          tsan: ${{ matrix.tsan }}
+      - name: Run loopback test
+        uses: ./.github/actions/loopback-test
+        with:
+          image-size-mib: ${{ matrix.variant == 'optimized' && inputs.image_size_mib || matrix.image_mib }}
+          tsan: ${{ matrix.tsan == 'ON' && '1' || '0' }}
+          timeout: '900'
+          summary-title: ${{ matrix.name }}
+          artifact-name: loopback-logs-${{ matrix.variant }}
+
+  # The loopback link is far faster than 40 MiB/s, so the limit must bind.
+  loopback-rate-limit:
+    name: Loopback (optimized build, upload rate limit)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build EZIO
+        uses: ./.github/actions/build
+      - name: Run loopback test
+        uses: ./.github/actions/loopback-test
+        with:
+          image-size-mib: '1024'
+          upload-limit-mib: '40'
+          timeout: '300'
+          summary-title: Loopback (optimized build, upload rate limit 40 MiB/s)
+          artifact-name: loopback-logs-rate-limit
+
+  # Single required check for the end-to-end tests; it stays stable when the
+  # loopback matrix changes.
+  e2e-required:
+    name: e2e-required
+    needs: [build, loopback, loopback-rate-limit]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the results
+        env:
+          BUILD: ${{ needs.build.result }}
+          LOOPBACK: ${{ needs.loopback.result }}
+          RATE_LIMIT: ${{ needs.loopback-rate-limit.result }}
+        run: |
+          echo "build=$BUILD loopback=$LOOPBACK loopback-rate-limit=$RATE_LIMIT"
+          [ "$BUILD" = success ] && [ "$LOOPBACK" = success ] && [ "$RATE_LIMIT" = success ]
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      # required to upload the SARIF results to code scanning
+      security-events: write
+      # required by github/codeql-action to read the workflow run status
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # C++ daemon: needs a real compile, so CodeQL traces a manual build
+          - language: c-cpp
+            build-mode: manual
+          # utils/ gRPC client scripts
+          - language: python
+            build-mode: none
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+      - name: Build EZIO
+        if: matrix.build-mode == 'manual'
+        uses: ./.github/actions/build
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
