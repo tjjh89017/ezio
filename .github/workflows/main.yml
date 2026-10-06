@@ -107,6 +107,20 @@ jobs:
 
   # Single required check for the end-to-end tests; it stays stable when the
   # loopback matrix changes.
+  build-required:
+    name: build-required
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the build results
+        env:
+          BUILD: ${{ needs.build.result }}
+        run: |
+          echo "build=$BUILD"
+          [ "$BUILD" = success ]
+
   e2e-required:
     name: e2e-required
     needs: [build, loopback, loopback-rate-limit]
