@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <chrono>
@@ -32,6 +33,24 @@ static size_t calculate_cache_entries(libtorrent::settings_interface const &sett
 		entries, (entries * 16) / 1024);
 
 	return entries;
+}
+
+// Stats report interval in seconds from EZIO_STATS_INTERVAL (default 30)
+static std::chrono::seconds read_stats_interval()
+{
+	constexpr long DEFAULT_INTERVAL = 30;
+	char const *env = std::getenv("EZIO_STATS_INTERVAL");
+	if (!env || !*env) {
+		return std::chrono::seconds(DEFAULT_INTERVAL);
+	}
+	char *end = nullptr;
+	long const v = std::strtol(env, &end, 10);
+	if (*end != '\0' || v <= 0) {
+		spdlog::warn("[raw_disk_io] Invalid EZIO_STATS_INTERVAL '{}', using {}s",
+			env, DEFAULT_INTERVAL);
+		return std::chrono::seconds(DEFAULT_INTERVAL);
+	}
+	return std::chrono::seconds(v);
 }
 
 std::unique_ptr<libtorrent::disk_interface> raw_disk_io_constructor(libtorrent::io_context &ioc,
@@ -89,6 +108,8 @@ raw_disk_io::raw_disk_io(libtorrent::io_context &ioc,
 
 	spdlog::info("[raw_disk_io] All {} I/O thread pools started successfully", m_num_io_threads);
 
+	m_stats_interval = read_stats_interval();
+
 	// Start stats reporting thread (posts tasks to each io thread - lock-free!)
 	m_stats_thread = std::thread(&raw_disk_io::stats_report_loop, this);
 }
@@ -97,7 +118,7 @@ raw_disk_io::~raw_disk_io()
 {
 	spdlog::info("[raw_disk_io] Shutting down: waiting for all I/O to complete...");
 
-	// Stop stats reporting thread first, waking it out of its 30s wait so
+	// Stop stats reporting thread first, waking it out of its interval wait so
 	// shutdown does not stall until the next report tick.
 	{
 		std::lock_guard<std::mutex> lock(m_shutdown_mutex);
@@ -622,13 +643,14 @@ void raw_disk_io::settings_updated()
 
 void raw_disk_io::stats_report_loop()
 {
-	spdlog::info("[raw_disk_io] Cache stats reporting thread started (30s interval)");
+	spdlog::info("[raw_disk_io] Cache stats reporting thread started ({}s interval)",
+		m_stats_interval.count());
 
 	std::unique_lock<std::mutex> lock(m_shutdown_mutex);
 	while (!m_shutdown) {
 		// Interruptible sleep: wait_for returns true when the destructor sets
 		// m_shutdown and notifies, so shutdown does not wait out the interval.
-		if (m_shutdown_cv.wait_for(lock, std::chrono::seconds(30),
+		if (m_shutdown_cv.wait_for(lock, m_stats_interval,
 				[this] {
 					return m_shutdown.load();
 				})) {
