@@ -1,7 +1,6 @@
 # EZIO
 
-[![build test](https://github.com/tjjh89017/ezio/actions/workflows/github_actions.yml/badge.svg)](https://github.com/tjjh89017/ezio/actions/workflows/github_actions.yml)
-[![CodeQL](https://github.com/tjjh89017/ezio/actions/workflows/codeql.yml/badge.svg)](https://github.com/tjjh89017/ezio/actions/workflows/codeql.yml)
+[![Main](https://github.com/tjjh89017/ezio/actions/workflows/main.yml/badge.svg)](https://github.com/tjjh89017/ezio/actions/workflows/main.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/tjjh89017/ezio/badge)](https://scorecard.dev/viewer/?uri=github.com/tjjh89017/ezio)
 
 [![release](https://img.shields.io/github/v/release/tjjh89017/ezio?sort=semver&logo=github)](https://github.com/tjjh89017/ezio/releases/latest)
