@@ -29,6 +29,8 @@ public:
 	bool slow_start = false;
 	// slow-start step period in seconds
 	int slow_start_period = 10;	 // default 10 seconds
+	// steady session-wide upload rate limit in MiB/s (0 = unlimited)
+	int upload_rate_limit = 0;
 	// BitTorrent peer listen port (0 = use libtorrent default, leave unchanged)
 	int bt_listen_port = 0;
 	// enable DHT (default off)

@@ -65,8 +65,8 @@ lt::session_params app::make_session_params(const config &cfg)
 	// Keep the session-wide caps out of the way; the effective limits are enforced
 	// per-torrent (max_connections / max_uploads, set in add_torrent). Peers are
 	// routed into the global peer class (see set_peer_class_filter in the app
-	// ctor) so the session-wide upload_rate_limit the slow-start ramp sets
-	// reaches LAN peers too -- libtorrent's default would otherwise exempt them
+	// ctor) so the session-wide upload_rate_limit (--upload-rate-limit and the
+	// slow-start ramp) reaches LAN peers too -- libtorrent's default would otherwise exempt them
 	// via a local class.
 	// unchoke_slots_limit must be positive: with -1 libtorrent skips the unchoke
 	// round, and a freed upload slot is never given to a peer that waits.
@@ -106,7 +106,7 @@ lt::session_params app::make_session_params(const config &cfg)
 	return ses_params;
 }
 
-app::app(const config &cfg) : m_config(cfg), m_session(make_session_params(cfg)), m_daemon(m_session, m_config.slow_start, m_config.slow_start_period), m_service(m_daemon), m_log(m_daemon, m_daemon.get_io_context())
+app::app(const config &cfg) : m_config(cfg), m_session(make_session_params(cfg)), m_daemon(m_session, m_config.slow_start, m_config.slow_start_period, m_config.upload_rate_limit), m_service(m_daemon), m_log(m_daemon, m_daemon.get_io_context())
 {
 	// PEX is always on (session_params was built with an empty extension list
 	// to keep ut_metadata and smart_ban off, so ut_pex is added back here
@@ -117,8 +117,8 @@ app::app(const config &cfg) : m_config(cfg), m_session(make_session_params(cfg))
 	// Route every peer -- including LAN/private addresses -- into the global peer
 	// class. By default libtorrent maps private-range IPs to a separate local
 	// peer class that ignores the session-wide upload_rate_limit (and the unchoke
-	// slot limits). Putting everyone in the global class makes the slow-start
-	// ramp's rate limit apply uniformly and lets the per-torrent max_uploads
+	// slot limits). Putting everyone in the global class makes the upload rate
+	// limit (--upload-rate-limit and the slow-start ramp) apply uniformly and lets the per-torrent max_uploads
 	// govern the unchoke count. This is the non-deprecated equivalent of
 	// ignore_limits_on_local_network=false.
 	lt::ip_filter pc_filter;
