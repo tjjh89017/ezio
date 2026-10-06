@@ -1,5 +1,7 @@
 #include <sstream>
 #include <chrono>
+#include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
 #include <vector>
@@ -13,11 +15,28 @@ namespace
 constexpr int SLOW_START_INITIAL = 10 * 1024 * 1024;  // 10 MB/s
 constexpr int SLOW_START_STEP = 10 * 1024 * 1024;  // +10 MB/s per period
 constexpr int SLOW_START_CAP = 100 * 1024 * 1024;  // 100 MB/s -> beyond = unlimited
+constexpr std::int64_t MIB = 1024 * 1024;
+
+// MiB/s -> bytes/s. libtorrent's upload_rate_limit is an int and must stay
+// below INT32_MAX (its "infinite"), so the largest value is 2047 MiB/s.
+constexpr int UPLOAD_LIMIT_MAX_MIB = std::numeric_limits<int>::max() / MIB;
+
+int upload_limit_bytes(int mib)
+{
+	if (mib <= 0) {
+		return 0;
+	}
+	if (mib > UPLOAD_LIMIT_MAX_MIB) {
+		spdlog::warn("upload rate limit {} MiB/s is above the libtorrent maximum, clamped to {} MiB/s", mib, UPLOAD_LIMIT_MAX_MIB);
+		mib = UPLOAD_LIMIT_MAX_MIB;
+	}
+	return static_cast<int>(mib * MIB);
+}
 }  // namespace
 
 namespace ezio
 {
-ezio::ezio(lt::session &session, bool slow_start, int slow_start_period) :
+ezio::ezio(lt::session &session, bool slow_start, int slow_start_period, int upload_rate_limit_mib) :
 	m_session(session),
 	m_shutdown(false),
 	m_work_guard(boost::asio::make_work_guard(m_ioc)),
@@ -26,7 +45,8 @@ ezio::ezio(lt::session &session, bool slow_start, int slow_start_period) :
 	m_slow_start_timer(m_ioc),
 	m_slow_start(slow_start),
 	m_slow_start_period(slow_start_period > 0 ? slow_start_period : 10),
-	m_slow_start_limit(0)
+	m_slow_start_limit(0),
+	m_upload_rate_limit(upload_limit_bytes(upload_rate_limit_mib))
 {
 }
 
@@ -53,10 +73,15 @@ void ezio::run()
 
 	arm_reannounce();
 
-	if (m_slow_start) {
+	if (m_slow_start && m_upload_rate_limit > 0 && m_upload_rate_limit <= SLOW_START_INITIAL) {
+		spdlog::info("slow-start: skipped, the upload rate limit is not above the ramp start");
+		apply_session_upload_limit(m_upload_rate_limit);
+	} else if (m_slow_start) {
 		m_slow_start_limit = SLOW_START_INITIAL;
 		apply_session_upload_limit(m_slow_start_limit);
 		schedule_slow_start_step();
+	} else if (m_upload_rate_limit > 0) {
+		apply_session_upload_limit(m_upload_rate_limit);
 	}
 
 	m_ioc.run();
@@ -68,9 +93,9 @@ void ezio::apply_session_upload_limit(int bytes_per_second)
 	p.set_int(lt::settings_pack::upload_rate_limit, bytes_per_second);
 	m_session.apply_settings(p);
 	if (bytes_per_second == 0) {
-		spdlog::info("slow-start: upload rate limit cleared (unlimited)");
+		spdlog::info("upload rate limit cleared (unlimited)");
 	} else {
-		spdlog::info("slow-start: upload limit set to {} MB/s", bytes_per_second / (1024 * 1024));
+		spdlog::info("upload rate limit set to {} MiB/s", bytes_per_second / MIB);
 	}
 }
 
@@ -82,9 +107,10 @@ void ezio::schedule_slow_start_step()
 			return;
 		}
 		int next = m_slow_start_limit + SLOW_START_STEP;
-		if (next >= SLOW_START_CAP) {
-			apply_session_upload_limit(0);
-			spdlog::info("slow-start complete: upload limit removed");
+		// The ramp never goes above the steady limit; its last step sets it (0 = unlimited).
+		if (next >= SLOW_START_CAP || (m_upload_rate_limit > 0 && next >= m_upload_rate_limit)) {
+			apply_session_upload_limit(m_upload_rate_limit);
+			spdlog::info("slow-start complete");
 			return;
 		}
 		m_slow_start_limit = next;

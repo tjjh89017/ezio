@@ -16,6 +16,7 @@ void config::parse_from_argv(int argc, char **argv)
 		("aio-threads", bpo::value<int>(&aio_threads)->default_value(16), "number of threads for disk I/O and hashing, default is 16")
 		("slow-start", bpo::bool_switch(&slow_start)->default_value(false), "enable session-wide slow-start upload ramp (default off)")
 		("slow-start-period", bpo::value<int>(&slow_start_period)->default_value(10), "slow-start step period in seconds (default 10)")
+		("upload-rate-limit", bpo::value<int>(&upload_rate_limit)->default_value(0), "session-wide upload rate limit in MiB/s, 0 = unlimited (default 0)")
 		("port,p", bpo::value<int>(&bt_listen_port)->default_value(0), "BitTorrent peer listen port (default 6881)")
 		("enable-dht", bpo::bool_switch(&dht)->default_value(false), "enable DHT (default off)")
 		("enable-lsd", bpo::bool_switch(&lsd)->default_value(false), "enable Local Service Discovery (default off)")
@@ -41,6 +42,11 @@ void config::parse_from_argv(int argc, char **argv)
 	if (vmap.count("version")) {
 		std::cout << "ezio " << EZIO_VERSION << std::endl;
 		exit(0);
+	}
+
+	if (upload_rate_limit < 0) {
+		std::cerr << "--upload-rate-limit must be 0 or more" << std::endl;
+		exit(1);
 	}
 }
 

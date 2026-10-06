@@ -41,7 +41,7 @@ struct torrent_status {
 class ezio : boost::noncopyable
 {
 public:
-	ezio(lt::session &session, bool slow_start = false, int slow_start_period = 10);
+	ezio(lt::session &session, bool slow_start = false, int slow_start_period = 10, int upload_rate_limit_mib = 0);
 	~ezio() = default;
 
 	void stop();
@@ -75,6 +75,8 @@ private:
 	bool m_slow_start;
 	int m_slow_start_period;
 	int m_slow_start_limit;
+	// steady upload limit in bytes/s (0 = unlimited); the ramp ends here
+	int m_upload_rate_limit;
 };
 
 }  // namespace ezio
